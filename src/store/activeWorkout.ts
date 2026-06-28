@@ -23,6 +23,7 @@ interface ActiveWorkoutState {
   updateWorkoutTitle: (title: string) => Promise<void>;
   reorderEntries: (entries: WorkoutEntry[]) => Promise<void>;
   updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
+  startWorkoutFromTemplate: (template: Workout) => Promise<void>;
 }
 
 // 用於防抖動 (debounce) 儲存文字輸入的計時器
@@ -340,5 +341,42 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
 
     await saveWorkoutImmediate(updatedWorkout);
     set({ activeWorkout: updatedWorkout });
+  },
+
+  startWorkoutFromTemplate: async (template: Workout) => {
+    // 防禦性檢查：若當前已有進行中的訓練，不允許套用範本新建
+    const existing = get().activeWorkout;
+    if (existing) {
+      throw new Error('ACTIVE_WORKOUT_EXISTS');
+    }
+
+    cancelPendingSave();
+    useRestTimerStore.getState().skipTimer();
+
+    // 去掉既有的「 (範本)」結尾，避免重用範本時標題無限疊加（用 regex 免去數字元的 off-by-N）
+    const baseTitle = (template.title || '今日訓練').replace(/ \(範本\)$/, '');
+
+    const newWorkout: Workout = {
+      id: crypto.randomUUID(),
+      title: `${baseTitle} (範本)`,
+      startedAt: Date.now(),
+      status: 'active',
+      entries: template.entries.map((entry) => ({
+        id: crypto.randomUUID(),
+        exerciseId: entry.exerciseId,
+        order: entry.order,
+        sets: entry.sets.map((setLog) => ({
+          id: crypto.randomUUID(),
+          weight: 0,
+          reps: 0,
+          isWarmup: setLog.isWarmup,
+          completed: false,
+          createdAt: Date.now(),
+        })),
+      })),
+    };
+
+    await saveWorkoutImmediate(newWorkout);
+    set({ activeWorkout: newWorkout });
   },
 }));
