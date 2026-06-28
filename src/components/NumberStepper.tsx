@@ -93,8 +93,10 @@ export default function NumberStepper({
     onChange(Number(formatted));
   };
 
-  const handleFocus = () => {
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     setIsFocused(true);
+    // 一聚焦就全選，讓使用者直接打字取代既有值（避免在預設 "0"/"0.0" 後面接字）
+    e.target.select();
   };
 
   return (
