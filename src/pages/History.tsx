@@ -9,6 +9,9 @@ import { formatWeight } from '../lib/units';
 import { calculateE1rm } from '../lib/e1rm';
 import { useSettingsStore } from '../store/settings';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
+import { buildExerciseMap, getDaySummary } from '../lib/workoutSummary';
+import { getMuscleIcon } from '../data/muscle-icons';
+import { getLocationColor } from '../lib/locationStyle';
 
 export default function History() {
   const navigate = useNavigate();
@@ -19,6 +22,7 @@ export default function History() {
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   // 7B: 視圖切換與日曆狀態
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -189,6 +193,11 @@ export default function History() {
     return Math.round((workout.endedAt - workout.startedAt) / 60000);
   };
 
+  // 建立 Exercise Map 供搜尋與日曆主要部位查詢使用
+  const exMap = useMemo(() => {
+    return buildExerciseMap(allExercises);
+  }, [allExercises]);
+
   // 在記憶體中進行列表聚合 (ROADMAP §5 注意項：避免每次 render 重複統計)
   const historyStatsList = useMemo(() => {
     return historyList.map((w) => {
@@ -206,6 +215,25 @@ export default function History() {
       };
     });
   }, [historyList, currentUnit]);
+
+  // 關鍵字搜尋過濾後的歷史列表
+  const filteredStatsList = useMemo(() => {
+    const trimmed = searchKeyword.trim().toLowerCase();
+    if (!trimmed) return historyStatsList;
+
+    return historyStatsList.filter(({ workout }) => {
+      if (workout.title?.toLowerCase().includes(trimmed)) return true;
+      if (workout.location?.toLowerCase().includes(trimmed)) return true;
+
+      for (const entry of workout.entries) {
+        const ex = exMap.get(entry.exerciseId);
+        if (!ex) continue;
+        if (ex.name.toLowerCase().includes(trimmed)) return true;
+        if (ex.muscleGroup.toLowerCase().includes(trimmed)) return true;
+      }
+      return false;
+    });
+  }, [historyStatsList, searchKeyword, exMap]);
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
@@ -244,6 +272,30 @@ export default function History() {
         </div>
       )}
 
+      {/* 搜尋框 */}
+      {!isLoading && viewMode === 'list' && historyList.length > 0 && (
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="搜尋標題、地點、動作或部位..."
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="w-full pl-9 pr-9 py-2.5 text-xs border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <span className="absolute left-3 top-3 text-slate-400 text-xs">
+            🔍
+          </span>
+          {searchKeyword && (
+            <button
+              onClick={() => setSearchKeyword('')}
+              className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-base font-bold p-1 cursor-pointer"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 清單檢視 - 空狀態 */}
       {!isLoading && viewMode === 'list' && historyList.length === 0 && (
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-4">
@@ -265,72 +317,102 @@ export default function History() {
         </div>
       )}
 
-      {/* 清單檢視 - 歷史記錄列表 */}
+      {/* 清單檢視 - 歷史記錄列表/搜尋結果 */}
       {!isLoading && viewMode === 'list' && historyList.length > 0 && (
-        <div className="space-y-3">
-          {historyStatsList.map(({ id, workout, totalSetsCount, displayVolume }) => {
-            const duration = getDurationMinutes(workout);
-            return (
-              <div
-                key={id}
-                onClick={() => setSelectedWorkout(workout)}
-                className="bg-white border border-slate-100 hover:border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow transition duration-200 cursor-pointer space-y-3"
-              >
-                {/* 卡片標題區 */}
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm">
-                      {workout.title || '健身訓練'}
-                    </h3>
-                    <span className="text-[10px] text-slate-400 font-semibold">
-                      {formatDateTime(workout.startedAt)}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs font-extrabold text-indigo-600">
-                      {displayVolume} {currentUnit}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase">總容量</span>
-                  </div>
-                </div>
-
-                {/* 數據概要 Bar */}
-                <div className="flex flex-wrap gap-4 text-xs text-slate-500 font-semibold bg-slate-50/50 p-2 rounded-xl border border-slate-100">
-                  <div className="flex items-center gap-1">
-                    <span>📂</span>
-                    <span>{workout.entries.length} 動作</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span>🔢</span>
-                    <span>{totalSetsCount} 組</span>
-                  </div>
-                  {duration > 0 && (
-                    <div className="flex items-center gap-1">
-                      <span>⏱️</span>
-                      <span>{duration} 分鐘</span>
-                    </div>
-                  )}
-                  {workout.location && (
-                    <div className="flex items-center gap-1">
-                      <span>📍</span>
-                      <span>{workout.location}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* 動作概要名稱預覽 (動作名稱 join + 刪除 fallback 處理) */}
-                <div className="text-[10px] text-slate-400 font-medium truncate">
-                  {workout.entries
-                    .map((entry) => {
-                      const ex = allExercises.find((e) => e.id === entry.exerciseId);
-                      return ex ? ex.name : '（已刪除的動作）';
-                    })
-                    .join('、')}
-                </div>
+        <>
+          {filteredStatsList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center min-h-[30vh] text-center space-y-3 py-12">
+              <div className="text-3xl text-slate-400">🔍</div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  找不到符合「{searchKeyword}」的訓練
+                </p>
+                <p className="text-xs text-slate-400">
+                  請嘗試輸入其他動作名稱、部位或地點。
+                </p>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredStatsList.map(({ id, workout, totalSetsCount, displayVolume }) => {
+                const duration = getDurationMinutes(workout);
+                return (
+                  <div
+                    key={id}
+                    onClick={() => setSelectedWorkout(workout)}
+                    className="bg-white border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:shadow hover:border-slate-200 dark:bg-slate-900 transition duration-200 cursor-pointer space-y-3"
+                  >
+                    {/* 卡片標題區 */}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                          {workout.title || '健身訓練'}
+                        </h3>
+                        <span className="text-[10px] text-slate-400 font-semibold">
+                          {formatDateTime(workout.startedAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
+                            {displayVolume} {currentUnit}
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase">總容量</span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteWorkout(workout.id);
+                          }}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
+                          title="刪除訓練紀錄"
+                        >
+                          <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 數據概要 Bar */}
+                    <div className="flex flex-wrap gap-4 text-xs text-slate-500 font-semibold bg-slate-50/50 dark:bg-slate-950 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-1">
+                        <span>📂</span>
+                        <span>{workout.entries.length} 動作</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>🔢</span>
+                        <span>{totalSetsCount} 組</span>
+                      </div>
+                      {duration > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span>⏱️</span>
+                          <span>{duration} 分鐘</span>
+                        </div>
+                      )}
+                      {workout.location && (
+                        <div className="flex items-center gap-1">
+                          <span>📍</span>
+                          <span>{workout.location}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 動作概要名稱預覽 (動作名稱 join + 刪除 fallback 處理) */}
+                    <div className="text-[10px] text-slate-400 font-medium truncate">
+                      {workout.entries
+                        .map((entry) => {
+                          const ex = exMap.get(entry.exerciseId);
+                          return ex ? ex.name : '（已刪除的動作）';
+                        })
+                        .join('、')}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* 日曆檢視 (Calendar View) */}
@@ -398,13 +480,39 @@ export default function History() {
                     }`}
                   >
                     {cell.dayNum}
-                    {/* 有訓練的小圓點標記 */}
-                    {hasWorkouts && !isSelected && (
-                      <span className="absolute bottom-1.5 w-1 h-1 rounded-full bg-indigo-500" />
-                    )}
+                    {/* 有訓練的部位圖示或小圓點 */}
+                    {hasWorkouts && !isSelected && (() => {
+                      const summary = getDaySummary(workoutsByDate[cell.dateStr], exMap);
+                      const color = getLocationColor(summary.location);
+                      const markup = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
+                      return markup
+                        ? <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }}
+                            className="absolute bottom-1 w-3.5 h-3.5" dangerouslySetInnerHTML={{ __html: markup }} />
+                        : <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />;
+                    })()}
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* 日曆顏色圖例 */}
+          <div className="flex flex-wrap justify-center gap-4 text-[10px] font-semibold text-slate-400 py-1 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-800/50">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#3b82f6' }} />
+              <span>中壢建工</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#f43f5e' }} />
+              <span>楊梅WG</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#94a3b8' }} />
+              <span>其他地點</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#cbd5e1' }} />
+              <span>無地點</span>
             </div>
           </div>
 
@@ -443,9 +551,23 @@ export default function History() {
                           {w.entries.length} 個動作 • {totalSetsCount} 組
                         </p>
                       </div>
-                      <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
-                        {formatWeight(calculateWorkoutVolume(w), currentUnit, 1)} {currentUnit}
-                      </span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
+                          {formatWeight(calculateWorkoutVolume(w), currentUnit, 1)} {currentUnit}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteWorkout(w.id);
+                          }}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
+                          title="刪除訓練紀錄"
+                        >
+                          <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -493,7 +615,7 @@ export default function History() {
             {/* 各個動作組數列表 */}
             <div className="space-y-4 overflow-y-auto max-h-[45vh] pr-1">
               {selectedWorkout.entries.map((entry) => {
-                const exercise = allExercises.find((ex) => ex.id === entry.exerciseId);
+                const exercise = exMap.get(entry.exerciseId);
                 const exerciseName = exercise ? exercise.name : '（已刪除的動作）';
 
                 // 計算單一動作容量

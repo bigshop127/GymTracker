@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { type Workout, type WorkoutEntry, type SetLog, type WorkoutTemplate } from '../db/schema';
 import { getActiveWorkout, saveActiveWorkout, deleteWorkout, listCompletedWorkouts } from '../db/workouts';
+import { listExercises } from '../db/exercises';
 import { getSettings } from '../db/settings';
 import { useRestTimerStore } from './restTimer';
+import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
 
 interface ActiveWorkoutState {
   activeWorkout: Workout | null;
@@ -143,9 +145,15 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     useRestTimerStore.getState().skipTimer(); // 停止休息計時器
     const { activeWorkout } = get();
     if (activeWorkout) {
+      let title = activeWorkout.title;
+      if (!title || title.trim() === '' || title.trim() === '今日訓練') {
+        const exercises = await listExercises();
+        title = buildAutoWorkoutTitle(activeWorkout, buildExerciseMap(exercises));
+      }
       // 直接儲存記憶體中的最新快照，並標記 status 為 completed (防丟資料)
       const finished: Workout = {
         ...activeWorkout,
+        title,
         status: 'completed',
         endedAt: Date.now(),
       };

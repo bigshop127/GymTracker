@@ -168,9 +168,10 @@ GymTracker/
 | Phase 6 | 設定 + PWA 收尾 | 設定頁 + 可安裝 + 離線 → **MVP v1.0** |
 | — | GitHub Pages 部署 | base path + Actions 自動部署，手機可安裝 |
 | Phase 7（v1.1） | 訓練地點 + 範本 + 日曆 + 示意圖 | 4 項擴充：地點選擇 / 範本(保留重量) / 日曆檢視 / 動作示意圖 |
+| Phase 8（v1.2） | 歷史強化：刪除 / 搜尋 / 自動命名 / 日曆部位圖 | 4 項優化：一鍵刪除 / 關鍵字搜尋 / 自動命名 / 地點上色部位圖 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-06-28）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）四項擴充**全數完成並上線**（https://bigshop127.github.io/GymTracker/ ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-06-28）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）+ Phase 8（v1.2）四項擴充**全數完成並上線**（https://bigshop127.github.io/GymTracker/ ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 
 ---
 
