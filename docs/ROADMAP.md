@@ -150,7 +150,7 @@ GymTracker/
 │  └─ main.tsx
 └─ docs/
    ├─ ROADMAP.md       # 本檔（SSOT）
-   └─ prompts/         # phase0.md ~ phase6.md
+   └─ prompts/         # phase0.md ~ phase7.md
 ```
 
 ---
@@ -165,9 +165,12 @@ GymTracker/
 | Phase 3 | 訓練紀錄核心 | 開始訓練 + 逐組輸入 + 休息計時 + 即時存 |
 | Phase 4 | 歷史頁 | 列表 + 明細 + 以此為範本再做一次 |
 | Phase 5 | 進度圖表 | 每動作 E1RM/最大重量/容量趨勢 + PR |
-| Phase 6 | 設定 + PWA 收尾 | 設定頁 + 可安裝 + 離線 |
+| Phase 6 | 設定 + PWA 收尾 | 設定頁 + 可安裝 + 離線 → **MVP v1.0** |
+| — | GitHub Pages 部署 | base path + Actions 自動部署，手機可安裝 |
+| Phase 7（v1.1） | 訓練地點 + 範本 + 日曆 + 示意圖 | 4 項擴充：地點選擇 / 範本(保留重量) / 日曆檢視 / 動作示意圖 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
+> **進度（2026-06-28）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）四項擴充**全數完成並上線**（https://bigshop127.github.io/GymTracker/ ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 
 ---
 
