@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { type Workout, type WorkoutEntry, type SetLog } from '../db/schema';
-import { getActiveWorkout, saveActiveWorkout, deleteWorkout } from '../db/workouts';
+import { type Workout, type WorkoutEntry, type SetLog, type WorkoutTemplate } from '../db/schema';
+import { getActiveWorkout, saveActiveWorkout, deleteWorkout, listCompletedWorkouts } from '../db/workouts';
+import { getSettings } from '../db/settings';
 import { useRestTimerStore } from './restTimer';
 
 interface ActiveWorkoutState {
@@ -21,9 +22,11 @@ interface ActiveWorkoutState {
   updateSet: (entryId: string, setId: string, updates: Partial<Omit<SetLog, 'id' | 'createdAt'>>) => Promise<void>;
   updateWorkoutNotes: (notes: string) => Promise<void>;
   updateWorkoutTitle: (title: string) => Promise<void>;
+  updateWorkoutLocation: (location: string) => Promise<void>;
   reorderEntries: (entries: WorkoutEntry[]) => Promise<void>;
   updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
   startWorkoutFromTemplate: (template: Workout) => Promise<void>;
+  startWorkoutFromTemplateEntity: (template: WorkoutTemplate) => Promise<void>;
 }
 
 // 用於防抖動 (debounce) 儲存文字輸入的計時器
@@ -91,12 +94,31 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       return existing;
     }
 
+    // 取得上一次完成訓練的地點
+    let lastLocation = '';
+    try {
+      const completed = await listCompletedWorkouts();
+      const lastWithLoc = completed.find(w => w.location);
+      if (lastWithLoc) {
+        lastLocation = lastWithLoc.location || '';
+      } else {
+        // 找不到就帶預設地點的第一個
+        const settings = await getSettings();
+        if (settings.locations && settings.locations.length > 0) {
+          lastLocation = settings.locations[0];
+        }
+      }
+    } catch (e) {
+      console.error('Failed to get last workout location:', e);
+    }
+
     const newWorkout: Workout = {
       id: crypto.randomUUID(),
       title: title || '今日訓練',
       startedAt: Date.now(),
       entries: [],
       status: 'active',
+      location: lastLocation,
     };
     
     // 即時寫入資料庫
@@ -308,6 +330,20 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     set({ activeWorkout: updatedWorkout });
   },
 
+  updateWorkoutLocation: async (location: string) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      location,
+    };
+
+    // 訓練地點變更即時寫入 DB，不進行 debounce
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
+  },
+
   reorderEntries: async (entries: WorkoutEntry[]) => {
     const { activeWorkout } = get();
     if (!activeWorkout) return;
@@ -365,10 +401,47 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
         order: entry.order,
+        defaultRestSeconds: entry.defaultRestSeconds,
         sets: entry.sets.map((setLog) => ({
           id: crypto.randomUUID(),
           weight: 0,
           reps: 0,
+          isWarmup: setLog.isWarmup,
+          completed: false,
+          createdAt: Date.now(),
+        })),
+      })),
+    };
+
+    await saveWorkoutImmediate(newWorkout);
+    set({ activeWorkout: newWorkout });
+  },
+
+  startWorkoutFromTemplateEntity: async (template: WorkoutTemplate) => {
+    // 防禦性檢查：若當前已有進行中的訓練，不允許套用範本新建
+    const existing = get().activeWorkout;
+    if (existing) {
+      throw new Error('ACTIVE_WORKOUT_EXISTS');
+    }
+
+    cancelPendingSave();
+    useRestTimerStore.getState().skipTimer();
+
+    const newWorkout: Workout = {
+      id: crypto.randomUUID(),
+      title: template.name,
+      startedAt: Date.now(),
+      status: 'active',
+      location: template.location,
+      entries: template.entries.map((entry) => ({
+        id: crypto.randomUUID(),
+        exerciseId: entry.exerciseId,
+        order: entry.order,
+        defaultRestSeconds: entry.defaultRestSeconds,
+        sets: entry.sets.map((setLog) => ({
+          id: crypto.randomUUID(),
+          weight: setLog.weight,
+          reps: setLog.reps,
           isWarmup: setLog.isWarmup,
           completed: false,
           createdAt: Date.now(),

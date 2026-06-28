@@ -46,6 +46,7 @@ export interface Workout {
   entries: WorkoutEntry[];
   notes?: string;
   status: 'active' | 'completed';
+  location?: string;        // 訓練地點，例如 '中壢建工'
 }
 
 // ---- 體重 / 體組成 (BodyMetric) ----
@@ -65,6 +66,17 @@ export interface Settings {
   theme: 'light' | 'dark' | 'system';
   soundOnRestEnd: boolean;
   vibrateOnRestEnd: boolean;
+  locations?: string[];     // 可選地點清單，例如 ['中壢建工', '楊梅WG']
+}
+
+// ---- 訓練範本 (WorkoutTemplate) ----
+export interface WorkoutTemplate {
+  id: string;
+  name: string;             // 範本名稱，例如 '胸 + 三頭'
+  location?: string;
+  entries: WorkoutEntry[];  // 保留 weight/reps/isWarmup；completed 一律 false
+  createdAt: number;
+  updatedAt: number;
 }
 
 // ---- Dexie 資料庫定義 ----
@@ -74,6 +86,7 @@ class GymTrackerDatabase extends Dexie {
   workouts!: Table<Workout, string>;
   bodyMetrics!: Table<BodyMetric, string>;
   settings!: Table<Settings, string>;
+  templates!: Table<WorkoutTemplate, string>;
 
   constructor() {
     super('GymTrackerDatabase');
@@ -84,6 +97,10 @@ class GymTrackerDatabase extends Dexie {
       workouts: 'id, startedAt, endedAt, status',
       bodyMetrics: 'id, date',
       settings: 'id'
+    });
+
+    this.version(2).stores({
+      templates: 'id, name, createdAt',
     });
   }
 }

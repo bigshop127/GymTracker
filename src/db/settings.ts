@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   soundOnRestEnd: true,
   vibrateOnRestEnd: true,
+  locations: ['中壢建工', '楊梅WG'],
 };
 
 /**
@@ -18,6 +19,10 @@ export async function getSettings(): Promise<Settings> {
   if (!settings) {
     await db.settings.put(DEFAULT_SETTINGS);
     return DEFAULT_SETTINGS;
+  }
+  if (!settings.locations) {
+    settings.locations = ['中壢建工', '楊梅WG'];
+    await db.settings.put(settings);
   }
   return settings;
 }

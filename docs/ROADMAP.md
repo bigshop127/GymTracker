@@ -86,6 +86,7 @@ interface Workout {
   entries: WorkoutEntry[];
   notes?: string;
   status: 'active' | 'completed';   // active = 進行中草稿，可恢復
+  location?: string;      // 訓練地點，例如 '中壢建工' (v1.1)
 }
 
 // ---- 體重 / 體組成（MVP 可選做，標準版必做）----
@@ -104,6 +105,17 @@ interface Settings {
   theme: 'light' | 'dark' | 'system';
   soundOnRestEnd: boolean;
   vibrateOnRestEnd: boolean;
+  locations?: string[];   // 可選地點清單，例如 ['中壢建工', '楊梅WG'] (v1.1)
+}
+
+// ---- 訓練範本 (v1.1) ----
+interface WorkoutTemplate {
+  id: string;
+  name: string;           // 範本名稱，例如 '胸 + 三頭'
+  location?: string;
+  entries: WorkoutEntry[]; // 保留 weight/reps/isWarmup；completed 一律 false
+  createdAt: number;
+  updatedAt: number;
 }
 ```
 

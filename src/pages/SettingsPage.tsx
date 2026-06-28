@@ -221,6 +221,92 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* 訓練地點管理區塊 */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-4 transition-colors duration-200">
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+            訓練地點管理
+          </label>
+          <p className="text-[10px] text-slate-400">管理您訓練時可以選擇的地點清單</p>
+        </div>
+
+        <div className="space-y-2">
+          {(settings.locations || []).map((loc, idx) => (
+            <div key={idx} className="flex items-center justify-between bg-slate-50 dark:bg-slate-950 p-2 rounded-xl text-sm">
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{loc}</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const newName = window.prompt('重新命名地點名稱：', loc);
+                    if (newName !== null && newName.trim() !== '') {
+                      const updated = [...(settings.locations || [])];
+                      updated[idx] = newName.trim();
+                      handleUpdate({ locations: updated });
+                    }
+                  }}
+                  className="px-2 py-1 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs text-slate-600 dark:text-slate-300 rounded-lg shadow-sm border border-slate-100 dark:border-slate-700 transition"
+                >
+                  改名
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`確定要刪除「${loc}」嗎？`)) {
+                      const updated = (settings.locations || []).filter((_, i) => i !== idx);
+                      handleUpdate({ locations: updated });
+                    }
+                  }}
+                  className="px-2 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/60 text-xs text-red-600 dark:text-red-400 rounded-lg transition"
+                >
+                  刪除
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="新增訓練地點..."
+            id="newLocationInput"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const target = e.currentTarget;
+                const val = target.value.trim();
+                if (val) {
+                  if ((settings.locations || []).includes(val)) {
+                    alert('此地點已存在');
+                    return;
+                  }
+                  const updated = [...(settings.locations || []), val];
+                  handleUpdate({ locations: updated });
+                  target.value = '';
+                }
+              }
+            }}
+            className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            onClick={() => {
+              const input = document.getElementById('newLocationInput') as HTMLInputElement;
+              const val = input?.value.trim();
+              if (val) {
+                if ((settings.locations || []).includes(val)) {
+                  alert('此地點已存在');
+                  return;
+                }
+                const updated = [...(settings.locations || []), val];
+                handleUpdate({ locations: updated });
+                input.value = '';
+              }
+            }}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white rounded-xl transition"
+          >
+            新增
+          </button>
+        </div>
+      </div>
+
       {/* 備份與還原 */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-4 transition-colors duration-200">
         <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">

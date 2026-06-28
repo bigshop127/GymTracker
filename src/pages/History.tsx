@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listCompletedWorkouts, deleteWorkout } from '../db/workouts';
 import { listExercises } from '../db/exercises';
+import { saveTemplate, createTemplateFromWorkout } from '../db/templates';
 import { type Workout, type Exercise } from '../db/schema';
 import { calculateWorkoutVolume, calculateEntryVolume } from '../lib/volume';
 import { formatWeight } from '../lib/units';
@@ -18,6 +19,17 @@ export default function History() {
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 7B: 視圖切換與日曆狀態
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
+  const [selectedDateStr, setSelectedDateStr] = useState<string | null>(() => {
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
 
   // 初始化載入歷史記錄與動作庫
   const loadData = async () => {
@@ -45,6 +57,67 @@ export default function History() {
 
   const currentUnit = settings?.unit || 'kg';
   const currentFormula = settings?.e1rmFormula || 'epley';
+
+  // 7B: 今天日期字串
+  const todayDateStr = useMemo(() => {
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  // 7B: 預設選中今天已在 useState 中設定，無需額外 useEffect
+
+  // 7B: 將訓練歷史按日期 (YYYY-MM-DD) 分組
+  const workoutsByDate = useMemo(() => {
+    const groups: Record<string, Workout[]> = {};
+    historyList.forEach((w) => {
+      const date = new Date(w.startedAt);
+      const y = date.getFullYear();
+      const m = (date.getMonth() + 1).toString().padStart(2, '0');
+      const d = date.getDate().toString().padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
+
+      if (!groups[dateStr]) {
+        groups[dateStr] = [];
+      }
+      groups[dateStr].push(w);
+    });
+    return groups;
+  }, [historyList]);
+
+  // 7B: 當前選中日期的訓練紀錄
+  const selectedDateWorkouts = useMemo(() => {
+    if (!selectedDateStr) return [];
+    return workoutsByDate[selectedDateStr] || [];
+  }, [selectedDateStr, workoutsByDate]);
+
+  // 7B: 產生當月月曆網格
+  const calendarGrid = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+
+    const firstDayIndex = new Date(year, month, 1).getDay(); // 0 是週日
+    const totalDays = new Date(year, month + 1, 0).getDate();
+
+    const cells: { dateStr: string | null; dayNum: number | null }[] = [];
+
+    // 前月空格填充
+    for (let i = 0; i < firstDayIndex; i++) {
+      cells.push({ dateStr: null, dayNum: null });
+    }
+
+    // 當月日期
+    for (let day = 1; day <= totalDays; day++) {
+      const mStr = (month + 1).toString().padStart(2, '0');
+      const dStr = day.toString().padStart(2, '0');
+      const dateStr = `${year}-${mStr}-${dStr}`;
+      cells.push({ dateStr, dayNum: day });
+    }
+
+    return cells;
+  }, [currentMonth]);
 
   // 刪除歷史記錄
   const handleDeleteWorkout = async (workoutId: string) => {
@@ -78,6 +151,23 @@ export default function History() {
       } else {
         alert('套用範本失敗');
       }
+    }
+  };
+
+  // 另存為範本 (保留重量)
+  const handleSaveAsTemplate = async (workout: Workout) => {
+    const defaultName = workout.title || '我的範本';
+    const name = window.prompt('請輸入範本名稱：', defaultName);
+    if (name === null) return; // user cancelled
+
+    const templateName = name.trim() || defaultName;
+    try {
+      const template = createTemplateFromWorkout(workout, templateName);
+      await saveTemplate(template);
+      alert('範本儲存成功！');
+    } catch (err) {
+      console.error(err);
+      alert('儲存範本失敗');
     }
   };
 
@@ -120,8 +210,32 @@ export default function History() {
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
       <div className="space-y-1">
-        <h1 className="text-lg font-bold text-slate-800">訓練歷史</h1>
+        <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">訓練歷史</h1>
         <p className="text-xs text-slate-400">查看過去的健身記錄與訓練容量累積。</p>
+      </div>
+
+      {/* 視圖切換 */}
+      <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded-xl flex gap-1 text-xs font-semibold">
+        <button
+          onClick={() => setViewMode('list')}
+          className={`flex-1 py-2 text-center rounded-lg transition duration-200 cursor-pointer ${
+            viewMode === 'list'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          清單檢視
+        </button>
+        <button
+          onClick={() => setViewMode('calendar')}
+          className={`flex-1 py-2 text-center rounded-lg transition duration-200 cursor-pointer ${
+            viewMode === 'calendar'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          日曆檢視
+        </button>
       </div>
 
       {isLoading && (
@@ -130,8 +244,8 @@ export default function History() {
         </div>
       )}
 
-      {/* 空狀態 */}
-      {!isLoading && historyList.length === 0 && (
+      {/* 清單檢視 - 空狀態 */}
+      {!isLoading && viewMode === 'list' && historyList.length === 0 && (
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-4">
           <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-2xl text-slate-400 shadow-inner">
             📅
@@ -151,8 +265,8 @@ export default function History() {
         </div>
       )}
 
-      {/* 歷史記錄列表 */}
-      {!isLoading && historyList.length > 0 && (
+      {/* 清單檢視 - 歷史記錄列表 */}
+      {!isLoading && viewMode === 'list' && historyList.length > 0 && (
         <div className="space-y-3">
           {historyStatsList.map(({ id, workout, totalSetsCount, displayVolume }) => {
             const duration = getDurationMinutes(workout);
@@ -181,7 +295,7 @@ export default function History() {
                 </div>
 
                 {/* 數據概要 Bar */}
-                <div className="flex gap-4 text-xs text-slate-500 font-semibold bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                <div className="flex flex-wrap gap-4 text-xs text-slate-500 font-semibold bg-slate-50/50 p-2 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1">
                     <span>📂</span>
                     <span>{workout.entries.length} 動作</span>
@@ -194,6 +308,12 @@ export default function History() {
                     <div className="flex items-center gap-1">
                       <span>⏱️</span>
                       <span>{duration} 分鐘</span>
+                    </div>
+                  )}
+                  {workout.location && (
+                    <div className="flex items-center gap-1">
+                      <span>📍</span>
+                      <span>{workout.location}</span>
                     </div>
                   )}
                 </div>
@@ -213,6 +333,128 @@ export default function History() {
         </div>
       )}
 
+      {/* 日曆檢視 (Calendar View) */}
+      {!isLoading && viewMode === 'calendar' && (
+        <div className="space-y-4 animate-fade-in">
+          {/* 日曆卡片 */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-4 transition-colors duration-200">
+            {/* 年月份切換與標頭 */}
+            <div className="flex justify-between items-center pb-2 border-b border-slate-50 dark:border-slate-800/50">
+              <button
+                onClick={() => {
+                  setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+                }}
+                className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition"
+              >
+                <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+              <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                {currentMonth.getFullYear()} 年 {currentMonth.getMonth() + 1} 月
+              </h3>
+              <button
+                onClick={() => {
+                  setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+                }}
+                className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition"
+              >
+                <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 星期標題 */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {['日', '一', '二', '三', '四', '五', '六'].map((day) => (
+                <div key={day} className="py-1">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* 日曆網格 */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {calendarGrid.map((cell, idx) => {
+                if (!cell.dateStr) {
+                  return <div key={`empty-${idx}`} className="aspect-square" />;
+                }
+
+                const isToday = cell.dateStr === todayDateStr;
+                const isSelected = cell.dateStr === selectedDateStr;
+                const hasWorkouts = !!workoutsByDate[cell.dateStr];
+
+                return (
+                  <button
+                    key={cell.dateStr}
+                    onClick={() => setSelectedDateStr(cell.dateStr)}
+                    className={`aspect-square rounded-xl text-xs font-bold relative flex flex-col items-center justify-center transition cursor-pointer select-none ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                        : isToday
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {cell.dayNum}
+                    {/* 有訓練的小圓點標記 */}
+                    {hasWorkouts && !isSelected && (
+                      <span className="absolute bottom-1.5 w-1 h-1 rounded-full bg-indigo-500" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 當日訓練列表 */}
+          <div className="space-y-2.5">
+            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              {selectedDateStr === todayDateStr ? '今天' : selectedDateStr} 的訓練紀錄
+            </h4>
+            
+            {selectedDateWorkouts.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-6 text-center bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                當天無訓練紀錄
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {selectedDateWorkouts.map((w) => {
+                  const totalSetsCount = w.entries.reduce((sum, entry) => sum + entry.sets.length, 0);
+                  return (
+                    <div
+                      key={w.id}
+                      onClick={() => setSelectedWorkout(w)}
+                      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 rounded-xl p-3 shadow-sm flex justify-between items-center cursor-pointer transition"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                            {w.title || '健身訓練'}
+                          </span>
+                          {w.location && (
+                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded">
+                              📍 {w.location}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {w.entries.length} 個動作 • {totalSetsCount} 組
+                        </p>
+                      </div>
+                      <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
+                        {formatWeight(calculateWorkoutVolume(w), currentUnit, 1)} {currentUnit}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 單次明細彈出面板 (Bottom Sheet style) */}
       {selectedWorkout && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
@@ -227,6 +469,7 @@ export default function History() {
                 <p className="text-[10px] text-slate-400 font-bold">
                   {formatDateTime(selectedWorkout.startedAt)}
                   {getDurationMinutes(selectedWorkout) > 0 && ` • 耗時 ${getDurationMinutes(selectedWorkout)} 分鐘`}
+                  {selectedWorkout.location && ` • 📍 ${selectedWorkout.location}`}
                 </p>
               </div>
               <button
@@ -345,9 +588,15 @@ export default function History() {
             <div className="space-y-2 pt-2">
               <button
                 onClick={() => handleReuseTemplate(selectedWorkout)}
+                className="w-full py-3 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 text-xs font-extrabold rounded-xl transition"
+              >
+                以此為範本再做一次 (重置重量)
+              </button>
+              <button
+                onClick={() => handleSaveAsTemplate(selectedWorkout)}
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-md transition"
               >
-                以此為範本再做一次 (套用結構)
+                💾 另存為範本 (保留重量)
               </button>
               <button
                 onClick={() => handleDeleteWorkout(selectedWorkout.id)}
