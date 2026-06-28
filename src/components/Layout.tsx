@@ -1,5 +1,6 @@
 import React from 'react';
 import BottomNav from './BottomNav';
+import RestTimer from './RestTimer';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -25,6 +26,9 @@ export default function Layout({ children }: LayoutProps) {
         <main className="flex-1 overflow-y-auto bg-slate-50/50">
           {children}
         </main>
+
+        {/* 休息計時器 */}
+        <RestTimer />
 
         {/* Navigation Bar */}
         <BottomNav />

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { type Workout, type WorkoutEntry, type SetLog } from '../db/schema';
-import { getActiveWorkout, saveActiveWorkout, completeWorkout, deleteWorkout } from '../db/workouts';
+import { getActiveWorkout, saveActiveWorkout, deleteWorkout } from '../db/workouts';
+import { useRestTimerStore } from './restTimer';
 
 interface ActiveWorkoutState {
   activeWorkout: Workout | null;
@@ -21,6 +22,7 @@ interface ActiveWorkoutState {
   updateWorkoutNotes: (notes: string) => Promise<void>;
   updateWorkoutTitle: (title: string) => Promise<void>;
   reorderEntries: (entries: WorkoutEntry[]) => Promise<void>;
+  updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
 }
 
 // 用於防抖動 (debounce) 儲存文字輸入的計時器
@@ -104,6 +106,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
 
   cancelWorkout: async () => {
     cancelPendingSave(); // 先取消任何待寫計時器，防死而復生
+    useRestTimerStore.getState().skipTimer(); // 停止休息計時器
     const { activeWorkout } = get();
     if (activeWorkout) {
       // 自資料庫刪除
@@ -114,10 +117,16 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
 
   finishWorkout: async () => {
     cancelPendingSave(); // 先取消任何待寫計時器，防殭屍復活
+    useRestTimerStore.getState().skipTimer(); // 停止休息計時器
     const { activeWorkout } = get();
     if (activeWorkout) {
-      // 在 DB 中改狀態為 completed 並填寫 endedAt
-      await completeWorkout(activeWorkout.id);
+      // 直接儲存記憶體中的最新快照，並標記 status 為 completed (防丟資料)
+      const finished: Workout = {
+        ...activeWorkout,
+        status: 'completed',
+        endedAt: Date.now(),
+      };
+      await saveActiveWorkout(finished);
       set({ activeWorkout: null });
     }
   },
@@ -308,6 +317,27 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     };
 
     // 排序完成，即時寫入 DB
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
+  },
+
+  updateEntryDefaultRestSeconds: async (entryId: string, restSeconds: number | undefined) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+
+    const updatedEntries = activeWorkout.entries.map((entry) => {
+      if (entry.id !== entryId) return entry;
+      return {
+        ...entry,
+        defaultRestSeconds: restSeconds,
+      };
+    });
+
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      entries: updatedEntries,
+    };
+
     await saveWorkoutImmediate(updatedWorkout);
     set({ activeWorkout: updatedWorkout });
   },
