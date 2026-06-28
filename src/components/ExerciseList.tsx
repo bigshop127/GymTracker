@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { type Exercise, type MuscleGroup, type Equipment } from '../db/schema';
 import { listExercises, addExercise, updateExercise, deleteExercise } from '../db/exercises';
 import { getExerciseImages } from '../data/exercise-images';
+import { getMuscleIcon } from '../data/muscle-icons';
 
 const MUSCLE_GROUPS: MuscleGroup[] = ['胸', '背', '腿', '肩', '二頭', '三頭', '核心', '臀', '全身', '有氧'];
 const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手', '壺鈴', '其他'];
@@ -9,6 +10,52 @@ const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手
 interface ExerciseListProps {
   mode: 'manage' | 'select';
   onSelect?: (exercise: Exercise) => void;
+}
+
+interface ExerciseThumbProps {
+  exerciseName: string;
+  muscleGroup: MuscleGroup;
+}
+
+function ExerciseThumb({ exerciseName, muscleGroup }: ExerciseThumbProps) {
+  const [imgError, setImgError] = useState(false);
+  const images = getExerciseImages(exerciseName);
+  const hasImage = images.length > 0;
+
+  const renderFallback = () => {
+    const markup = getMuscleIcon(muscleGroup);
+    return (
+      <div className="w-12 h-12 shrink-0 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center justify-center">
+        {markup ? (
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="w-6 h-6"
+            style={{ color: '#6366f1' }}
+            dangerouslySetInnerHTML={{ __html: markup }}
+          />
+        ) : (
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
+            {muscleGroup}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  if (!hasImage || imgError) {
+    return renderFallback();
+  }
+
+  return (
+    <img
+      src={images[0]}
+      alt={exerciseName}
+      loading="lazy"
+      onError={() => setImgError(true)}
+      className="w-12 h-12 shrink-0 object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800"
+    />
+  );
 }
 
 export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
@@ -212,25 +259,28 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                 }`}
               >
                 {/* 動作主體行 */}
-                <div className="p-3.5 flex justify-between items-center">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
-                        {ex.name}
-                      </span>
-                      {ex.isCustom && (
-                        <span className="text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-100 dark:border-amber-900/40">
-                          自訂
+                <div className="p-3.5 flex justify-between items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <ExerciseThumb exerciseName={ex.name} muscleGroup={ex.muscleGroup} />
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
+                          {ex.name}
                         </span>
-                      )}
-                    </div>
-                    <div className="flex gap-1">
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded">
-                        {ex.muscleGroup}
-                      </span>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded">
-                        {ex.equipment}
-                      </span>
+                        {ex.isCustom && (
+                          <span className="text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-100 dark:border-amber-900/40 shrink-0">
+                            自訂
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">
+                          {ex.muscleGroup}
+                        </span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">
+                          {ex.equipment}
+                        </span>
+                      </div>
                     </div>
                   </div>
 

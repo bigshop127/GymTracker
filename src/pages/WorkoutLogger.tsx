@@ -23,7 +23,6 @@ export default function WorkoutLogger() {
     updateWorkoutNotes,
     updateWorkoutTitle,
     updateWorkoutLocation,
-    updateEntryDefaultRestSeconds,
     startWorkoutFromTemplateEntity,
   } = useActiveWorkoutStore();
 
@@ -288,30 +287,6 @@ export default function WorkoutLogger() {
                     </button>
                   </div>
 
-                  {/* 休息時間設定與控制 */}
-                  <div className="px-4 flex items-center justify-between gap-2 text-xs">
-                    <span className="text-slate-400 font-bold">⏱️ 組間休息時間</span>
-                    <select
-                      value={entry.defaultRestSeconds ?? ''}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || undefined;
-                        updateEntryDefaultRestSeconds(entry.id, val);
-                      }}
-                      className="border border-slate-200 rounded-lg p-1.5 bg-white text-slate-700 font-semibold focus:outline-none focus:border-indigo-500 text-xs"
-                    >
-                      <option value="">全域預設 ({settings?.defaultRestSeconds ?? 90}秒)</option>
-                      <option value="30">30 秒</option>
-                      <option value="45">45 秒</option>
-                      <option value="60">60 秒</option>
-                      <option value="90">90 秒</option>
-                      <option value="120">120 秒</option>
-                      <option value="150">150 秒</option>
-                      <option value="180">180 秒</option>
-                      <option value="240">240 秒</option>
-                      <option value="300">300 秒</option>
-                    </select>
-                  </div>
-
                   {/* 組數明細 */}
                   <div className="px-4 space-y-2.5">
                     {entry.sets.length === 0 ? (
@@ -416,10 +391,7 @@ export default function WorkoutLogger() {
                                   updateSet(entry.id, setLog.id, { completed: isCompleted });
                                   if (isCompleted) {
                                     // 觸發休息倒數
-                                    const restSecs =
-                                      entry.defaultRestSeconds ??
-                                      settings?.defaultRestSeconds ??
-                                      90;
+                                    const restSecs = settings?.defaultRestSeconds ?? 90;
                                     startTimer(restSecs);
                                   }
                                 }}
