@@ -99,7 +99,7 @@ export default function WorkoutLogger() {
                 allExercises.slice(0, 5).map((ex) => (
                   <div key={ex.id} className="py-1.5 flex justify-between">
                     <span className="font-medium text-slate-700">{ex.name}</span>
-                    <span className="text-slate-400 font-semibold bg-white border border-slate-200 px-1.5 py-0.2 rounded-md scale-90">{ex.muscleGroup} / {ex.equipment}</span>
+                    <span className="text-slate-400 font-semibold bg-white border border-slate-200 px-1.5 py-0.5 rounded-md scale-90">{ex.muscleGroup} / {ex.equipment}</span>
                   </div>
                 ))
               )}

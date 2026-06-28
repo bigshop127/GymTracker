@@ -24,16 +24,22 @@ export async function addExercise(exercise: Omit<Exercise, 'id' | 'createdAt' | 
 }
 
 /**
- * 更新動作
+ * 更新動作 (限自訂動作)
  */
 export async function updateExercise(id: string, updates: Partial<Omit<Exercise, 'id' | 'isCustom'>>): Promise<void> {
+  const exercise = await db.exercises.get(id);
+  if (!exercise) throw new Error('Exercise not found');
+  if (!exercise.isCustom) throw new Error('Cannot update built-in exercise');
   await db.exercises.update(id, updates);
 }
 
 /**
- * 刪除動作
+ * 刪除動作 (限自訂動作)
  */
 export async function deleteExercise(id: string): Promise<void> {
+  const exercise = await db.exercises.get(id);
+  if (!exercise) return;
+  if (!exercise.isCustom) throw new Error('Cannot delete built-in exercise');
   await db.exercises.delete(id);
 }
 
