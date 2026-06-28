@@ -16,6 +16,23 @@ export default defineConfig(({ command }) => {
       VitePWA({
         injectRegister: false, // Per ROADMAP.md §6
         registerType: 'autoUpdate',
+        workbox: {
+          // 只 precache app shell；動作示意圖（6.7MB）排除在外，改 runtime 快取
+          globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+          globIgnores: ['**/exercises/**'],
+          runtimeCaching: [
+            {
+              // 示意圖：看過才存，離線可重看，安裝包維持精簡
+              urlPattern: ({ url }) => url.pathname.includes('/exercises/'),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'exercise-images',
+                expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 90 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
         manifest: {
           name: 'GymTracker',
           short_name: 'GymTracker',

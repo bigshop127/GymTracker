@@ -1,0 +1,70 @@
+// 動作示意圖對應表
+// 來源：free-exercise-db (Unlicense / 公眾領域)，每動作含 0.jpg 起始、1.jpg 結束
+// key = 動作中文名稱（內建動作以 UUID 種子化，名稱才跨裝置穩定）
+// 圖檔位於 public/exercises/<slug>/，部署在 /GymTracker/ 子路徑下
+
+export const EXERCISE_IMAGE_SLUGS: Record<string, string> = {
+  '槓鈴臥推': 'barbell-bench-press-medium-grip',
+  '上斜槓鈴臥推': 'barbell-incline-bench-press-medium-grip',
+  '啞鈴臥推': 'dumbbell-bench-press',
+  '上斜啞鈴臥推': 'incline-dumbbell-press',
+  '啞鈴飛鳥': 'dumbbell-flyes',
+  '蝴蝶機夾胸': 'butterfly',
+  '纜繩夾胸': 'cable-crossover',
+  '伏地挺身': 'pushups',
+  '引體向上': 'pullups',
+  '滑輪下拉': 'wide-grip-lat-pulldown',
+  '槓鈴划船': 'bent-over-barbell-row',
+  '啞鈴單手划船': 'one-arm-dumbbell-row',
+  '坐姿划船': 'seated-cable-rows',
+  'T槓划船': 'lying-t-bar-row',
+  '硬舉': 'barbell-deadlift',
+  '直臂下壓': 'straight-arm-pulldown',
+  '槓鈴深蹲': 'barbell-full-squat',
+  '腿推': 'leg-press',
+  '腿屈伸': 'leg-extensions',
+  '腿後勾': 'lying-leg-curls',
+  '羅馬尼亞硬舉': 'romanian-deadlift',
+  '弓步蹲': 'dumbbell-lunges',
+  '保加利亞分腿蹲': 'split-squat-with-dumbbells',
+  '站姿提踵': 'standing-calf-raises',
+  '槓鈴肩推': 'standing-military-press',
+  '啞鈴肩推': 'dumbbell-shoulder-press',
+  '啞鈴側平舉': 'side-lateral-raise',
+  '啞鈴前平舉': 'front-dumbbell-raise',
+  '反向飛鳥': 'reverse-flyes',
+  '臉拉': 'face-pull',
+  '直立划船': 'upright-barbell-row',
+  '槓鈴彎舉': 'barbell-curl',
+  '啞鈴彎舉': 'dumbbell-alternate-bicep-curl',
+  '錘式彎舉': 'hammer-curls',
+  '牧師彎舉': 'preacher-curl',
+  '纜繩彎舉': 'standing-biceps-cable-curl',
+  '纜繩下壓': 'triceps-pushdown',
+  '仰臥臂屈伸': 'lying-triceps-press',
+  '啞鈴過頭臂屈伸': 'standing-dumbbell-triceps-extension',
+  '雙槓撐體': 'dips-triceps-version',
+  '窄握臥推': 'close-grip-barbell-bench-press',
+  '棒式': 'plank',
+  '捲腹': 'crunches',
+  '懸吊抬腿': 'hanging-leg-raise',
+  '俄羅斯轉體': 'russian-twist',
+  '滑輪捲腹': 'cable-crunch',
+  '槓鈴臀推': 'barbell-hip-thrust',
+  '臀橋': 'butt-lift-bridge',
+  '髖外展機': 'thigh-abductor',
+  '纜繩後踢腿': 'glute-kickback',
+  '跑步機': 'running-treadmill',
+  '飛輪': 'bicycling-stationary',
+  '划船機': 'rowing-stationary',
+};
+
+/**
+ * 取得某動作的示意圖 URL 陣列（起始、結束）。
+ * 沒有對應的動作回傳空陣列，呼叫端應據此優雅降級（不顯示圖片區）。
+ */
+export function getExerciseImages(name: string): string[] {
+  const slug = EXERCISE_IMAGE_SLUGS[name];
+  if (!slug) return [];
+  return [0, 1].map((i) => `${import.meta.env.BASE_URL}exercises/${slug}/${i}.jpg`);
+}
