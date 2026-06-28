@@ -1,14 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import WorkoutLogger from './pages/WorkoutLogger';
 import History from './pages/History';
 import ExerciseLibrary from './pages/ExerciseLibrary';
-import Progress from './pages/Progress';
 import SettingsPage from './pages/SettingsPage';
 import { seedExercisesIfEmpty } from './db/exercises';
 import { useActiveWorkoutStore, flushPendingSave } from './store/activeWorkout';
 import { useSettingsStore } from './store/settings';
+
+const Progress = lazy(() => import('./pages/Progress'));
 
 function App() {
   const initSettings = useSettingsStore((state) => state.initSettings);
@@ -56,7 +57,11 @@ function App() {
           <Route path="/" element={<WorkoutLogger />} />
           <Route path="/history" element={<History />} />
           <Route path="/exercises" element={<ExerciseLibrary />} />
-          <Route path="/progress" element={<Progress />} />
+          <Route path="/progress" element={
+            <Suspense fallback={<div className="p-4 text-center text-slate-400 text-xs font-semibold animate-pulse">載入圖表庫中...</div>}>
+              <Progress />
+            </Suspense>
+          } />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Layout>
