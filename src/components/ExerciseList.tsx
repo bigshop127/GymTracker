@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { type Exercise, type MuscleGroup, type Equipment } from '../db/schema';
 import { listExercises, addExercise, updateExercise, deleteExercise } from '../db/exercises';
+import { getExerciseImages } from '../data/exercise-images';
 
 const MUSCLE_GROUPS: MuscleGroup[] = ['胸', '背', '腿', '肩', '二頭', '三頭', '核心', '臀', '全身', '有氧'];
 const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手', '壺鈴', '其他'];
@@ -193,6 +194,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
         ) : (
           filteredExercises.map((ex) => {
             const isExpanded = expandedId === ex.id;
+            const exerciseImages = getExerciseImages(ex.name);
             return (
               <div
                 key={ex.id}
@@ -257,6 +259,33 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                 {/* 展開詳情區域 (僅在管理模式且點擊展開時顯示) */}
                 {mode === 'manage' && isExpanded && (
                   <div className="px-3.5 pb-3.5 pt-1.5 border-t border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 space-y-3">
+                    {exerciseImages.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          示意圖
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[{ url: exerciseImages[0], label: '起始' }, { url: exerciseImages[1], label: '結束' }].map(({ url, label }) => (
+                            <figure key={label} className="space-y-1">
+                              <img
+                                src={url}
+                                alt={`${ex.name} ${label}`}
+                                loading="lazy"
+                                onError={(e) => {
+                                  const fig = e.currentTarget.closest('figure');
+                                  if (fig) (fig as HTMLElement).style.display = 'none';
+                                }}
+                                className="w-full aspect-square object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800"
+                              />
+                              <figcaption className="text-center text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                                {label}
+                              </figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {ex.notes ? (
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">動作說明 / 備註</span>
