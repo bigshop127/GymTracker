@@ -9,11 +9,7 @@
  *         { ...seed, id: crypto.randomUUID(), createdAt: Date.now(), isCustom: false }
  */
 
-export type MuscleGroup =
-  | '胸' | '背' | '腿' | '肩' | '二頭' | '三頭' | '核心' | '臀' | '全身' | '有氧';
-
-export type Equipment =
-  | '槓鈴' | '啞鈴' | '機械' | '纜繩' | '徒手' | '壺鈴' | '其他';
+import type { MuscleGroup, Equipment } from '../db/schema';
 
 export interface ExerciseSeed {
   name: string;
