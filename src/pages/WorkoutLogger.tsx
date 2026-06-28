@@ -87,7 +87,7 @@ export default function WorkoutLogger() {
           </div>
           <button
             onClick={handleStart}
-            className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-2xl shadow-lg shadow-indigo-150 transition transform hover:-translate-y-0.5"
+            className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 transition transform hover:-translate-y-0.5"
           >
             開始新訓練
           </button>
@@ -337,7 +337,7 @@ export default function WorkoutLogger() {
                   cancelWorkout();
                 }
               }}
-              className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-650 font-bold rounded-xl text-sm transition"
+              className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-sm transition"
             >
               取消訓練
             </button>

@@ -13,10 +13,49 @@ interface RestTimerState {
   tick: () => void;
 }
 
-function playRestEndSound() {
-  try {
+let sharedAudioContext: AudioContext | null = null;
+
+export function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (!sharedAudioContext) {
     const WebkitAudioContext = (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const audioCtx = new (window.AudioContext || WebkitAudioContext)();
+    sharedAudioContext = new (window.AudioContext || WebkitAudioContext)();
+  }
+  return sharedAudioContext;
+}
+
+export function unlockAudioContext() {
+  const audioCtx = getSharedAudioContext();
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch((err) => {
+      console.warn('Failed to resume AudioContext:', err);
+    });
+  }
+}
+
+// Auto unlock on first user interaction anywhere
+if (typeof window !== 'undefined') {
+  const handleUserInteraction = () => {
+    unlockAudioContext();
+    const audioCtx = getSharedAudioContext();
+    if (audioCtx && audioCtx.state === 'running') {
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+    }
+  };
+  window.addEventListener('click', handleUserInteraction);
+  window.addEventListener('touchstart', handleUserInteraction);
+}
+
+export function playRestEndSound() {
+  try {
+    const audioCtx = getSharedAudioContext();
+    if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
 

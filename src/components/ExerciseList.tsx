@@ -134,7 +134,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-100 hover:bg-slate-200/70 focus:bg-white text-slate-800 placeholder-slate-400 pl-10 pr-4 py-2.5 rounded-xl border border-transparent focus:border-indigo-500 focus:outline-none text-sm transition-all shadow-inner"
+            className="w-full bg-slate-100 dark:bg-slate-950 hover:bg-slate-200/70 dark:hover:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 pl-10 pr-4 py-2.5 rounded-xl border border-transparent focus:border-indigo-500 focus:outline-none text-sm transition-all shadow-inner"
             placeholder="搜尋動作名稱 (e.g. 臥推)..."
           />
           <div className="absolute left-3.5 top-3 text-slate-400">
@@ -147,10 +147,10 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
         <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-none -mx-4 px-4">
           <button
             onClick={() => setSelectedMuscle('全部')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-250 ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-200 ${
               selectedMuscle === '全部'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                : 'bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
             }`}
           >
             全部
@@ -159,10 +159,10 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
             <button
               key={muscle}
               onClick={() => setSelectedMuscle(muscle)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-250 ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-200 ${
                 selectedMuscle === muscle
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
+                  : 'bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
               }`}
             >
               {muscle}
@@ -175,7 +175,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
       {mode === 'manage' && (
         <button
           onClick={handleOpenAdd}
-          className="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-800 font-bold text-xs rounded-xl border border-dashed border-indigo-200 flex items-center justify-center gap-1.5 transition"
+          className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:text-indigo-800 font-bold text-xs rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 flex items-center justify-center gap-1.5 transition"
         >
           <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
@@ -203,30 +203,30 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                     toggleExpand(ex.id);
                   }
                 }}
-                className={`bg-white border rounded-xl overflow-hidden shadow-sm transition duration-200 ${
+                className={`bg-white dark:bg-slate-900 border rounded-xl overflow-hidden shadow-sm transition duration-200 ${
                   mode === 'select'
-                    ? 'hover:border-indigo-500 hover:shadow-md cursor-pointer border-slate-100'
-                    : `border-slate-100 ${isExpanded ? 'ring-1 ring-slate-200 shadow-md' : 'hover:border-slate-200'}`
+                    ? 'hover:border-indigo-500 hover:shadow-md cursor-pointer border-slate-100 dark:border-slate-800/80'
+                    : `border-slate-100 dark:border-slate-800/80 ${isExpanded ? 'ring-1 ring-slate-200 dark:ring-slate-800 shadow-md' : 'hover:border-slate-200'}`
                 }`}
               >
                 {/* 動作主體行 */}
                 <div className="p-3.5 flex justify-between items-center">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-slate-800 text-sm">
+                      <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
                         {ex.name}
                       </span>
                       {ex.isCustom && (
-                        <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1 py-0.5 rounded border border-amber-100">
+                        <span className="text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-100 dark:border-amber-900/40">
                           自訂
                         </span>
                       )}
                     </div>
                     <div className="flex gap-1">
-                      <span className="text-[10px] text-slate-500 bg-slate-100 font-semibold px-2 py-0.5 rounded">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded">
                         {ex.muscleGroup}
                       </span>
-                      <span className="text-[10px] text-slate-500 bg-slate-100 font-semibold px-2 py-0.5 rounded">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded">
                         {ex.equipment}
                       </span>
                     </div>
@@ -234,19 +234,19 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
                   {/* 選擇模式與管理模式不同的右側 UI */}
                   {mode === 'select' ? (
-                    <div className="text-slate-300">
+                    <div className="text-slate-300 dark:text-slate-700">
                       <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
                       </svg>
                     </div>
                   ) : (
-                    <div className="text-slate-400">
+                    <div className="text-slate-400 dark:text-slate-500">
                       <svg
                         fill="none"
                         viewBox="0 0 24 24"
                         strokeWidth="2.5"
                         stroke="currentColor"
-                        className={`w-4 h-4 transition-transform duration-250 ${isExpanded ? 'rotate-180' : ''}`}
+                        className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                       </svg>
@@ -256,14 +256,14 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
                 {/* 展開詳情區域 (僅在管理模式且點擊展開時顯示) */}
                 {mode === 'manage' && isExpanded && (
-                  <div className="px-3.5 pb-3.5 pt-1.5 border-t border-slate-50 bg-slate-50/50 space-y-3">
+                  <div className="px-3.5 pb-3.5 pt-1.5 border-t border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 space-y-3">
                     {ex.notes ? (
                       <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">動作說明 / 備註</span>
-                        <p className="text-xs text-slate-600 whitespace-pre-wrap">{ex.notes}</p>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">動作說明 / 備註</span>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{ex.notes}</p>
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400 italic">無備註說明</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 italic">無備註說明</p>
                     )}
 
                     {/* 自訂動作提供編輯與刪除 (內建動作在此隱藏/不顯示，符合 review 規範) */}
@@ -271,13 +271,13 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                       <div className="flex gap-2 justify-end pt-1">
                         <button
                           onClick={(e) => handleOpenEdit(e, ex)}
-                          className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 shadow-sm transition"
+                          className="px-3 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition"
                         >
                           編輯動作
                         </button>
                         <button
                           onClick={(e) => handleDelete(e, ex.id)}
-                          className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold rounded-lg border border-rose-100 transition"
+                          className="px-3 py-1 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-lg border border-rose-100 dark:border-rose-900/40 transition"
                         >
                           刪除動作
                         </button>
@@ -298,9 +298,9 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
             className="fixed inset-0"
             onClick={() => setIsFormOpen(false)}
           />
-          <div className="relative bg-white w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 animate-slide-up">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-800 text-base">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 animate-slide-up">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
                 {editingExercise ? '編輯自訂動作' : '新增自訂動作'}
               </h3>
               <button
@@ -315,19 +315,19 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {formError && (
-                <div className="text-xs text-rose-600 bg-rose-50 border border-rose-100 px-3 py-2 rounded-lg">
+                <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 px-3 py-2 rounded-lg">
                   ⚠️ {formError}
                 </div>
               )}
 
               {/* 動作名稱 */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500">動作名稱</label>
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400">動作名稱</label>
                 <input
                   type="text"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 bg-slate-50/50"
+                  className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 bg-slate-50/50 dark:bg-slate-950/30 text-slate-800 dark:text-slate-100"
                   placeholder="例如：啞鈴上斜飛鳥"
                 />
               </div>
@@ -335,11 +335,11 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
               <div className="grid grid-cols-2 gap-3">
                 {/* 訓練肌群 */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">主要訓練肌群</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">主要訓練肌群</label>
                   <select
                     value={formMuscle}
                     onChange={(e) => setFormMuscle(e.target.value as MuscleGroup)}
-                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500"
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                   >
                     {MUSCLE_GROUPS.map((m) => (
                       <option key={m} value={m}>
@@ -351,11 +351,11 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
                 {/* 訓練器材 */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">所需訓練器材</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">所需訓練器材</label>
                   <select
                     value={formEquipment}
                     onChange={(e) => setFormEquipment(e.target.value as Equipment)}
-                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500"
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                   >
                     {EQUIPMENTS.map((eq) => (
                       <option key={eq} value={eq}>
@@ -368,11 +368,11 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
               {/* 備註說明 */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500">動作備註 (選填)</label>
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400">動作備註 (選填)</label>
                 <textarea
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 bg-slate-50/50 resize-none"
+                  className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 bg-slate-50/50 dark:bg-slate-950/30 text-slate-800 dark:text-slate-100 resize-none"
                   placeholder="輸入動作要點或調整設定，例如：座椅高度調至第 3 格..."
                   rows={3}
                 />

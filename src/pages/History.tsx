@@ -302,7 +302,7 @@ export default function History() {
                             }`}
                           >
                             <div className="flex items-center gap-2 font-semibold">
-                              <span className="w-5 text-center text-slate-450 font-bold text-[10px]">
+                              <span className="w-5 text-center text-slate-400 font-bold text-[10px]">
                                 組 {idx + 1}
                               </span>
                               <span>

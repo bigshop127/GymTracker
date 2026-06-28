@@ -19,6 +19,7 @@ export default function Progress() {
   const { settings } = useSettingsStore();
   const currentUnit = settings?.unit || 'kg';
   const currentFormula = settings?.e1rmFormula || 'epley';
+  const theme = settings?.theme || 'system';
 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
@@ -108,11 +109,13 @@ export default function Progress() {
     }
   }, [metric]);
 
+  const gridStroke = theme === 'dark' ? '#334155' : '#f1f5f9';
+
   return (
     <div className="p-4 max-w-md mx-auto space-y-6">
       {/* 頁面標題 */}
       <div className="space-y-1">
-        <h1 className="text-lg font-bold text-slate-800">進度圖表</h1>
+        <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">進度圖表</h1>
         <p className="text-xs text-slate-400">
           選擇健身動作以追蹤你個人的力量與訓練容量趨勢。
         </p>
@@ -122,18 +125,18 @@ export default function Progress() {
       {selectedExercise ? (
         <div
           onClick={() => setIsSelectorOpen(true)}
-          className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-500 hover:shadow-md transition duration-200"
+          className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-500 hover:shadow-md transition duration-200"
         >
           <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">目前查看動作</div>
-            <div className="text-sm font-bold text-slate-800 flex items-center gap-2 mt-0.5">
+            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">目前查看動作</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 mt-0.5">
               {selectedExercise.name}
-              <span className="text-[10px] bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded">
+              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold px-2 py-0.5 rounded">
                 {selectedExercise.muscleGroup}
               </span>
             </div>
           </div>
-          <span className="text-indigo-600 font-bold text-xs flex items-center gap-1">
+          <span className="text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center gap-1">
             變更動作
             <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
@@ -143,13 +146,13 @@ export default function Progress() {
       ) : (
         <div
           onClick={() => setIsSelectorOpen(true)}
-          className="bg-indigo-50/30 border border-dashed border-indigo-200 rounded-2xl p-6 text-center cursor-pointer hover:bg-indigo-50/60 hover:border-indigo-300 transition duration-200"
+          className="bg-indigo-50/30 dark:bg-indigo-950/10 border border-dashed border-indigo-200 dark:border-indigo-900/40 rounded-2xl p-6 text-center cursor-pointer hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 transition duration-200"
         >
-          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl mx-auto mb-3 shadow-inner">
+          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center text-xl mx-auto mb-3 shadow-inner">
             📈
           </div>
-          <h3 className="font-bold text-slate-800 text-sm">點擊選擇健身動作</h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+          <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">點擊選擇健身動作</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
             選擇你想追蹤趨勢的動作，我們將為你分析該動作的歷史表現與最佳紀錄。
           </p>
         </div>
@@ -158,33 +161,33 @@ export default function Progress() {
       {selectedExercise && (
         <>
           {/* 指標切換 */}
-          <div className="bg-slate-100 p-1 rounded-xl flex gap-1 text-xs font-semibold">
+          <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded-xl flex gap-1 text-xs font-semibold">
             <button
               onClick={() => setMetric('e1rm')}
-              className={`flex-1 py-2 text-center rounded-lg transition duration-250 ${
+              className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
                 metric === 'e1rm'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
               預估 1RM
             </button>
             <button
               onClick={() => setMetric('maxWeight')}
-              className={`flex-1 py-2 text-center rounded-lg transition duration-250 ${
+              className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
                 metric === 'maxWeight'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
               最大重量
             </button>
             <button
               onClick={() => setMetric('volume')}
-              className={`flex-1 py-2 text-center rounded-lg transition duration-250 ${
+              className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
                 metric === 'volume'
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
               總容量
@@ -193,18 +196,18 @@ export default function Progress() {
 
           {/* 圖表區塊 */}
           {isLoading ? (
-            <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center text-slate-400 text-xs font-semibold animate-pulse shadow-sm">
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-400 text-xs font-semibold animate-pulse shadow-sm">
               載入中...
             </div>
           ) : chartData.length >= 2 ? (
-            <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors duration-200">
+              <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
                 {metricLabel} 趨勢圖 ({currentUnit})
               </div>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                     <XAxis
                       dataKey="formattedDate"
                       stroke="#94a3b8"
@@ -222,7 +225,7 @@ export default function Progress() {
                     />
                     <Tooltip
                       contentStyle={{
-                        background: '#0f172a',
+                        background: theme === 'dark' ? '#1e293b' : '#0f172a',
                         border: 'none',
                         borderRadius: '12px',
                         color: '#fff',
@@ -245,12 +248,12 @@ export default function Progress() {
               </div>
             </div>
           ) : (
-            <div className="bg-white border border-slate-100 rounded-2xl p-8 text-center shadow-sm">
-              <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center text-xl mx-auto mb-3 shadow-inner">
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm transition-colors duration-200">
+              <div className="w-12 h-12 bg-slate-100 dark:bg-slate-950 text-slate-400 dark:text-slate-500 rounded-2xl flex items-center justify-center text-xl mx-auto mb-3 shadow-inner">
                 📊
               </div>
-              <h3 className="font-bold text-slate-700 text-sm">數據點不足</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+              <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">數據點不足</h3>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-xs mx-auto">
                 此動作至少需要完成 2 次訓練紀錄，才能繪製趨勢圖。
               </p>
             </div>
@@ -260,38 +263,38 @@ export default function Progress() {
           {prs && (
             <div className="grid grid-cols-2 gap-4">
               {/* E1RM PR Card */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-colors duration-200">
                 <div className="absolute right-3 top-3 text-lg opacity-25">🏆</div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">最佳預估 1RM</div>
+                <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">最佳預估 1RM</div>
                 {prs.bestE1rm ? (
                   <div className="mt-2">
-                    <div className="text-lg font-black text-indigo-600">
+                    <div className="text-lg font-black text-indigo-600 dark:text-indigo-400">
                       {formatWeight(prs.bestE1rm.value, currentUnit)} <span className="text-[10px] font-semibold text-slate-500">{currentUnit}</span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-1">
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                       {new Date(prs.bestE1rm.date).toLocaleDateString()}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs text-slate-400 italic mt-2">無數據</div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500 italic mt-2">無數據</div>
                 )}
               </div>
 
               {/* Max Weight PR Card */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-colors duration-200">
                 <div className="absolute right-3 top-3 text-lg opacity-25">💪</div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">歷史最大重量</div>
+                <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">歷史最大重量</div>
                 {prs.bestMaxWeight ? (
                   <div className="mt-2">
-                    <div className="text-lg font-black text-indigo-600">
+                    <div className="text-lg font-black text-indigo-600 dark:text-indigo-400">
                       {formatWeight(prs.bestMaxWeight.value, currentUnit)} <span className="text-[10px] font-semibold text-slate-500">{currentUnit}</span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-1">
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                       {new Date(prs.bestMaxWeight.date).toLocaleDateString()}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs text-slate-400 italic mt-2">無數據</div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500 italic mt-2">無數據</div>
                 )}
               </div>
             </div>
@@ -303,9 +306,9 @@ export default function Progress() {
       {isSelectorOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
           <div className="fixed inset-0" onClick={() => setIsSelectorOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-800 text-base">選擇動作</h3>
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">選擇動作</h3>
               <button onClick={() => setIsSelectorOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />

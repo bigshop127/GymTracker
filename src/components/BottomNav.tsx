@@ -27,7 +27,7 @@ function NavItem({ to, label, icon }: NavItemProps) {
 
 export default function BottomNav() {
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-slate-200 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] z-50">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] z-50">
       <div className="px-4">
         <div className="flex justify-between items-center h-16">
           <NavItem

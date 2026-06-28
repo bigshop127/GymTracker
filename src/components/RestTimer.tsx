@@ -56,13 +56,13 @@ export default function RestTimer() {
           <div className="flex items-center gap-1.5 text-xs font-bold">
             <button
               onClick={() => adjustTimer(-15)}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-650 rounded-lg transition"
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 rounded-lg transition"
             >
               -15s
             </button>
             <button
               onClick={() => adjustTimer(15)}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-650 rounded-lg transition"
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 rounded-lg transition"
             >
               +15s
             </button>
