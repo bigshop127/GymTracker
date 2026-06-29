@@ -34,8 +34,8 @@ export async function deleteExercise(id: string): Promise<void> {
 }
 
 export async function seedExercisesIfEmpty(): Promise<void> {
-  const count = await db.exercises.count();
-  if (count === 0) {
+  const existing = await db.exercises.toArray();
+  if (existing.length === 0) {
     const now = Date.now();
     const exercisesToInsert: Exercise[] = SEED_EXERCISES.map((seed, index) => ({
       id: crypto.randomUUID(),
@@ -48,5 +48,24 @@ export async function seedExercisesIfEmpty(): Promise<void> {
     }));
     await db.exercises.bulkAdd(exercisesToInsert);
     console.log(`Seeded ${exercisesToInsert.length} default exercises.`);
+    return;
+  }
+
+  // 補齊後續版本新增的 seed 動作（按名稱比對）
+  const existingNames = new Set(existing.map((e) => e.name));
+  const missing = SEED_EXERCISES.filter((s) => !existingNames.has(s.name));
+  if (missing.length > 0) {
+    const now = Date.now();
+    const toInsert: Exercise[] = missing.map((seed, index) => ({
+      id: crypto.randomUUID(),
+      name: seed.name,
+      muscleGroup: seed.muscleGroup,
+      equipment: seed.equipment,
+      isCustom: false,
+      createdAt: now + index,
+      updatedAt: now + index,
+    }));
+    await db.exercises.bulkAdd(toInsert);
+    console.log(`Added ${toInsert.length} missing seed exercises.`);
   }
 }
