@@ -55,8 +55,7 @@ export const EXERCISE_IMAGE_SLUGS: Record<string, string> = {
   '髖外展機': 'thigh-abductor',
   '纜繩後踢腿': 'glute-kickback',
   '跑步機': 'running-treadmill',
-  '飛輪': 'bicycling-stationary',
-  '划船機': 'rowing-stationary',
+  '登階機': 'stair-master',
 };
 
 /**
