@@ -2,6 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { useSyncStore } from './store/sync.ts'
+
+// 初始化 Firebase Auth 監聽（有設定才啟動）
+useSyncStore.getState().initAuth();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

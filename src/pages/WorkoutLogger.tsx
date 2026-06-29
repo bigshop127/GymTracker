@@ -122,7 +122,7 @@ export default function WorkoutLogger() {
   };
 
   const handleSelectExercise = async (exercise: Exercise) => {
-    await addExerciseToWorkout(exercise.id);
+    await addExerciseToWorkout(exercise.id, exercise.muscleGroup === '有氧');
     setIsSelectorOpen(false);
   };
 
@@ -288,141 +288,198 @@ export default function WorkoutLogger() {
                   </div>
 
                   {/* 組數明細 */}
-                  <div className="px-4 space-y-2.5">
-                    {entry.sets.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4 italic">尚未新增任何組數</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {/* 欄位表頭 */}
-                        <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
-                          <span className="col-span-1">組</span>
-                          <span className="col-span-3">重量 ({currentUnit})</span>
-                          <span className="col-span-3">次數 (Reps)</span>
-                          <span className="col-span-2">RPE</span>
-                          <span className="col-span-2">類別</span>
-                          <span className="col-span-1">完</span>
-                        </div>
+                  {(() => {
+                    const isCardio = exercise?.muscleGroup === '有氧';
+                    return (
+                      <div className="px-4 space-y-2.5">
+                        {entry.sets.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-4 italic">尚未新增任何組數</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {/* 欄位表頭 */}
+                            {isCardio ? (
+                              <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
+                                <span className="col-span-1">組</span>
+                                <span className="col-span-3">時長 (分)</span>
+                                <span className="col-span-4">距離 (km)</span>
+                                <span className="col-span-3">kcal</span>
+                                <span className="col-span-1">完</span>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
+                                <span className="col-span-1">組</span>
+                                <span className="col-span-3">重量 ({currentUnit})</span>
+                                <span className="col-span-3">次數 (Reps)</span>
+                                <span className="col-span-2">RPE</span>
+                                <span className="col-span-2">類別</span>
+                                <span className="col-span-1">完</span>
+                              </div>
+                            )}
 
-                        {/* 組輸入列 */}
-                        {entry.sets.map((setLog, idx) => (
-                          <div
-                            key={setLog.id}
-                            className={`grid grid-cols-12 gap-1 items-center py-1.5 px-1 rounded-xl border border-transparent transition duration-200 ${
-                              setLog.completed
-                                ? 'bg-emerald-50/40 border-emerald-100/50'
-                                : 'bg-slate-50/30'
-                            }`}
-                          >
-                            {/* 組序 */}
-                            <span className="col-span-1 text-center text-xs text-slate-400 font-bold">
-                              {idx + 1}
-                            </span>
-
-                            {/* 重量 Stepper */}
-                            <div className="col-span-3">
-                              <NumberStepper
-                                value={setLog.weight}
-                                onChange={(val) => updateSet(entry.id, setLog.id, { weight: val })}
-                                step={2.5}
-                                min={0}
-                                decimals={1}
-                              />
-                            </div>
-
-                            {/* 次數 Stepper */}
-                            <div className="col-span-3">
-                              <NumberStepper
-                                value={setLog.reps}
-                                onChange={(val) => updateSet(entry.id, setLog.id, { reps: val })}
-                                step={1}
-                                min={0}
-                                decimals={0}
-                              />
-                            </div>
-
-                            {/* RPE 下拉選單 */}
-                            <div className="col-span-2">
-                              <select
-                                value={setLog.rpe || ''}
-                                onChange={(e) =>
-                                  updateSet(entry.id, setLog.id, {
-                                    rpe: parseFloat(e.target.value) || undefined,
-                                  })
-                                }
-                                className="w-full text-center border border-slate-200 rounded-lg p-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500 font-bold text-slate-700 h-9"
-                              >
-                                <option value="">無</option>
-                                <option value="10">10</option>
-                                <option value="9.5">9.5</option>
-                                <option value="9">9</option>
-                                <option value="8.5">8.5</option>
-                                <option value="8">8</option>
-                                <option value="7.5">7.5</option>
-                                <option value="7">7</option>
-                                <option value="6.5">6.5</option>
-                                <option value="6">6</option>
-                              </select>
-                            </div>
-
-                            {/* 暖身組 Toggle Badges */}
-                            <div className="col-span-2 flex justify-center">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })
-                                }
-                                className={`px-2 py-1 rounded-md text-[10px] font-extrabold select-none transition cursor-pointer ${
-                                  setLog.isWarmup
-                                    ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                            {/* 組輸入列 */}
+                            {entry.sets.map((setLog, idx) => (
+                              <div
+                                key={setLog.id}
+                                className={`grid grid-cols-12 gap-1 items-center py-1.5 px-1 rounded-xl border border-transparent transition duration-200 ${
+                                  setLog.completed
+                                    ? 'bg-emerald-50/40 border-emerald-100/50'
+                                    : 'bg-slate-50/30'
                                 }`}
                               >
-                                {setLog.isWarmup ? '暖身' : '正式'}
-                              </button>
-                            </div>
+                                <span className="col-span-1 text-center text-xs text-slate-400 font-bold">
+                                  {idx + 1}
+                                </span>
 
-                            {/* 完成打勾 Checkbox (觸發 RestTimer 關鍵) */}
-                            <div className="col-span-1 flex justify-center">
-                              <input
-                                type="checkbox"
-                                checked={setLog.completed}
-                                onChange={(e) => {
-                                  const isCompleted = e.target.checked;
-                                  updateSet(entry.id, setLog.id, { completed: isCompleted });
-                                  if (isCompleted) {
-                                    // 觸發休息倒數
-                                    const restSecs = settings?.defaultRestSeconds ?? 90;
-                                    startTimer(restSecs);
-                                  }
-                                }}
-                                className="w-5 h-5 text-emerald-600 border-slate-300 rounded-full focus:ring-emerald-500 accent-emerald-500 cursor-pointer shadow-sm"
-                              />
-                            </div>
+                                {isCardio ? (
+                                  <>
+                                    {/* 時長（分鐘） */}
+                                    <div className="col-span-3">
+                                      <NumberStepper
+                                        value={Math.round((setLog.durationSeconds ?? 0) / 60)}
+                                        onChange={(val) => updateSet(entry.id, setLog.id, { durationSeconds: val * 60 })}
+                                        step={1}
+                                        min={0}
+                                        decimals={0}
+                                      />
+                                    </div>
+                                    {/* 距離（km） */}
+                                    <div className="col-span-4">
+                                      <NumberStepper
+                                        value={setLog.distanceKm ?? 0}
+                                        onChange={(val) => updateSet(entry.id, setLog.id, { distanceKm: val })}
+                                        step={0.5}
+                                        min={0}
+                                        decimals={1}
+                                      />
+                                    </div>
+                                    {/* 卡路里 */}
+                                    <div className="col-span-3">
+                                      <NumberStepper
+                                        value={setLog.calories ?? 0}
+                                        onChange={(val) => updateSet(entry.id, setLog.id, { calories: val })}
+                                        step={10}
+                                        min={0}
+                                        decimals={0}
+                                      />
+                                    </div>
+                                    {/* 完成（有氧不觸發 rest timer） */}
+                                    <div className="col-span-1 flex justify-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={setLog.completed}
+                                        onChange={(e) =>
+                                          updateSet(entry.id, setLog.id, { completed: e.target.checked })
+                                        }
+                                        className="w-5 h-5 text-emerald-600 border-slate-300 rounded-full focus:ring-emerald-500 accent-emerald-500 cursor-pointer shadow-sm"
+                                      />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* 重量 Stepper */}
+                                    <div className="col-span-3">
+                                      <NumberStepper
+                                        value={setLog.weight}
+                                        onChange={(val) => updateSet(entry.id, setLog.id, { weight: val })}
+                                        step={2.5}
+                                        min={0}
+                                        decimals={1}
+                                      />
+                                    </div>
+                                    {/* 次數 Stepper */}
+                                    <div className="col-span-3">
+                                      <NumberStepper
+                                        value={setLog.reps}
+                                        onChange={(val) => updateSet(entry.id, setLog.id, { reps: val })}
+                                        step={1}
+                                        min={0}
+                                        decimals={0}
+                                      />
+                                    </div>
+                                    {/* RPE */}
+                                    <div className="col-span-2">
+                                      <select
+                                        value={setLog.rpe || ''}
+                                        onChange={(e) =>
+                                          updateSet(entry.id, setLog.id, {
+                                            rpe: parseFloat(e.target.value) || undefined,
+                                          })
+                                        }
+                                        className="w-full text-center border border-slate-200 rounded-lg p-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500 font-bold text-slate-700 h-9"
+                                      >
+                                        <option value="">無</option>
+                                        <option value="10">10</option>
+                                        <option value="9.5">9.5</option>
+                                        <option value="9">9</option>
+                                        <option value="8.5">8.5</option>
+                                        <option value="8">8</option>
+                                        <option value="7.5">7.5</option>
+                                        <option value="7">7</option>
+                                        <option value="6.5">6.5</option>
+                                        <option value="6">6</option>
+                                      </select>
+                                    </div>
+                                    {/* 暖身/正式 */}
+                                    <div className="col-span-2 flex justify-center">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })
+                                        }
+                                        className={`px-2 py-1 rounded-md text-[10px] font-extrabold select-none transition cursor-pointer ${
+                                          setLog.isWarmup
+                                            ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                            : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                        }`}
+                                      >
+                                        {setLog.isWarmup ? '暖身' : '正式'}
+                                      </button>
+                                    </div>
+                                    {/* 完成 */}
+                                    <div className="col-span-1 flex justify-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={setLog.completed}
+                                        onChange={(e) => {
+                                          const isCompleted = e.target.checked;
+                                          updateSet(entry.id, setLog.id, { completed: isCompleted });
+                                          if (isCompleted) {
+                                            const restSecs = settings?.defaultRestSeconds ?? 90;
+                                            startTimer(restSecs);
+                                          }
+                                        }}
+                                        className="w-5 h-5 text-emerald-600 border-slate-300 rounded-full focus:ring-emerald-500 accent-emerald-500 cursor-pointer shadow-sm"
+                                      />
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
 
-                    {/* 組操作按鈕 */}
-                    <div className="flex gap-2 pt-2 border-t border-slate-100">
-                      <button
-                        onClick={() => addSetToEntry(entry.id)}
-                        className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
-                      >
-                        ＋ 增加一組 (自動複製)
-                      </button>
-                      {entry.sets.length > 0 && (
-                        <button
-                          onClick={() =>
-                            removeSetFromEntry(entry.id, entry.sets[entry.sets.length - 1].id)
-                          }
-                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition"
-                        >
-                          － 刪除一組
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                        {/* 組操作按鈕 */}
+                        <div className="flex gap-2 pt-2 border-t border-slate-100">
+                          <button
+                            onClick={() => addSetToEntry(entry.id)}
+                            className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                          >
+                            ＋ 增加一組 (自動複製)
+                          </button>
+                          {entry.sets.length > 0 && (
+                            <button
+                              onClick={() =>
+                                removeSetFromEntry(entry.id, entry.sets[entry.sets.length - 1].id)
+                              }
+                              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition"
+                            >
+                              － 刪除一組
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

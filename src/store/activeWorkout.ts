@@ -17,7 +17,7 @@ interface ActiveWorkoutState {
   finishWorkout: () => Promise<void>;
 
   // 修改訓練內容
-  addExerciseToWorkout: (exerciseId: string) => Promise<void>;
+  addExerciseToWorkout: (exerciseId: string, isCardio?: boolean) => Promise<void>;
   removeExerciseFromWorkout: (entryId: string) => Promise<void>;
   addSetToEntry: (entryId: string, initialWeight?: number, initialReps?: number) => Promise<void>;
   removeSetFromEntry: (entryId: string, setId: string) => Promise<void>;
@@ -162,7 +162,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     }
   },
 
-  addExerciseToWorkout: async (exerciseId: string) => {
+  addExerciseToWorkout: async (exerciseId: string, isCardio?: boolean) => {
     const { activeWorkout } = get();
     if (!activeWorkout) return;
 
@@ -173,7 +173,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       sets: [],
     };
 
-    // 建立預設的第一組
+    // 建立預設的第一組（有氧組帶入有氧欄位）
     const firstSet: SetLog = {
       id: crypto.randomUUID(),
       weight: 0,
@@ -181,6 +181,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       isWarmup: false,
       completed: false,
       createdAt: Date.now(),
+      ...(isCardio && { durationSeconds: 0, distanceKm: 0, calories: 0 }),
     };
     newEntry.sets.push(firstSet);
 
@@ -228,6 +229,8 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         reps = lastSet.reps;
       }
 
+      // 自動複製前一組的有氧欄位
+      const lastSet = entry.sets.length > 0 ? entry.sets[entry.sets.length - 1] : undefined;
       const newSet: SetLog = {
         id: crypto.randomUUID(),
         weight,
@@ -235,6 +238,9 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         isWarmup: false,
         completed: false,
         createdAt: Date.now(),
+        ...(lastSet?.durationSeconds !== undefined && { durationSeconds: lastSet.durationSeconds }),
+        ...(lastSet?.distanceKm !== undefined && { distanceKm: lastSet.distanceKm }),
+        ...(lastSet?.calories !== undefined && { calories: lastSet.calories }),
       };
 
       return {
@@ -453,6 +459,10 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
           isWarmup: setLog.isWarmup,
           completed: false,
           createdAt: Date.now(),
+          // 保留有氧欄位
+          ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
+          ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
+          ...(setLog.calories !== undefined && { calories: setLog.calories }),
         })),
       })),
     };

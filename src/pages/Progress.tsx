@@ -45,9 +45,17 @@ export default function Progress() {
     };
   }, []);
 
+  const isCardioExercise = selectedExercise?.muscleGroup === '有氧';
+
   const handleSelectExercise = (exercise: Exercise) => {
     setSelectedExercise(exercise);
     setIsSelectorOpen(false);
+    // 有氧動作自動切換到時長指標
+    if (exercise.muscleGroup === '有氧') {
+      setMetric('cardioMinutes');
+    } else {
+      setMetric('e1rm');
+    }
   };
 
   const rawPoints = useMemo(() => {
@@ -98,16 +106,15 @@ export default function Progress() {
 
   const metricLabel = useMemo(() => {
     switch (metric) {
-      case 'e1rm':
-        return '預估 1RM';
-      case 'maxWeight':
-        return '最大重量';
-      case 'volume':
-        return '總容量';
-      default:
-        return '';
+      case 'e1rm': return '預估 1RM';
+      case 'maxWeight': return '最大重量';
+      case 'volume': return '總容量';
+      case 'cardioMinutes': return '累積時長';
+      default: return '';
     }
   }, [metric]);
+
+  const metricUnit = metric === 'cardioMinutes' ? '分鐘' : currentUnit;
 
   const gridStroke = theme === 'dark' ? '#334155' : '#f1f5f9';
 
@@ -162,36 +169,47 @@ export default function Progress() {
         <>
           {/* 指標切換 */}
           <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded-xl flex gap-1 text-xs font-semibold">
-            <button
-              onClick={() => setMetric('e1rm')}
-              className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
-                metric === 'e1rm'
-                  ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              預估 1RM
-            </button>
-            <button
-              onClick={() => setMetric('maxWeight')}
-              className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
-                metric === 'maxWeight'
-                  ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              最大重量
-            </button>
-            <button
-              onClick={() => setMetric('volume')}
-              className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
-                metric === 'volume'
-                  ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              總容量
-            </button>
+            {isCardioExercise ? (
+              <button
+                onClick={() => setMetric('cardioMinutes')}
+                className="flex-1 py-2 text-center rounded-lg bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 shadow-sm"
+              >
+                累積時長 (分)
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setMetric('e1rm')}
+                  className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
+                    metric === 'e1rm'
+                      ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  預估 1RM
+                </button>
+                <button
+                  onClick={() => setMetric('maxWeight')}
+                  className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
+                    metric === 'maxWeight'
+                      ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  最大重量
+                </button>
+                <button
+                  onClick={() => setMetric('volume')}
+                  className={`flex-1 py-2 text-center rounded-lg transition duration-200 ${
+                    metric === 'volume'
+                      ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  總容量
+                </button>
+              </>
+            )}
           </div>
 
           {/* 圖表區塊 */}
@@ -202,7 +220,7 @@ export default function Progress() {
           ) : chartData.length >= 2 ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors duration-200">
               <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                {metricLabel} 趨勢圖 ({currentUnit})
+                {metricLabel} 趨勢圖 ({metricUnit})
               </div>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -232,7 +250,7 @@ export default function Progress() {
                         fontSize: '11px',
                         boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
                       }}
-                      formatter={(value) => [`${value} ${currentUnit}`, metricLabel]}
+                      formatter={(value) => [`${value} ${metricUnit}`, metricLabel]}
                       labelFormatter={(label) => `日期: ${label}`}
                     />
                     <Line
@@ -259,8 +277,8 @@ export default function Progress() {
             </div>
           )}
 
-          {/* PR 紀錄區塊 */}
-          {prs && (
+          {/* PR 紀錄區塊（有氧動作不顯示） */}
+          {prs && !isCardioExercise && (
             <div className="grid grid-cols-2 gap-4">
               {/* E1RM PR Card */}
               <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-colors duration-200">

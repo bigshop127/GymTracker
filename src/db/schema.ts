@@ -15,17 +15,23 @@ export interface Exercise {
   isCustom: boolean;      // 內建 false / 使用者自訂 true
   notes?: string;
   createdAt: number;      // Date.now()
+  updatedAt?: number;     // 雲端同步用：最後修改時間
+  deletedAt?: number;     // 雲端同步用：軟刪除時間
 }
 
 // ---- 一組 (SetLog) ----
 export interface SetLog {
   id: string;
-  weight: number;         // 一律存 kg
-  reps: number;
+  weight: number;         // 一律存 kg（有氧組固定 0）
+  reps: number;           // 一律存次數（有氧組固定 0）
   rpe?: number;           // 主觀強度 6-10，選填
   isWarmup: boolean;
   completed: boolean;
   createdAt: number;
+  // ---- 有氧專用欄位（選填；力量組忽略）----
+  durationSeconds?: number;  // 持續時長（秒）
+  distanceKm?: number;       // 距離（公里）
+  calories?: number;         // 消耗卡路里
 }
 
 // ---- 一次訓練中的某個動作 (WorkoutEntry) ----
@@ -47,6 +53,8 @@ export interface Workout {
   notes?: string;
   status: 'active' | 'completed';
   location?: string;        // 訓練地點，例如 '中壢建工'
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 // ---- 體重 / 體組成 (BodyMetric) ----
@@ -55,6 +63,8 @@ export interface BodyMetric {
   date: number;           // 時間戳 (通常是一天的開始或紀錄時間)
   bodyWeight?: number;    // kg
   bodyFatPct?: number;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 // ---- 全域設定 (Settings) ----
@@ -77,6 +87,7 @@ export interface WorkoutTemplate {
   entries: WorkoutEntry[];  // 保留 weight/reps/isWarmup；completed 一律 false
   createdAt: number;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 // ---- Dexie 資料庫定義 ----
@@ -101,6 +112,28 @@ class GymTrackerDatabase extends Dexie {
 
     this.version(2).stores({
       templates: 'id, name, createdAt',
+    });
+
+    // version(3): 加入 updatedAt 索引以供雲端同步使用，並回填舊紀錄
+    this.version(3).stores({
+      exercises: 'id, name, muscleGroup, equipment, isCustom, createdAt, updatedAt',
+      workouts: 'id, startedAt, endedAt, status, updatedAt',
+      bodyMetrics: 'id, date, updatedAt',
+      templates: 'id, name, createdAt, updatedAt',
+    }).upgrade(async (tx) => {
+      const now = Date.now();
+      await tx.table('exercises').toCollection().modify((item) => {
+        if (!item.updatedAt) item.updatedAt = item.createdAt ?? now;
+      });
+      await tx.table('workouts').toCollection().modify((item) => {
+        if (!item.updatedAt) item.updatedAt = item.startedAt ?? now;
+      });
+      await tx.table('bodyMetrics').toCollection().modify((item) => {
+        if (!item.updatedAt) item.updatedAt = item.date ?? now;
+      });
+      await tx.table('templates').toCollection().modify((item) => {
+        if (!item.updatedAt) item.updatedAt = item.createdAt ?? now;
+      });
     });
   }
 }

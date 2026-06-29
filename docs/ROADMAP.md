@@ -170,9 +170,19 @@ GymTracker/
 | Phase 7（v1.1） | 訓練地點 + 範本 + 日曆 + 示意圖 | 4 項擴充：地點選擇 / 範本(保留重量) / 日曆檢視 / 動作示意圖 |
 | Phase 8（v1.2） | 歷史強化：刪除 / 搜尋 / 自動命名 / 日曆部位圖 | 4 項優化：一鍵刪除 / 關鍵字搜尋 / 自動命名 / 地點上色部位圖 |
 | Phase 9（v1.3） | 訓練頁修正 + 動作庫示意圖縮圖 | 3 項：修 NumberStepper 行動端輸入 / 移除組間休息選單 / 動作庫卡片加示意圖縮圖 |
+| Phase 10（v1.4） | 動作庫視覺卡片 | select 模式預設 2 欄圖片網格 + list/grid 切換按鈕；manage 模式縮圖放大至 64 px |
+| Phase 11（v1.5） | 有氧訓練模式 | SetLog 新增 durationSeconds/distanceKm/calories；WorkoutLogger 有氧 UI 分支；History/Progress 有氧顯示；seed 補充橢圓機/爬梯機/跳繩 |
+| Phase 12（v1.6） | Google 雲端同步 | Firebase Auth（Google 登入）+ Firestore LWW 同步；schema version(3) 加 updatedAt；設定頁同步區塊 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-06-29）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）+ Phase 8（v1.2）+ Phase 9（v1.3）全數完成並上線（https://bigshop127.github.io/GymTracker/ ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-06-29）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）+ Phase 8（v1.2）+ Phase 9（v1.3）+ Phase 10（v1.4）+ Phase 11（v1.5）+ Phase 12（v1.6）全數完成並上線（https://bigshop127.github.io/GymTracker/ ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+>
+> **Phase 12 啟用前置作業**（雲端同步需自行設定）：
+> 1. 至 console.firebase.google.com 建立 Firebase 專案
+> 2. 啟用 Authentication（Google 提供者）+ Firestore Database
+> 3. 取得 Web App 設定，複製 `.env.local.example` → `.env.local` 並填入
+> 4. Firebase Console → Authentication → Authorized domains → 加入 `bigshop127.github.io`
+> 5. GitHub repo → Settings → Secrets → Actions → 加入 6 個 `VITE_FIREBASE_*` 變數
 
 
 ---

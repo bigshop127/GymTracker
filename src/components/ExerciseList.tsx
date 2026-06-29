@@ -12,25 +12,29 @@ interface ExerciseListProps {
   onSelect?: (exercise: Exercise) => void;
 }
 
+// ── 縮圖（列表模式用）────────────────────────────────────────────
 interface ExerciseThumbProps {
   exerciseName: string;
   muscleGroup: MuscleGroup;
+  size?: 'md' | 'lg';
 }
 
-function ExerciseThumb({ exerciseName, muscleGroup }: ExerciseThumbProps) {
+function ExerciseThumb({ exerciseName, muscleGroup, size = 'md' }: ExerciseThumbProps) {
   const [imgError, setImgError] = useState(false);
   const images = getExerciseImages(exerciseName);
   const hasImage = images.length > 0;
+  const dim = size === 'lg' ? 'w-16 h-16' : 'w-12 h-12';
+  const iconDim = size === 'lg' ? 'w-8 h-8' : 'w-6 h-6';
 
   const renderFallback = () => {
     const markup = getMuscleIcon(muscleGroup);
     return (
-      <div className="w-12 h-12 shrink-0 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center justify-center">
+      <div className={`${dim} shrink-0 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center justify-center`}>
         {markup ? (
           <svg
             viewBox="0 0 24 24"
             fill="currentColor"
-            className="w-6 h-6"
+            className={iconDim}
             style={{ color: '#6366f1' }}
             dangerouslySetInnerHTML={{ __html: markup }}
           />
@@ -43,9 +47,7 @@ function ExerciseThumb({ exerciseName, muscleGroup }: ExerciseThumbProps) {
     );
   };
 
-  if (!hasImage || imgError) {
-    return renderFallback();
-  }
+  if (!hasImage || imgError) return renderFallback();
 
   return (
     <img
@@ -53,16 +55,75 @@ function ExerciseThumb({ exerciseName, muscleGroup }: ExerciseThumbProps) {
       alt={exerciseName}
       loading="lazy"
       onError={() => setImgError(true)}
-      className="w-12 h-12 shrink-0 object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800"
+      className={`${dim} shrink-0 object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800`}
     />
   );
 }
 
+// ── 網格卡片（select 模式 grid 用）──────────────────────────────
+interface ExerciseGridCardProps {
+  ex: Exercise;
+  onSelect: (ex: Exercise) => void;
+}
+
+function ExerciseGridCard({ ex, onSelect }: ExerciseGridCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const images = getExerciseImages(ex.name);
+  const hasImage = images.length > 0 && !imgError;
+  const markup = getMuscleIcon(ex.muscleGroup);
+
+  return (
+    <div
+      onClick={() => onSelect(ex)}
+      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-md cursor-pointer transition duration-200 active:scale-95"
+    >
+      <div className="aspect-square w-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
+        {hasImage ? (
+          <img
+            src={images[0]}
+            alt={ex.name}
+            loading="lazy"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            {markup ? (
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="w-12 h-12"
+                style={{ color: '#6366f1' }}
+                dangerouslySetInnerHTML={{ __html: markup }}
+              />
+            ) : (
+              <span className="text-sm font-bold text-slate-400 dark:text-slate-600">{ex.muscleGroup}</span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="p-2 space-y-1">
+        <p className="font-semibold text-xs text-slate-800 dark:text-slate-100 leading-tight line-clamp-2">{ex.name}</p>
+        <div className="flex gap-1 flex-wrap">
+          <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
+            {ex.muscleGroup}
+          </span>
+          <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
+            {ex.equipment}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 主元件 ───────────────────────────────────────────────────────
 export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | '全部'>('全部');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Form State for Add / Edit
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -73,7 +134,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
   const [formNotes, setFormNotes] = useState('');
   const [formError, setFormError] = useState('');
 
-  // Fetch exercises from database
   const refreshExercises = async () => {
     try {
       const list = await listExercises();
@@ -84,13 +144,10 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
   };
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      refreshExercises();
-    }, 0);
+    const t = setTimeout(() => { refreshExercises(); }, 0);
     return () => clearTimeout(t);
   }, []);
 
-  // Filter in memory (as per phase2.md note 4)
   const filteredExercises = useMemo(() => {
     return exercises.filter((ex) => {
       const matchesSearch = ex.name.toLowerCase().includes(search.toLowerCase());
@@ -99,7 +156,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     });
   }, [exercises, search, selectedMuscle]);
 
-  // Open Form for Adding
   const handleOpenAdd = () => {
     setEditingExercise(null);
     setFormName('');
@@ -110,9 +166,8 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     setIsFormOpen(true);
   };
 
-  // Open Form for Editing
   const handleOpenEdit = (e: React.MouseEvent, ex: Exercise) => {
-    e.stopPropagation(); // Prevent expansion toggle
+    e.stopPropagation();
     setEditingExercise(ex);
     setFormName(ex.name);
     setFormMuscle(ex.muscleGroup);
@@ -122,14 +177,12 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     setIsFormOpen(true);
   };
 
-  // Submit Add / Edit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       setFormError('請輸入動作名稱');
       return;
     }
-
     try {
       if (editingExercise) {
         await updateExercise(editingExercise.id, {
@@ -154,11 +207,9 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     }
   };
 
-  // Delete custom exercise
   const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); // Prevent expansion toggle
+    e.stopPropagation();
     if (!window.confirm('確定要刪除此自訂動作嗎？')) return;
-
     try {
       await deleteExercise(id);
       if (expandedId === id) setExpandedId(null);
@@ -175,7 +226,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
   return (
     <div className="space-y-4">
-      {/* 搜尋與篩選區域 */}
+      {/* 搜尋與篩選 */}
       <div className="space-y-3">
         <div className="relative">
           <input
@@ -219,27 +270,53 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
         </div>
       </div>
 
-      {/* 動作庫管理模式下的新增按鈕 */}
-      {mode === 'manage' && (
-        <button
-          onClick={handleOpenAdd}
-          className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:text-indigo-800 font-bold text-xs rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 flex items-center justify-center gap-1.5 transition"
-        >
-          <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
-          </svg>
-          新增自訂動作
-        </button>
-      )}
+      {/* 視圖切換（select 模式）+ 新增按鈕（manage 模式）*/}
+      <div className="flex items-center justify-between gap-2">
+        {mode === 'manage' && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex-1 py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:text-indigo-800 font-bold text-xs rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 flex items-center justify-center gap-1.5 transition"
+          >
+            <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
+            </svg>
+            新增自訂動作
+          </button>
+        )}
 
-      {/* 動作列表區域 */}
-      <div className="space-y-2">
-        {filteredExercises.length === 0 ? (
-          <div className="text-center py-10 text-slate-400 text-sm">
-            找不到符合條件的動作
-          </div>
-        ) : (
-          filteredExercises.map((ex) => {
+        {mode === 'select' && (
+          <button
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            className="ml-auto p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            title={viewMode === 'grid' ? '切換至列表模式' : '切換至網格模式'}
+          >
+            {viewMode === 'grid' ? (
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+              </svg>
+            ) : (
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* 動作列表 / 網格 */}
+      {filteredExercises.length === 0 ? (
+        <div className="text-center py-10 text-slate-400 text-sm">找不到符合條件的動作</div>
+      ) : mode === 'select' && viewMode === 'grid' ? (
+        // ── Select Grid ──
+        <div className="grid grid-cols-2 gap-3">
+          {filteredExercises.map((ex) => (
+            <ExerciseGridCard key={ex.id} ex={ex} onSelect={onSelect!} />
+          ))}
+        </div>
+      ) : (
+        // ── List（manage 全用 / select list 模式）──
+        <div className="space-y-2">
+          {filteredExercises.map((ex) => {
             const isExpanded = expandedId === ex.id;
             const exerciseImages = getExerciseImages(ex.name);
             return (
@@ -261,7 +338,11 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                 {/* 動作主體行 */}
                 <div className="p-3.5 flex justify-between items-center gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <ExerciseThumb exerciseName={ex.name} muscleGroup={ex.muscleGroup} />
+                    <ExerciseThumb
+                      exerciseName={ex.name}
+                      muscleGroup={ex.muscleGroup}
+                      size={mode === 'manage' ? 'lg' : 'md'}
+                    />
                     <div className="space-y-1.5 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
@@ -284,7 +365,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                     </div>
                   </div>
 
-                  {/* 選擇模式與管理模式不同的右側 UI */}
                   {mode === 'select' ? (
                     <div className="text-slate-300 dark:text-slate-700">
                       <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
@@ -306,7 +386,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                   )}
                 </div>
 
-                {/* 展開詳情區域 (僅在管理模式且點擊展開時顯示) */}
+                {/* 展開詳情（manage 模式） */}
                 {mode === 'manage' && isExpanded && (
                   <div className="px-3.5 pb-3.5 pt-1.5 border-t border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 space-y-3">
                     {exerciseImages.length > 0 && (
@@ -345,7 +425,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                       <p className="text-xs text-slate-400 dark:text-slate-500 italic">無備註說明</p>
                     )}
 
-                    {/* 自訂動作提供編輯與刪除 (內建動作在此隱藏/不顯示，符合 review 規範) */}
                     {ex.isCustom && (
                       <div className="flex gap-2 justify-end pt-1">
                         <button
@@ -366,26 +445,20 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                 )}
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
-      {/* 新增 / 編輯動作 Overlay 側滑面板/Modal */}
+      {/* 新增 / 編輯動作 Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
-          <div
-            className="fixed inset-0"
-            onClick={() => setIsFormOpen(false)}
-          />
+          <div className="fixed inset-0" onClick={() => setIsFormOpen(false)} />
           <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 animate-slide-up">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
                 {editingExercise ? '編輯自訂動作' : '新增自訂動作'}
               </h3>
-              <button
-                onClick={() => setIsFormOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
+              <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
@@ -399,7 +472,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                 </div>
               )}
 
-              {/* 動作名稱 */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400">動作名稱</label>
                 <input
@@ -412,7 +484,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                {/* 訓練肌群 */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400">主要訓練肌群</label>
                   <select
@@ -421,14 +492,10 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                   >
                     {MUSCLE_GROUPS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
+                      <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
                 </div>
-
-                {/* 訓練器材 */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400">所需訓練器材</label>
                   <select
@@ -437,15 +504,12 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                   >
                     {EQUIPMENTS.map((eq) => (
-                      <option key={eq} value={eq}>
-                        {eq}
-                      </option>
+                      <option key={eq} value={eq}>{eq}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* 備註說明 */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400">動作備註 (選填)</label>
                 <textarea
@@ -457,7 +521,6 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                 />
               </div>
 
-              {/* 表單送出按鈕 */}
               <button
                 type="submit"
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-sm shadow-md transition"

@@ -175,6 +175,18 @@ export default function History() {
     }
   };
 
+  const formatCardioSet = (setLog: { durationSeconds?: number; distanceKm?: number; calories?: number }) => {
+    const parts: string[] = [];
+    if (setLog.durationSeconds) {
+      const m = Math.floor(setLog.durationSeconds / 60);
+      const s = setLog.durationSeconds % 60;
+      parts.push(s > 0 ? `${m}分${s}秒` : `${m}分`);
+    }
+    if (setLog.distanceKm) parts.push(`${setLog.distanceKm.toFixed(1)} km`);
+    if (setLog.calories) parts.push(`${setLog.calories} kcal`);
+    return parts.length > 0 ? parts.join(' · ') : '—';
+  };
+
   // 格式化日期時間 (例如：2026/06/28 17:30)
   const formatDateTime = (timestamp: number) => {
     const d = new Date(timestamp);
@@ -642,56 +654,74 @@ export default function History() {
                           {exercise ? `${exercise.muscleGroup} / ${exercise.equipment}` : ''}
                         </span>
                       </div>
-                      <div className="text-right">
-                        <div className="text-[10px] font-extrabold text-slate-700">
-                          {displayEntryVolume} {currentUnit}
-                        </div>
-                        {displayBestE1rm && (
-                          <div className="text-[8px] font-extrabold text-indigo-500 uppercase">
-                            最佳 1RM: {displayBestE1rm} {currentUnit}
+                      {exercise?.muscleGroup === '有氧' ? (
+                        <div className="text-right">
+                          <div className="text-[10px] font-extrabold text-teal-600">
+                            {(() => {
+                              const totalSec = entry.sets.reduce((s, set) => s + (set.durationSeconds ?? 0), 0);
+                              return totalSec > 0 ? `${Math.round(totalSec / 60)} 分鐘` : '—';
+                            })()}
                           </div>
-                        )}
-                      </div>
+                          <div className="text-[8px] font-bold text-slate-400 uppercase">有氧訓練</div>
+                        </div>
+                      ) : (
+                        <div className="text-right">
+                          <div className="text-[10px] font-extrabold text-slate-700">
+                            {displayEntryVolume} {currentUnit}
+                          </div>
+                          {displayBestE1rm && (
+                            <div className="text-[8px] font-extrabold text-indigo-500 uppercase">
+                              最佳 1RM: {displayBestE1rm} {currentUnit}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-3 space-y-1.5">
-                      {entry.sets.map((setLog, idx) => {
-                        const setVolume = setLog.weight * setLog.reps;
-                        const displaySetWeight = formatWeight(setLog.weight, currentUnit, 1);
-                        
-                        return (
-                          <div
-                            key={setLog.id}
-                            className={`flex justify-between items-center text-xs p-1.5 rounded-lg ${
-                              setLog.completed ? 'bg-emerald-50/20 text-slate-700' : 'text-slate-400 line-through'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 font-semibold">
-                              <span className="w-5 text-center text-slate-400 font-bold text-[10px]">
-                                組 {idx + 1}
-                              </span>
-                              <span>
-                                {displaySetWeight} {currentUnit} × {setLog.reps} 下
-                              </span>
-                              {setLog.isWarmup && (
-                                <span className="bg-amber-100 text-amber-700 font-extrabold px-1 py-0.5 rounded text-[8px] border border-amber-200">
-                                  暖身
+                      {(() => {
+                        const isCardio = exercise?.muscleGroup === '有氧';
+                        return entry.sets.map((setLog, idx) => {
+                          const setVolume = setLog.weight * setLog.reps;
+                          const displaySetWeight = formatWeight(setLog.weight, currentUnit, 1);
+                          return (
+                            <div
+                              key={setLog.id}
+                              className={`flex justify-between items-center text-xs p-1.5 rounded-lg ${
+                                setLog.completed ? 'bg-emerald-50/20 text-slate-700' : 'text-slate-400 line-through'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 font-semibold">
+                                <span className="w-5 text-center text-slate-400 font-bold text-[10px]">
+                                  組 {idx + 1}
                                 </span>
-                              )}
-                              {setLog.rpe && (
-                                <span className="bg-slate-100 text-slate-600 font-extrabold px-1.5 py-0.5 rounded text-[8px]">
-                                  RPE {setLog.rpe}
+                                {isCardio ? (
+                                  <span>{formatCardioSet(setLog)}</span>
+                                ) : (
+                                  <>
+                                    <span>{displaySetWeight} {currentUnit} × {setLog.reps} 下</span>
+                                    {setLog.isWarmup && (
+                                      <span className="bg-amber-100 text-amber-700 font-extrabold px-1 py-0.5 rounded text-[8px] border border-amber-200">
+                                        暖身
+                                      </span>
+                                    )}
+                                    {setLog.rpe && (
+                                      <span className="bg-slate-100 text-slate-600 font-extrabold px-1.5 py-0.5 rounded text-[8px]">
+                                        RPE {setLog.rpe}
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                              {!isCardio && setLog.completed && !setLog.isWarmup && (
+                                <span className="text-[9px] text-slate-400 font-bold font-mono">
+                                  容量: {formatWeight(setVolume, currentUnit, 1)} {currentUnit}
                                 </span>
                               )}
                             </div>
-                            {setLog.completed && !setLog.isWarmup && (
-                              <span className="text-[9px] text-slate-400 font-bold font-mono">
-                                容量: {formatWeight(setVolume, currentUnit, 1)} {currentUnit}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 );
