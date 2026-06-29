@@ -31,8 +31,6 @@ export const MUSCLE_ICON_SVG: Record<MuscleGroup, string> = {
   '核心': '<rect x="6" y="3" width="5" height="5" rx="1.5"/><rect x="13" y="3" width="5" height="5" rx="1.5"/><rect x="6" y="9.5" width="5" height="5" rx="1.5"/><rect x="13" y="9.5" width="5" height="5" rx="1.5"/><rect x="6" y="16" width="5" height="5" rx="1.5"/><rect x="13" y="16" width="5" height="5" rx="1.5"/>',
   // 有氧：心形
   '有氧': '<path d="M12 21 C12 21 3 14 3 8.5 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8.5 C21 14 12 21 12 21 Z"/>',
-  // 全身：小人（頭＋身）
-  '全身': '<circle cx="12" cy="5" r="3"/><path d="M9 10 h6 v7 h-2 v4 h-2 v-4 h-2 z"/>',
 };
 
 /**

@@ -3,7 +3,7 @@ import Dexie, { type Table } from 'dexie';
 // ---- 型別與介面定義 (依據 docs/ROADMAP.md §2) ----
 
 export type Unit = 'kg' | 'lb';
-export type MuscleGroup = '胸' | '背' | '腿臀' | '肩' | '手臂' | '核心' | '全身' | '有氧';
+export type MuscleGroup = '胸' | '背' | '腿臀' | '肩' | '手臂' | '核心' | '有氧';
 export type Equipment = '槓鈴' | '啞鈴' | '機械' | '纜繩' | '徒手' | '壺鈴' | '其他';
 
 // ---- 動作 (Exercise) ----
@@ -152,6 +152,15 @@ class GymTrackerDatabase extends Dexie {
           item.muscleGroup = '腿臀';
         }
       });
+    });
+
+    // version(6): 移除 '全身' 類別；有氧只保留跑步機與登階機
+    this.version(6).stores({}).upgrade(async (tx) => {
+      const toDelete = await tx.table('exercises').filter((item) =>
+        item.muscleGroup === '全身' ||
+        ['飛輪', '划船機', '橢圓機', '爬梯機', '跳繩'].includes(item.name)
+      ).primaryKeys();
+      await tx.table('exercises').bulkDelete(toDelete);
     });
   }
 }
