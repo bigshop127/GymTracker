@@ -3,7 +3,7 @@ import Dexie, { type Table } from 'dexie';
 // ---- 型別與介面定義 (依據 docs/ROADMAP.md §2) ----
 
 export type Unit = 'kg' | 'lb';
-export type MuscleGroup = '胸' | '背' | '腿' | '肩' | '手臂' | '核心' | '臀' | '全身' | '有氧';
+export type MuscleGroup = '胸' | '背' | '腿臀' | '肩' | '手臂' | '核心' | '全身' | '有氧';
 export type Equipment = '槓鈴' | '啞鈴' | '機械' | '纜繩' | '徒手' | '壺鈴' | '其他';
 
 // ---- 動作 (Exercise) ----
@@ -141,6 +141,15 @@ class GymTrackerDatabase extends Dexie {
       await tx.table('exercises').toCollection().modify((item) => {
         if (item.muscleGroup === '二頭' || item.muscleGroup === '三頭') {
           item.muscleGroup = '手臂';
+        }
+      });
+    });
+
+    // version(5): 合併 '腿' / '臀' → '腿臀'
+    this.version(5).stores({}).upgrade(async (tx) => {
+      await tx.table('exercises').toCollection().modify((item) => {
+        if (item.muscleGroup === '腿' || item.muscleGroup === '臀') {
+          item.muscleGroup = '腿臀';
         }
       });
     });

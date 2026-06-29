@@ -39,14 +39,14 @@ export const SEED_EXERCISES: ExerciseSeed[] = [
   { name: '直臂下壓',       muscleGroup: '背', equipment: '纜繩' },
 
   // ---- 腿 ----
-  { name: '槓鈴深蹲',       muscleGroup: '腿', equipment: '槓鈴' },
-  { name: '腿推',           muscleGroup: '腿', equipment: '機械' },
-  { name: '腿屈伸',         muscleGroup: '腿', equipment: '機械' },
-  { name: '腿後勾',         muscleGroup: '腿', equipment: '機械' },
-  { name: '羅馬尼亞硬舉',   muscleGroup: '腿', equipment: '槓鈴' },
-  { name: '弓步蹲',         muscleGroup: '腿', equipment: '啞鈴' },
-  { name: '保加利亞分腿蹲', muscleGroup: '腿', equipment: '啞鈴' },
-  { name: '站姿提踵',       muscleGroup: '腿', equipment: '機械' },
+  { name: '槓鈴深蹲',       muscleGroup: '腿臀', equipment: '槓鈴' },
+  { name: '腿推',           muscleGroup: '腿臀', equipment: '機械' },
+  { name: '腿屈伸',         muscleGroup: '腿臀', equipment: '機械' },
+  { name: '腿後勾',         muscleGroup: '腿臀', equipment: '機械' },
+  { name: '羅馬尼亞硬舉',   muscleGroup: '腿臀', equipment: '槓鈴' },
+  { name: '弓步蹲',         muscleGroup: '腿臀', equipment: '啞鈴' },
+  { name: '保加利亞分腿蹲', muscleGroup: '腿臀', equipment: '啞鈴' },
+  { name: '站姿提踵',       muscleGroup: '腿臀', equipment: '機械' },
 
   // ---- 肩 ----
   { name: '槓鈴肩推',       muscleGroup: '肩', equipment: '槓鈴' },
@@ -79,10 +79,10 @@ export const SEED_EXERCISES: ExerciseSeed[] = [
   { name: '滑輪捲腹',       muscleGroup: '核心', equipment: '纜繩' },
 
   // ---- 臀 ----
-  { name: '槓鈴臀推',       muscleGroup: '臀', equipment: '槓鈴' },
-  { name: '臀橋',           muscleGroup: '臀', equipment: '徒手' },
-  { name: '髖外展機',       muscleGroup: '臀', equipment: '機械' },
-  { name: '纜繩後踢腿',     muscleGroup: '臀', equipment: '纜繩' },
+  { name: '槓鈴臀推',       muscleGroup: '腿臀', equipment: '槓鈴' },
+  { name: '臀橋',           muscleGroup: '腿臀', equipment: '徒手' },
+  { name: '髖外展機',       muscleGroup: '腿臀', equipment: '機械' },
+  { name: '纜繩後踢腿',     muscleGroup: '腿臀', equipment: '纜繩' },
 
   // ---- 有氧 ----
   { name: '跑步機',         muscleGroup: '有氧', equipment: '其他' },

@@ -21,16 +21,14 @@ export const MUSCLE_ICON_SVG: Record<MuscleGroup, string> = {
   '胸': '<circle cx="8" cy="10" r="4.3"/><circle cx="16" cy="10" r="4.3"/>',
   // 背：倒三角 V 字（V-taper / 背闊肌外擴）
   '背': '<path d="M3 5 L12 13 L21 5 L12 22 Z"/>',
-  // 腿：兩根支柱（雙腿）
-  '腿': '<rect x="5.5" y="3" width="5" height="18" rx="2.5"/><rect x="13.5" y="3" width="5" height="18" rx="2.5"/>',
+  // 腿臀：兩根支柱（雙腿）
+  '腿臀': '<rect x="5.5" y="3" width="5" height="18" rx="2.5"/><rect x="13.5" y="3" width="5" height="18" rx="2.5"/>',
   // 肩：圓拱肩線（三角肌罩）
   '肩': '<path d="M2 16 C2 9 7 7 12 7 C17 7 22 9 22 16 Z"/>',
   // 手臂：屈臂＋上臂圓塊（flex，代表二頭＋三頭）
   '手臂': '<path d="M7 21 v-8 h4 v8 z"/><path d="M11 13 h7 v-4 h-7 z"/><circle cx="11" cy="11" r="3.2"/>',
   // 核心：六塊腹肌方格
   '核心': '<rect x="6" y="3" width="5" height="5" rx="1.5"/><rect x="13" y="3" width="5" height="5" rx="1.5"/><rect x="6" y="9.5" width="5" height="5" rx="1.5"/><rect x="13" y="9.5" width="5" height="5" rx="1.5"/><rect x="6" y="16" width="5" height="5" rx="1.5"/><rect x="13" y="16" width="5" height="5" rx="1.5"/>',
-  // 臀：兩塊下方圓塊（hips/glutes）
-  '臀': '<circle cx="7.5" cy="14" r="5"/><circle cx="16.5" cy="14" r="5"/>',
   // 有氧：心形
   '有氧': '<path d="M12 21 C12 21 3 14 3 8.5 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8.5 C21 14 12 21 12 21 Z"/>',
   // 全身：小人（頭＋身）
