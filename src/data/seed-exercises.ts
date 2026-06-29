@@ -86,6 +86,7 @@ export const SEED_EXERCISES: ExerciseSeed[] = [
 
   // ---- 有氧 ----
   { name: '跑步機',         muscleGroup: '有氧', equipment: '其他' },
+  { name: '登階機',         muscleGroup: '有氧', equipment: '其他' },
   { name: '飛輪',           muscleGroup: '有氧', equipment: '其他' },
   { name: '划船機',         muscleGroup: '有氧', equipment: '其他' },
   { name: '橢圓機',         muscleGroup: '有氧', equipment: '其他' },
