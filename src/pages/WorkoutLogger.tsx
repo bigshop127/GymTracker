@@ -23,6 +23,7 @@ export default function WorkoutLogger() {
     updateWorkoutNotes,
     updateWorkoutTitle,
     updateWorkoutLocation,
+    updateWorkoutStartedAt,
     startWorkoutFromTemplateEntity,
   } = useActiveWorkoutStore();
 
@@ -229,20 +230,49 @@ export default function WorkoutLogger() {
             </div>
 
             <div className="flex justify-between items-center text-xs">
-              <div className="flex gap-1.5 items-center">
-                <span className="text-slate-400 font-medium select-none">地點:</span>
-                <select
-                  value={activeWorkout.location || ''}
-                  onChange={(e) => updateWorkoutLocation(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-slate-300 font-semibold transition"
-                >
-                  <option value="">(無地點)</option>
-                  {(settings?.locations || []).map((loc) => (
-                    <option key={loc} value={loc}>
-                      {loc}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex gap-3 items-center flex-wrap">
+                <div className="flex gap-1.5 items-center">
+                  <span className="text-slate-400 font-medium select-none">日期:</span>
+                  <input
+                    type="date"
+                    max={new Date().toLocaleDateString('sv')}
+                    value={(() => {
+                      const d = new Date(activeWorkout.startedAt);
+                      return d.toLocaleDateString('sv');
+                    })()}
+                    onChange={(e) => {
+                      const dateStr = e.target.value;
+                      if (!dateStr) return;
+                      const [y, m, d] = dateStr.split('-').map(Number);
+                      const existing = new Date(activeWorkout.startedAt);
+                      const newDate = new Date(y, m - 1, d, existing.getHours(), existing.getMinutes(), existing.getSeconds());
+                      updateWorkoutStartedAt(newDate.getTime());
+                      // 若標題是預設格式，自動同步
+                      const todayStr = new Date().toLocaleDateString('sv');
+                      const isToday = dateStr === todayStr;
+                      const currentTitle = activeWorkout.title || '';
+                      if (currentTitle === '今日訓練' || /^\d{1,2}\/\d{1,2} 訓練$/.test(currentTitle)) {
+                        updateWorkoutTitle(isToday ? '今日訓練' : `${m}/${d} 訓練`);
+                      }
+                    }}
+                    className="bg-slate-50 border border-slate-100 hover:border-slate-200 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 text-xs text-slate-700 font-semibold transition"
+                  />
+                </div>
+                <div className="flex gap-1.5 items-center">
+                  <span className="text-slate-400 font-medium select-none">地點:</span>
+                  <select
+                    value={activeWorkout.location || ''}
+                    onChange={(e) => updateWorkoutLocation(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-slate-300 font-semibold transition"
+                  >
+                    <option value="">(無地點)</option>
+                    {(settings?.locations || []).map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <span className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${saveStatus === 'saved' ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`} />

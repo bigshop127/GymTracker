@@ -25,6 +25,7 @@ interface ActiveWorkoutState {
   updateWorkoutNotes: (notes: string) => Promise<void>;
   updateWorkoutTitle: (title: string) => Promise<void>;
   updateWorkoutLocation: (location: string) => Promise<void>;
+  updateWorkoutStartedAt: (startedAt: number) => Promise<void>;
   reorderEntries: (entries: WorkoutEntry[]) => Promise<void>;
   updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
   startWorkoutFromTemplate: (template: Workout) => Promise<void>;
@@ -354,6 +355,19 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     };
 
     // 訓練地點變更即時寫入 DB，不進行 debounce
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
+  },
+
+  updateWorkoutStartedAt: async (startedAt: number) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      startedAt,
+    };
+
     await saveWorkoutImmediate(updatedWorkout);
     set({ activeWorkout: updatedWorkout });
   },
