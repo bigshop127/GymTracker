@@ -28,8 +28,8 @@ describe('Workout Summary Library', () => {
     },
     {
       id: 'ex3',
-      name: '啞鈴二頭彎舉',
-      muscleGroup: '二頭',
+      name: '啞鈴手臂彎舉',
+      muscleGroup: '手臂',
       equipment: '啞鈴',
       isCustom: false,
       createdAt: Date.now()
@@ -79,7 +79,7 @@ describe('Workout Summary Library', () => {
 
     const counts = getMuscleGroupCounts(workout, exMap);
     expect(counts.get('胸')).toBe(3); // 2 sets in entry1 + 1 set in entry3
-    expect(counts.get('二頭')).toBe(1);
+    expect(counts.get('手臂')).toBe(1);
     expect(counts.get('背')).toBeUndefined();
   });
 
@@ -91,7 +91,7 @@ describe('Workout Summary Library', () => {
       entries: [
         {
           id: 'entry1',
-          exerciseId: 'ex3', // 二頭 (first appearance index order: 1)
+          exerciseId: 'ex3', // 手臂 (first appearance index order: 1)
           order: 1,
           sets: [{ id: 's1', weight: 10, reps: 10, isWarmup: false, completed: true, createdAt: Date.now() }]
         },
@@ -104,9 +104,9 @@ describe('Workout Summary Library', () => {
       ]
     };
 
-    // Both '二頭' and '胸' have 1 set. First appearance is '二頭'.
+    // Both '手臂' and '胸' have 1 set. First appearance is '手臂'.
     const primary = getPrimaryMuscleGroups(workout, exMap);
-    expect(primary).toEqual(['二頭', '胸']);
+    expect(primary).toEqual(['手臂', '胸']);
   });
 
   test('buildAutoWorkoutTitle formats correctly', () => {
@@ -129,7 +129,7 @@ describe('Workout Summary Library', () => {
         },
         {
           id: 'entry2',
-          exerciseId: 'ex3', // 二頭, 1 set
+          exerciseId: 'ex3', // 手臂, 1 set
           order: 2,
           sets: [
             { id: 's3', weight: 15, reps: 12, isWarmup: false, completed: true, createdAt: Date.now() }
@@ -139,7 +139,7 @@ describe('Workout Summary Library', () => {
     };
 
     const title = buildAutoWorkoutTitle(workout, exMap);
-    expect(title).toBe('6/28 胸+二頭');
+    expect(title).toBe('6/28 胸+手臂');
 
     // Empty workout
     const emptyWorkout: Workout = {

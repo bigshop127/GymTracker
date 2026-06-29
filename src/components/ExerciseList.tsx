@@ -4,7 +4,7 @@ import { listExercises, addExercise, updateExercise, deleteExercise } from '../d
 import { getExerciseImages } from '../data/exercise-images';
 import { getMuscleIcon } from '../data/muscle-icons';
 
-const MUSCLE_GROUPS: MuscleGroup[] = ['胸', '背', '腿', '肩', '二頭', '三頭', '核心', '臀', '全身', '有氧'];
+const MUSCLE_GROUPS: MuscleGroup[] = ['胸', '背', '腿', '肩', '手臂', '核心', '臀', '全身', '有氧'];
 const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手', '壺鈴', '其他'];
 
 interface ExerciseListProps {

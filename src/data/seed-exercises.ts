@@ -57,19 +57,19 @@ export const SEED_EXERCISES: ExerciseSeed[] = [
   { name: '臉拉',           muscleGroup: '肩', equipment: '纜繩' },
   { name: '直立划船',       muscleGroup: '肩', equipment: '槓鈴' },
 
-  // ---- 二頭 ----
-  { name: '槓鈴彎舉',       muscleGroup: '二頭', equipment: '槓鈴' },
-  { name: '啞鈴彎舉',       muscleGroup: '二頭', equipment: '啞鈴' },
-  { name: '錘式彎舉',       muscleGroup: '二頭', equipment: '啞鈴' },
-  { name: '牧師彎舉',       muscleGroup: '二頭', equipment: '機械' },
-  { name: '纜繩彎舉',       muscleGroup: '二頭', equipment: '纜繩' },
+  // ---- 手臂 ----
+  { name: '槓鈴彎舉',       muscleGroup: '手臂', equipment: '槓鈴' },
+  { name: '啞鈴彎舉',       muscleGroup: '手臂', equipment: '啞鈴' },
+  { name: '錘式彎舉',       muscleGroup: '手臂', equipment: '啞鈴' },
+  { name: '牧師彎舉',       muscleGroup: '手臂', equipment: '機械' },
+  { name: '纜繩彎舉',       muscleGroup: '手臂', equipment: '纜繩' },
 
-  // ---- 三頭 ----
-  { name: '纜繩下壓',       muscleGroup: '三頭', equipment: '纜繩' },
-  { name: '仰臥臂屈伸',     muscleGroup: '三頭', equipment: '槓鈴' },
-  { name: '啞鈴過頭臂屈伸', muscleGroup: '三頭', equipment: '啞鈴' },
-  { name: '雙槓撐體',       muscleGroup: '三頭', equipment: '徒手' },
-  { name: '窄握臥推',       muscleGroup: '三頭', equipment: '槓鈴' },
+  // ---- 手臂 ----
+  { name: '纜繩下壓',       muscleGroup: '手臂', equipment: '纜繩' },
+  { name: '仰臥臂屈伸',     muscleGroup: '手臂', equipment: '槓鈴' },
+  { name: '啞鈴過頭臂屈伸', muscleGroup: '手臂', equipment: '啞鈴' },
+  { name: '雙槓撐體',       muscleGroup: '手臂', equipment: '徒手' },
+  { name: '窄握臥推',       muscleGroup: '手臂', equipment: '槓鈴' },
 
   // ---- 核心 ----
   { name: '棒式',           muscleGroup: '核心', equipment: '徒手' },

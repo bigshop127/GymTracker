@@ -25,10 +25,8 @@ export const MUSCLE_ICON_SVG: Record<MuscleGroup, string> = {
   '腿': '<rect x="5.5" y="3" width="5" height="18" rx="2.5"/><rect x="13.5" y="3" width="5" height="18" rx="2.5"/>',
   // 肩：圓拱肩線（三角肌罩）
   '肩': '<path d="M2 16 C2 9 7 7 12 7 C17 7 22 9 22 16 Z"/>',
-  // 二頭：屈臂＋上臂圓塊（flex）
-  '二頭': '<path d="M7 21 v-8 h4 v8 z"/><path d="M11 13 h7 v-4 h-7 z"/><circle cx="11" cy="11" r="3.2"/>',
-  // 三頭：伸臂＋後臂圓塊（extension）
-  '三頭': '<path d="M4 7 h10 v3 h-10 z"/><path d="M14 7 v11 h3 v-11 z"/><circle cx="6.5" cy="13" r="3"/>',
+  // 手臂：屈臂＋上臂圓塊（flex，代表二頭＋三頭）
+  '手臂': '<path d="M7 21 v-8 h4 v8 z"/><path d="M11 13 h7 v-4 h-7 z"/><circle cx="11" cy="11" r="3.2"/>',
   // 核心：六塊腹肌方格
   '核心': '<rect x="6" y="3" width="5" height="5" rx="1.5"/><rect x="13" y="3" width="5" height="5" rx="1.5"/><rect x="6" y="9.5" width="5" height="5" rx="1.5"/><rect x="13" y="9.5" width="5" height="5" rx="1.5"/><rect x="6" y="16" width="5" height="5" rx="1.5"/><rect x="13" y="16" width="5" height="5" rx="1.5"/>',
   // 臀：兩塊下方圓塊（hips/glutes）
