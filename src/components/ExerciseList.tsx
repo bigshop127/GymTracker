@@ -117,12 +117,70 @@ function ExerciseGridCard({ ex, onSelect }: ExerciseGridCardProps) {
   );
 }
 
+// ── 管理網格卡片 ─────────────────────────────────────────────────
+interface ManageGridCardProps {
+  ex: Exercise;
+  onTap: (ex: Exercise) => void;
+}
+
+function ManageGridCard({ ex, onTap }: ManageGridCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const images = getExerciseImages(ex.name);
+  const hasImage = images.length > 0 && !imgError;
+  const markup = getMuscleIcon(ex.muscleGroup);
+
+  return (
+    <div
+      onClick={() => onTap(ex)}
+      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md cursor-pointer transition duration-200 active:scale-95"
+    >
+      <div className="aspect-square w-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
+        {hasImage ? (
+          <img
+            src={images[0]}
+            alt={ex.name}
+            loading="lazy"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            {markup ? (
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-12 h-12" style={{ color: '#6366f1' }} dangerouslySetInnerHTML={{ __html: markup }} />
+            ) : (
+              <span className="text-sm font-bold text-slate-400 dark:text-slate-600">{ex.muscleGroup}</span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="p-2 space-y-1">
+        <div className="flex items-start gap-1">
+          <p className="font-semibold text-xs text-slate-800 dark:text-slate-100 leading-tight line-clamp-2 flex-1">{ex.name}</p>
+          {ex.isCustom && (
+            <span className="text-[8px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-100 dark:border-amber-900/40 shrink-0">
+              自訂
+            </span>
+          )}
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
+            {ex.muscleGroup}
+          </span>
+          <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
+            {ex.equipment}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 主元件 ───────────────────────────────────────────────────────
 export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | '全部'>('全部');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailEx, setDetailEx] = useState<Exercise | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Form State for Add / Edit
@@ -212,16 +270,11 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     if (!window.confirm('確定要刪除此自訂動作嗎？')) return;
     try {
       await deleteExercise(id);
-      if (expandedId === id) setExpandedId(null);
       refreshExercises();
     } catch (err) {
       console.error(err);
       alert('刪除失敗');
     }
-  };
-
-  const toggleExpand = (id: string) => {
-    setExpandedId(expandedId === id ? null : id);
   };
 
   return (
@@ -306,7 +359,14 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
       {/* 動作列表 / 網格 */}
       {filteredExercises.length === 0 ? (
         <div className="text-center py-10 text-slate-400 text-sm">找不到符合條件的動作</div>
-      ) : mode === 'select' && viewMode === 'grid' ? (
+      ) : mode === 'manage' ? (
+        // ── Manage Grid ──
+        <div className="grid grid-cols-2 gap-3">
+          {filteredExercises.map((ex) => (
+            <ManageGridCard key={ex.id} ex={ex} onTap={setDetailEx} />
+          ))}
+        </div>
+      ) : viewMode === 'grid' ? (
         // ── Select Grid ──
         <div className="grid grid-cols-2 gap-3">
           {filteredExercises.map((ex) => (
@@ -314,140 +374,101 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
           ))}
         </div>
       ) : (
-        // ── List（manage 全用 / select list 模式）──
+        // ── Select List ──
         <div className="space-y-2">
-          {filteredExercises.map((ex) => {
-            const isExpanded = expandedId === ex.id;
-            const exerciseImages = getExerciseImages(ex.name);
-            return (
-              <div
-                key={ex.id}
-                onClick={() => {
-                  if (mode === 'select' && onSelect) {
-                    onSelect(ex);
-                  } else {
-                    toggleExpand(ex.id);
-                  }
-                }}
-                className={`bg-white dark:bg-slate-900 border rounded-xl overflow-hidden shadow-sm transition duration-200 ${
-                  mode === 'select'
-                    ? 'hover:border-indigo-500 hover:shadow-md cursor-pointer border-slate-100 dark:border-slate-800/80'
-                    : `border-slate-100 dark:border-slate-800/80 ${isExpanded ? 'ring-1 ring-slate-200 dark:ring-slate-800 shadow-md' : 'hover:border-slate-200'}`
-                }`}
-              >
-                {/* 動作主體行 */}
-                <div className="p-3.5 flex justify-between items-center gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <ExerciseThumb
-                      exerciseName={ex.name}
-                      muscleGroup={ex.muscleGroup}
-                      size={mode === 'manage' ? 'lg' : 'md'}
-                    />
-                    <div className="space-y-1.5 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
-                          {ex.name}
-                        </span>
-                        {ex.isCustom && (
-                          <span className="text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-100 dark:border-amber-900/40 shrink-0">
-                            自訂
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">
-                          {ex.muscleGroup}
-                        </span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">
-                          {ex.equipment}
-                        </span>
-                      </div>
+          {filteredExercises.map((ex) => (
+            <div
+              key={ex.id}
+              onClick={() => onSelect?.(ex)}
+              className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-xl overflow-hidden shadow-sm hover:border-indigo-500 hover:shadow-md cursor-pointer transition duration-200"
+            >
+              <div className="p-3.5 flex justify-between items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <ExerciseThumb exerciseName={ex.name} muscleGroup={ex.muscleGroup} size="md" />
+                  <div className="space-y-1.5 min-w-0">
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{ex.name}</span>
+                    <div className="flex gap-1">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">{ex.muscleGroup}</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">{ex.equipment}</span>
                     </div>
                   </div>
-
-                  {mode === 'select' ? (
-                    <div className="text-slate-300 dark:text-slate-700">
-                      <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <div className="text-slate-400 dark:text-slate-500">
-                      <svg
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth="2.5"
-                        stroke="currentColor"
-                        className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                      </svg>
-                    </div>
-                  )}
                 </div>
-
-                {/* 展開詳情（manage 模式） */}
-                {mode === 'manage' && isExpanded && (
-                  <div className="px-3.5 pb-3.5 pt-1.5 border-t border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 space-y-3">
-                    {exerciseImages.length > 0 && (
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          示意圖
-                        </span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {[{ url: exerciseImages[0], label: '起始' }, { url: exerciseImages[1], label: '結束' }].map(({ url, label }) => (
-                            <figure key={label} className="space-y-1">
-                              <img
-                                src={url}
-                                alt={`${ex.name} ${label}`}
-                                loading="lazy"
-                                onError={(e) => {
-                                  const fig = e.currentTarget.closest('figure');
-                                  if (fig) (fig as HTMLElement).style.display = 'none';
-                                }}
-                                className="w-full aspect-square object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800"
-                              />
-                              <figcaption className="text-center text-[10px] font-semibold text-slate-400 dark:text-slate-500">
-                                {label}
-                              </figcaption>
-                            </figure>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {ex.notes ? (
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">動作說明 / 備註</span>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{ex.notes}</p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 dark:text-slate-500 italic">無備註說明</p>
-                    )}
-
-                    {ex.isCustom && (
-                      <div className="flex gap-2 justify-end pt-1">
-                        <button
-                          onClick={(e) => handleOpenEdit(e, ex)}
-                          className="px-3 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition"
-                        >
-                          編輯動作
-                        </button>
-                        <button
-                          onClick={(e) => handleDelete(e, ex.id)}
-                          className="px-3 py-1 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-lg border border-rose-100 dark:border-rose-900/40 transition"
-                        >
-                          刪除動作
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="text-slate-300 dark:text-slate-700">
+                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
+                  </svg>
+                </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
+
+      {/* Manage 詳情 Modal */}
+      {mode === 'manage' && detailEx && (() => {
+        const imgs = getExerciseImages(detailEx.name);
+        return (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
+            <div className="fixed inset-0" onClick={() => setDetailEx(null)} />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">{detailEx.name}</h3>
+                  <div className="flex gap-1">
+                    <span className="text-[10px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-2 py-0.5 rounded">{detailEx.muscleGroup}</span>
+                    <span className="text-[10px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-2 py-0.5 rounded">{detailEx.equipment}</span>
+                  </div>
+                </div>
+                <button onClick={() => setDetailEx(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1">
+                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {imgs.length > 0 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {([{ url: imgs[0], label: '起始' }, { url: imgs[1], label: '結束' }] as const).map(({ url, label }) => url && (
+                    <figure key={label} className="space-y-1">
+                      <img
+                        src={url}
+                        alt={`${detailEx.name} ${label}`}
+                        loading="lazy"
+                        onError={(e) => { const fig = e.currentTarget.closest('figure'); if (fig) (fig as HTMLElement).style.display = 'none'; }}
+                        className="w-full aspect-square object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800"
+                      />
+                      <figcaption className="text-center text-[10px] font-semibold text-slate-400 dark:text-slate-500">{label}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              )}
+
+              {detailEx.notes ? (
+                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{detailEx.notes}</p>
+              ) : (
+                <p className="text-xs text-slate-400 dark:text-slate-500 italic">無備註說明</p>
+              )}
+
+              {detailEx.isCustom && (
+                <div className="flex gap-2 justify-end pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={(e) => { setDetailEx(null); handleOpenEdit(e, detailEx); }}
+                    className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition"
+                  >
+                    編輯動作
+                  </button>
+                  <button
+                    onClick={async (e) => { await handleDelete(e, detailEx.id); setDetailEx(null); }}
+                    className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-lg border border-rose-100 dark:border-rose-900/40 transition"
+                  >
+                    刪除動作
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 新增 / 編輯動作 Modal */}
       {isFormOpen && (
