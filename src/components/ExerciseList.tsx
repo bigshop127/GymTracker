@@ -320,7 +320,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
               className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-200 ${
                 selectedMuscle === muscle
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
-                  : 'bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
+                  : `bg-slate-100 dark:bg-slate-950 ${MUSCLE_COLORS[muscle].text} hover:bg-slate-200 dark:hover:bg-slate-900`
               }`}
             >
               {muscle}
