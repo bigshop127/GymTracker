@@ -6,7 +6,6 @@ import { listExercises } from '../db/exercises';
 import { type Exercise, type WorkoutTemplate } from '../db/schema';
 import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
 import NumberStepper from '../components/NumberStepper';
-import RepsWheel from '../components/RepsWheel';
 import ExerciseList from '../components/ExerciseList';
 
 export default function WorkoutLogger() {
@@ -395,7 +394,7 @@ export default function WorkoutLogger() {
                                   }`}
                                 >
                                   {/* 第一列：組序 + 重量 + 次數 + 完成 */}
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-end gap-2">
                                     <div className="shrink-0 flex flex-col items-center">
                                       <span className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">組</span>
                                       <span className="w-7 h-9 flex items-center justify-center text-sm font-bold text-slate-500">
@@ -418,11 +417,12 @@ export default function WorkoutLogger() {
                                       <span className="block text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
                                         次數
                                       </span>
-                                      <RepsWheel
+                                      <NumberStepper
                                         value={setLog.reps}
                                         onChange={(val) => updateSet(entry.id, setLog.id, { reps: val })}
-                                        min={1}
-                                        max={20}
+                                        step={1}
+                                        min={0}
+                                        decimals={0}
                                       />
                                     </div>
                                     <div className="shrink-0 flex flex-col items-center">
