@@ -105,7 +105,7 @@ export default function NumberStepper({
       <button
         type="button"
         onClick={handleDecrement}
-        className="w-9 h-full bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-600 font-bold border-r border-slate-200 select-none transition cursor-pointer flex items-center justify-center shrink-0"
+        className="w-8 h-full bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-600 font-bold border-r border-slate-200 select-none transition cursor-pointer flex items-center justify-center shrink-0"
       >
         <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
@@ -128,7 +128,7 @@ export default function NumberStepper({
       <button
         type="button"
         onClick={handleIncrement}
-        className="w-9 h-full bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-600 font-bold border-l border-slate-200 select-none transition cursor-pointer flex items-center justify-center shrink-0"
+        className="w-8 h-full bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-600 font-bold border-l border-slate-200 select-none transition cursor-pointer flex items-center justify-center shrink-0"
       >
         <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
