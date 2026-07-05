@@ -6,6 +6,7 @@ import { listExercises } from '../db/exercises';
 import { type Exercise, type WorkoutTemplate } from '../db/schema';
 import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
 import NumberStepper from '../components/NumberStepper';
+import RepsWheel from '../components/RepsWheel';
 import ExerciseList from '../components/ExerciseList';
 
 export default function WorkoutLogger() {
@@ -394,7 +395,7 @@ export default function WorkoutLogger() {
                                   }`}
                                 >
                                   {/* 第一列：組序 + 重量 + 次數 + 完成 */}
-                                  <div className="flex items-end gap-2">
+                                  <div className="flex items-center gap-2">
                                     <div className="shrink-0 flex flex-col items-center">
                                       <span className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">組</span>
                                       <span className="w-7 h-9 flex items-center justify-center text-sm font-bold text-slate-500">
@@ -417,12 +418,11 @@ export default function WorkoutLogger() {
                                       <span className="block text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
                                         次數
                                       </span>
-                                      <NumberStepper
+                                      <RepsWheel
                                         value={setLog.reps}
                                         onChange={(val) => updateSet(entry.id, setLog.id, { reps: val })}
-                                        step={1}
-                                        min={0}
-                                        decimals={0}
+                                        min={1}
+                                        max={20}
                                       />
                                     </div>
                                     <div className="shrink-0 flex flex-col items-center">
@@ -562,21 +562,23 @@ export default function WorkoutLogger() {
         </div>
       )}
 
-      {/* 動作選擇器 (Slide Up Drawer) */}
+      {/* 動作選擇器 (全屏) */}
       {isSelectorOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
-          <div className="fixed inset-0" onClick={() => setIsSelectorOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-800 text-base">選擇要加入的動作</h3>
-              <button onClick={() => setIsSelectorOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {/* 複用 Phase 2 寫好的 ExerciseList 元件，設為 select 模式 */}
-            <div className="overflow-y-auto max-h-[65vh]">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+          <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">選擇要加入的動作</h3>
+            <button
+              onClick={() => setIsSelectorOpen(false)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1"
+            >
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          {/* 內容區：撐滿剩餘高度可捲動 */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-md mx-auto w-full px-4 py-4">
               <ExerciseList mode="select" onSelect={handleSelectExercise} />
             </div>
           </div>

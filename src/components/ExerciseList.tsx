@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { type Exercise, type MuscleGroup, type Equipment } from '../db/schema';
 import { listExercises, addExercise, updateExercise, deleteExercise } from '../db/exercises';
-import { getExerciseImages } from '../data/exercise-images';
+import { getExerciseImages, getExerciseQCard } from '../data/exercise-images';
 import { getMuscleIcon } from '../data/muscle-icons';
+import { MUSCLE_COLORS } from '../data/muscle-colors';
 
 const MUSCLE_GROUPS: MuscleGroup[] = ['有氧', '胸', '背', '腿臀', '肩', '手臂', '核心'];
 const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手', '壺鈴', '其他'];
@@ -21,8 +22,9 @@ interface ExerciseThumbProps {
 
 function ExerciseThumb({ exerciseName, muscleGroup, size = 'md' }: ExerciseThumbProps) {
   const [imgError, setImgError] = useState(false);
-  const images = getExerciseImages(exerciseName);
-  const hasImage = images.length > 0;
+  const qcard = getExerciseQCard(exerciseName);
+  const imgSrc = qcard ?? (getExerciseImages(exerciseName)[0] as string | undefined);
+  const hasImage = !!imgSrc;
   const dim = size === 'lg' ? 'w-16 h-16' : 'w-12 h-12';
   const iconDim = size === 'lg' ? 'w-8 h-8' : 'w-6 h-6';
 
@@ -51,11 +53,11 @@ function ExerciseThumb({ exerciseName, muscleGroup, size = 'md' }: ExerciseThumb
 
   return (
     <img
-      src={images[0]}
+      src={imgSrc}
       alt={exerciseName}
       loading="lazy"
       onError={() => setImgError(true)}
-      className={`${dim} shrink-0 object-cover rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800`}
+      className={`${dim} shrink-0 ${qcard ? 'object-contain p-0.5 bg-white dark:bg-slate-100' : 'object-cover bg-slate-100 dark:bg-slate-800'} rounded-lg border-2 ${MUSCLE_COLORS[muscleGroup].border}`}
     />
   );
 }
@@ -68,23 +70,25 @@ interface ExerciseGridCardProps {
 
 function ExerciseGridCard({ ex, onSelect }: ExerciseGridCardProps) {
   const [imgError, setImgError] = useState(false);
-  const images = getExerciseImages(ex.name);
-  const hasImage = images.length > 0 && !imgError;
+  const color = MUSCLE_COLORS[ex.muscleGroup];
+  const qcard = getExerciseQCard(ex.name);
+  const imgSrc = qcard ?? (getExerciseImages(ex.name)[0] as string | undefined);
+  const hasImage = !!imgSrc && !imgError;
   const markup = getMuscleIcon(ex.muscleGroup);
 
   return (
     <div
       onClick={() => onSelect(ex)}
-      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-md cursor-pointer transition duration-200 active:scale-95"
+      className={`bg-white dark:bg-slate-900 border-2 ${color.border} rounded-xl overflow-hidden shadow-sm hover:shadow-md cursor-pointer transition duration-200 active:scale-95`}
     >
-      <div className="aspect-square w-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      <div className={`aspect-square w-full overflow-hidden ${qcard ? 'bg-white dark:bg-slate-100' : 'bg-slate-50 dark:bg-slate-950'}`}>
         {hasImage ? (
           <img
-            src={images[0]}
+            src={imgSrc}
             alt={ex.name}
             loading="lazy"
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover"
+            className={`w-full h-full ${qcard ? 'object-contain p-1' : 'object-cover'}`}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -103,9 +107,9 @@ function ExerciseGridCard({ ex, onSelect }: ExerciseGridCardProps) {
         )}
       </div>
       <div className="p-2 space-y-1">
-        <p className="font-semibold text-xs text-slate-800 dark:text-slate-100 leading-tight line-clamp-2">{ex.name}</p>
+        <p className={`font-semibold text-xs ${color.text} leading-tight line-clamp-2`}>{ex.name}</p>
         <div className="flex gap-1 flex-wrap">
-          <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
+          <span className={`text-[9px] ${color.badge} font-semibold px-1.5 py-0.5 rounded`}>
             {ex.muscleGroup}
           </span>
           <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
@@ -125,23 +129,25 @@ interface ManageGridCardProps {
 
 function ManageGridCard({ ex, onTap }: ManageGridCardProps) {
   const [imgError, setImgError] = useState(false);
-  const images = getExerciseImages(ex.name);
-  const hasImage = images.length > 0 && !imgError;
+  const color = MUSCLE_COLORS[ex.muscleGroup];
+  const qcard = getExerciseQCard(ex.name);
+  const imgSrc = qcard ?? (getExerciseImages(ex.name)[0] as string | undefined);
+  const hasImage = !!imgSrc && !imgError;
   const markup = getMuscleIcon(ex.muscleGroup);
 
   return (
     <div
       onClick={() => onTap(ex)}
-      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md cursor-pointer transition duration-200 active:scale-95"
+      className={`bg-white dark:bg-slate-900 border-2 ${color.border} rounded-xl overflow-hidden shadow-sm hover:shadow-md cursor-pointer transition duration-200 active:scale-95`}
     >
-      <div className="aspect-square w-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      <div className={`aspect-square w-full overflow-hidden ${qcard ? 'bg-white dark:bg-slate-100' : 'bg-slate-50 dark:bg-slate-950'}`}>
         {hasImage ? (
           <img
-            src={images[0]}
+            src={imgSrc}
             alt={ex.name}
             loading="lazy"
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover"
+            className={`w-full h-full ${qcard ? 'object-contain p-1' : 'object-cover'}`}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -155,7 +161,7 @@ function ManageGridCard({ ex, onTap }: ManageGridCardProps) {
       </div>
       <div className="p-2 space-y-1">
         <div className="flex items-start gap-1">
-          <p className="font-semibold text-xs text-slate-800 dark:text-slate-100 leading-tight line-clamp-2 flex-1">{ex.name}</p>
+          <p className={`font-semibold text-xs ${color.text} leading-tight line-clamp-2 flex-1`}>{ex.name}</p>
           {ex.isCustom && (
             <span className="text-[8px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded border border-amber-100 dark:border-amber-900/40 shrink-0">
               自訂
@@ -163,7 +169,7 @@ function ManageGridCard({ ex, onTap }: ManageGridCardProps) {
           )}
         </div>
         <div className="flex gap-1 flex-wrap">
-          <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
+          <span className={`text-[9px] ${color.badge} font-semibold px-1.5 py-0.5 rounded`}>
             {ex.muscleGroup}
           </span>
           <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-1.5 py-0.5 rounded">
@@ -388,7 +394,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                   <div className="space-y-1.5 min-w-0">
                     <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{ex.name}</span>
                     <div className="flex gap-1">
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">{ex.muscleGroup}</span>
+                      <span className={`text-[10px] ${MUSCLE_COLORS[ex.muscleGroup].badge} font-semibold px-2 py-0.5 rounded shrink-0`}>{ex.muscleGroup}</span>
                       <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 font-semibold px-2 py-0.5 rounded shrink-0">{ex.equipment}</span>
                     </div>
                   </div>

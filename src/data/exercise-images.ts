@@ -67,3 +67,20 @@ export function getExerciseImages(name: string): string[] {
   if (!slug) return [];
   return [0, 1].map((i) => `${import.meta.env.BASE_URL}exercises/${slug}/${i}.jpg`);
 }
+
+// Q 版圖卡（單張，正方形透明底 PNG，位於 public/exercises-q/<slug>.png）
+// 這 25 個動作與 EXERCISE_IMAGE_SLUGS 同名，直接復用其 slug。
+const QCARD_NAMES = new Set<string>([
+  '滑輪下拉', 'T槓划船', '啞鈴側平舉', '槓鈴深蹲', '羅馬尼亞硬舉',
+  '啞鈴臥推', '窄握臥推', '槓鈴划船', '保加利亞分腿蹲', '腿推',
+  '纜繩夾胸', '反向飛鳥', '槓鈴肩推', '仰臥臂屈伸', '捲腹',
+  '弓步蹲', '直臂下壓', '棒式', '引體向上', '啞鈴飛鳥',
+  '錘式彎舉', '直立划船', '站姿提踵', '懸吊抬腿', '蝴蝶機夾胸',
+]);
+
+/** 取 Q 版圖卡 URL，沒有回 null（呼叫端 fallback 回原照片/圖示）。 */
+export function getExerciseQCard(name: string): string | null {
+  if (!QCARD_NAMES.has(name)) return null;
+  const slug = EXERCISE_IMAGE_SLUGS[name];
+  return slug ? `${import.meta.env.BASE_URL}exercises-q/${slug}.png` : null;
+}
