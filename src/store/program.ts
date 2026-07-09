@@ -76,9 +76,18 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     if (!activeProgram) return;
 
     try {
+      let cursor = activeProgram.cursor;
+      if (updates.slots) {
+        const newLength = updates.slots.length;
+        if (newLength > 0 && cursor >= newLength) {
+          cursor = newLength - 1;
+        }
+      }
+
       const updatedProgram: TrainingProgram = {
         ...activeProgram,
         ...updates,
+        ...(updates.slots && { cursor }),
         updatedAt: Date.now(),
       };
       await saveProgram(updatedProgram);

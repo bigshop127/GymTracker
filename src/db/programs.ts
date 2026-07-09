@@ -17,7 +17,31 @@ export async function getProgram(id: string): Promise<TrainingProgram | undefine
 }
 
 export async function saveProgram(program: TrainingProgram): Promise<void> {
-  await db.programs.put({ ...program, updatedAt: Date.now() });
+  const now = Date.now();
+  const updatedProgram = { ...program, updatedAt: now };
+
+  if (updatedProgram.status === 'active') {
+    await db.transaction('rw', db.programs, async () => {
+      const activePrograms = await db.programs
+        .where('status')
+        .equals('active')
+        .toArray();
+
+      for (const active of activePrograms) {
+        if (active.id !== updatedProgram.id) {
+          await db.programs.put({
+            ...active,
+            status: 'completed',
+            completedAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+      await db.programs.put(updatedProgram);
+    });
+  } else {
+    await db.programs.put(updatedProgram);
+  }
 }
 
 export async function deleteProgram(id: string): Promise<void> {
