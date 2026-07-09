@@ -3,7 +3,9 @@ import { type Workout, type WorkoutEntry, type SetLog, type WorkoutTemplate } fr
 import { getActiveWorkout, saveActiveWorkout, deleteWorkout, listCompletedWorkouts } from '../db/workouts';
 import { listExercises } from '../db/exercises';
 import { getSettings } from '../db/settings';
+import { getTemplate } from '../db/templates';
 import { useRestTimerStore } from './restTimer';
+import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
 
 interface ActiveWorkoutState {
@@ -30,6 +32,13 @@ interface ActiveWorkoutState {
   updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
   startWorkoutFromTemplate: (template: Workout) => Promise<void>;
   startWorkoutFromTemplateEntity: (template: WorkoutTemplate) => Promise<void>;
+  startWorkoutFromProgramSlot: (
+    programId: string,
+    slotId: string,
+    templateId: string | undefined,
+    slotLabel: string,
+    cycleNumber: number
+  ) => Promise<void>;
 }
 
 // 用於防抖動 (debounce) 儲存文字輸入的計時器
@@ -159,6 +168,15 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         endedAt: Date.now(),
       };
       await saveActiveWorkout(finished);
+
+      // 如果有計畫，推進 cursor
+      if (activeWorkout.programId) {
+        const { activeProgram, advanceCursor } = useProgramStore.getState();
+        if (activeProgram && activeProgram.id === activeWorkout.programId) {
+          await advanceCursor();
+        }
+      }
+
       set({ activeWorkout: null });
     }
   },
@@ -480,6 +498,95 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         })),
       })),
     };
+
+    await saveWorkoutImmediate(newWorkout);
+    set({ activeWorkout: newWorkout });
+  },
+
+  startWorkoutFromProgramSlot: async (
+    programId: string,
+    slotId: string,
+    templateId: string | undefined,
+    slotLabel: string,
+    cycleNumber: number
+  ) => {
+    const existing = get().activeWorkout;
+    if (existing) {
+      throw new Error('ACTIVE_WORKOUT_EXISTS');
+    }
+
+    cancelPendingSave();
+    useRestTimerStore.getState().skipTimer();
+
+    let newWorkout: Workout;
+
+    let template: WorkoutTemplate | undefined = undefined;
+    if (templateId) {
+      try {
+        template = await getTemplate(templateId);
+      } catch (err) {
+        console.error('Failed to get template for program slot:', err);
+      }
+    }
+
+    if (template) {
+      newWorkout = {
+        id: crypto.randomUUID(),
+        title: template.name,
+        startedAt: Date.now(),
+        status: 'active',
+        location: template.location,
+        programId,
+        programSlotId: slotId,
+        programCycleNumber: cycleNumber,
+        entries: template.entries.map((entry) => ({
+          id: crypto.randomUUID(),
+          exerciseId: entry.exerciseId,
+          order: entry.order,
+          defaultRestSeconds: entry.defaultRestSeconds,
+          sets: entry.sets.map((setLog) => ({
+            id: crypto.randomUUID(),
+            weight: setLog.weight,
+            reps: setLog.reps,
+            isWarmup: setLog.isWarmup,
+            completed: false,
+            createdAt: Date.now(),
+            ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
+            ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
+            ...(setLog.calories !== undefined && { calories: setLog.calories }),
+          })),
+        })),
+      };
+    } else {
+      // 取得上一次完成訓練的地點
+      let lastLocation = '';
+      try {
+        const completed = await listCompletedWorkouts();
+        const lastWithLoc = completed.find(w => w.location);
+        if (lastWithLoc) {
+          lastLocation = lastWithLoc.location || '';
+        } else {
+          const settings = await getSettings();
+          if (settings.locations && settings.locations.length > 0) {
+            lastLocation = settings.locations[0];
+          }
+        }
+      } catch (e) {
+        console.error('Failed to get last workout location:', e);
+      }
+
+      newWorkout = {
+        id: crypto.randomUUID(),
+        title: slotLabel,
+        startedAt: Date.now(),
+        status: 'active',
+        location: lastLocation,
+        programId,
+        programSlotId: slotId,
+        programCycleNumber: cycleNumber,
+        entries: [],
+      };
+    }
 
     await saveWorkoutImmediate(newWorkout);
     set({ activeWorkout: newWorkout });

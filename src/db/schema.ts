@@ -55,7 +55,11 @@ export interface Workout {
   location?: string;        // 訓練地點，例如 '中壢建工'
   updatedAt?: number;
   deletedAt?: number;
+  programId?: string;
+  programSlotId?: string;
+  programCycleNumber?: number;   // 這筆訓練發生在計畫的第幾輪（1-indexed，方便顯示「第3輪‧背日」）
 }
+
 
 // ---- 體重 / 體組成 (BodyMetric) ----
 export interface BodyMetric {
@@ -90,6 +94,29 @@ export interface WorkoutTemplate {
   deletedAt?: number;
 }
 
+// ---- 計畫裡的一個循環節點 (ProgramSlot) ----
+export interface ProgramSlot {
+  id: string;
+  label: string;           // 例：'胸日'、'背日'、'腿臀日'、'肩日'、'手臂日'（自由文字，不綁 MuscleGroup）
+  templateId?: string;     // 對應 WorkoutTemplate.id；還沒補內容時是 undefined
+}
+
+// ---- 訓練計畫 (TrainingProgram) ----
+export interface TrainingProgram {
+  id: string;
+  name: string;                      // 例：'五分化 8-12週'
+  slots: ProgramSlot[];               // 有序循環清單，長度任意
+  cursor: number;                     // 下一個要練的 slot index（0-based）
+  cycleCount: number;                 // 已完整跑完幾輪，從 0 起算
+  estimatedWeeks: { min: number; max: number };  // 參考值，例：{min:8, max:12}，可隨時編輯
+  status: 'active' | 'completed';     // 同時只能有一個 'active'
+  startedAt: number;
+  completedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;                 // 雲端同步用：軟刪除
+}
+
 // ---- Dexie 資料庫定義 ----
 
 class GymTrackerDatabase extends Dexie {
@@ -98,6 +125,8 @@ class GymTrackerDatabase extends Dexie {
   bodyMetrics!: Table<BodyMetric, string>;
   settings!: Table<Settings, string>;
   templates!: Table<WorkoutTemplate, string>;
+  programs!: Table<TrainingProgram, string>;
+
 
   constructor() {
     super('GymTrackerDatabase');
@@ -161,6 +190,11 @@ class GymTrackerDatabase extends Dexie {
         ['飛輪', '划船機', '橢圓機', '爬梯機', '跳繩'].includes(item.name)
       ).primaryKeys();
       await tx.table('exercises').bulkDelete(toDelete);
+    });
+
+    // version(7): 新增訓練計畫表 (programs)
+    this.version(7).stores({
+      programs: 'id, name, status, createdAt, updatedAt',
     });
   }
 }

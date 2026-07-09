@@ -9,7 +9,7 @@ import {
 import { getFirebaseFirestore } from '../lib/firebase';
 import { db } from '../db/schema';
 
-type SyncTable = 'exercises' | 'workouts' | 'templates' | 'bodyMetrics';
+type SyncTable = 'exercises' | 'workouts' | 'templates' | 'bodyMetrics' | 'programs';
 
 interface SyncRecord {
   id: string;
@@ -46,7 +46,8 @@ type AnyDexieTable =
   | typeof db.exercises
   | typeof db.workouts
   | typeof db.templates
-  | typeof db.bodyMetrics;
+  | typeof db.bodyMetrics
+  | typeof db.programs;
 
 // ── LWW merge：較新的 updatedAt 勝出 ──────────────────────────────
 async function mergeRecords(dexieTable: AnyDexieTable, cloudRecords: SyncRecord[]): Promise<void> {
@@ -66,11 +67,12 @@ async function mergeRecords(dexieTable: AnyDexieTable, cloudRecords: SyncRecord[
 
 // ── 將本機全部資料推送到雲端 ─────────────────────────────────────
 async function pushAllToCloud(uid: string): Promise<void> {
-  const [exercises, workouts, templates, metrics] = await Promise.all([
+  const [exercises, workouts, templates, metrics, programs] = await Promise.all([
     db.exercises.toArray(),
     db.workouts.where('status').equals('completed').toArray(),
     db.templates.toArray(),
     db.bodyMetrics.toArray(),
+    db.programs.toArray(),
   ]);
 
   const pushBatch = async (table: SyncTable, records: SyncRecord[]) => {
@@ -82,16 +84,18 @@ async function pushAllToCloud(uid: string): Promise<void> {
     pushBatch('workouts', workouts),
     pushBatch('templates', templates),
     pushBatch('bodyMetrics', metrics),
+    pushBatch('programs', programs),
   ]);
 }
 
 // ── Full sync（登入後執行）────────────────────────────────────────
 export async function fullSync(uid: string): Promise<void> {
-  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics] = await Promise.all([
+  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms] = await Promise.all([
     pullAll(uid, 'exercises'),
     pullAll(uid, 'workouts'),
     pullAll(uid, 'templates'),
     pullAll(uid, 'bodyMetrics'),
+    pullAll(uid, 'programs'),
   ]);
 
   await Promise.all([
@@ -99,6 +103,7 @@ export async function fullSync(uid: string): Promise<void> {
     mergeRecords(db.workouts, cloudWorkouts),
     mergeRecords(db.templates, cloudTemplates),
     mergeRecords(db.bodyMetrics, cloudMetrics),
+    mergeRecords(db.programs, cloudPrograms),
   ]);
 
   await pushAllToCloud(uid);
@@ -106,11 +111,12 @@ export async function fullSync(uid: string): Promise<void> {
 
 // ── Delta sync（前景化時執行）────────────────────────────────────
 export async function deltaSync(uid: string, since: number): Promise<void> {
-  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics] = await Promise.all([
+  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms] = await Promise.all([
     pullSince(uid, 'exercises', since),
     pullSince(uid, 'workouts', since),
     pullSince(uid, 'templates', since),
     pullSince(uid, 'bodyMetrics', since),
+    pullSince(uid, 'programs', since),
   ]);
 
   await Promise.all([
@@ -118,5 +124,7 @@ export async function deltaSync(uid: string, since: number): Promise<void> {
     mergeRecords(db.workouts, cloudWorkouts),
     mergeRecords(db.templates, cloudTemplates),
     mergeRecords(db.bodyMetrics, cloudMetrics),
+    mergeRecords(db.programs, cloudPrograms),
   ]);
 }
+
