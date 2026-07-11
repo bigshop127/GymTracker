@@ -8,6 +8,7 @@ import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate 
 import NumberStepper from '../components/NumberStepper';
 import ExerciseList from '../components/ExerciseList';
 import { useProgramStore } from '../store/program';
+import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
 
 export default function WorkoutLogger() {
   const {
@@ -742,7 +743,14 @@ export default function WorkoutLogger() {
                 if (!activeWorkout) return;
                 const shouldSaveTemplate = window.confirm('訓練即將完成！要將本次訓練另存為範本嗎？（下次可帶相同重量/次數直接開始）');
                 if (shouldSaveTemplate) {
-                  const defaultName = activeWorkout.title || '今日訓練';
+                  const startDate = new Date(activeWorkout.startedAt);
+                  const dateStr = `${startDate.getMonth() + 1}/${startDate.getDate()}`;
+                  const rawTitle = (activeWorkout.title || '').trim();
+                  const isGenericTitle = rawTitle === '' || rawTitle === '今日訓練' || /^\d{1,2}\/\d{1,2} 訓練$/.test(rawTitle);
+                  const bodyPart = isGenericTitle
+                    ? getPrimaryMuscleGroups(activeWorkout, buildExerciseMap(allExercises), 2).join('+') || '訓練'
+                    : rawTitle;
+                  const defaultName = `${dateStr} ${bodyPart}${activeWorkout.location ? ` @${activeWorkout.location}` : ''}`;
                   const name = window.prompt('請輸入範本名稱：', defaultName);
                   if (name !== null) {
                     const templateName = name.trim() || defaultName;
