@@ -301,21 +301,23 @@ export default function WorkoutLogger() {
                 </button>
               </div>
 
-              {/* 循序列表 progress dots */}
+              {/* 循序列表：可點選切換「今天該練」，不一定要照順序 */}
               <div className="flex flex-wrap gap-1.5 items-center pt-0.5">
                 {activeProgram.slots.map((s, idx) => {
                   const isCurrent = idx === activeProgram.cursor;
                   return (
-                    <span
+                    <button
                       key={s.id}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      type="button"
+                      onClick={() => updateProgram({ cursor: idx })}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition cursor-pointer ${
                         isCurrent
                           ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
                     >
                       {s.label}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
