@@ -41,6 +41,15 @@ export default function BottomNav() {
             }
           />
           <NavItem
+            to="/plan"
+            label="課表"
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-full h-full">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h8.25m-8.25 4.5h8.25m-8.25 4.5h8.25M3.75 7.5h.008v.008H3.75V7.5Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.008v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 4.5h.008v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+              </svg>
+            }
+          />
+          <NavItem
             to="/history"
             label="歷史"
             icon={

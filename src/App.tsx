@@ -10,6 +10,7 @@ import { useActiveWorkoutStore, flushPendingSave } from './store/activeWorkout';
 import { useSettingsStore } from './store/settings';
 
 const Progress = lazy(() => import('./pages/Progress'));
+const ProgramGuide = lazy(() => import('./pages/ProgramGuide'));
 
 function App() {
   const initSettings = useSettingsStore((state) => state.initSettings);
@@ -63,6 +64,11 @@ function App() {
             </Suspense>
           } />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/plan" element={
+            <Suspense fallback={<div className="p-4 text-center text-slate-400 text-xs font-semibold animate-pulse">載入課表中...</div>}>
+              <ProgramGuide />
+            </Suspense>
+          } />
         </Routes>
       </Layout>
     </BrowserRouter>
