@@ -200,9 +200,10 @@ GymTracker/
 | Phase 11（v1.5） | 有氧訓練模式 | SetLog 新增 durationSeconds/distanceKm/calories；WorkoutLogger 有氧 UI 分支；History/Progress 有氧顯示；seed 補充橢圓機/爬梯機/跳繩 |
 | Phase 12（v1.6） | Google 雲端同步 | Firebase Auth（Google 登入）+ Firestore LWW 同步；schema version(3) 加 updatedAt；設定頁同步區塊 |
 | Phase 13（v1.7） | 訓練計畫（循環排程） | interface ProgramSlot/TrainingProgram + programs CRUD / store + WorkoutLogger UI + 備份/同步收錄 |
+| Phase 14（v1.8） | 1RM 計算機分頁 | 獨立 1RM 速算工具分頁 + NumberStepper + 沿用既有 e1rm 公式與設定 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-07-09）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）+ Phase 8（v1.2）+ Phase 9（v1.3）+ Phase 10（v1.4）+ Phase 11（v1.5）+ Phase 12（v1.6）+ Phase 13（v1.7）全數完成並上線（https://bigshop127.github.io/GymTracker/  ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-07-13）**：Phase 0–6（MVP v1.0）+ Phase 7（v1.1）+ Phase 8（v1.2）+ Phase 9（v1.3）+ Phase 10（v1.4）+ Phase 11（v1.5）+ Phase 12（v1.6）+ Phase 13（v1.7）+ Phase 14（v1.8）全數完成並上線（https://bigshop127.github.io/GymTracker/ ）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案

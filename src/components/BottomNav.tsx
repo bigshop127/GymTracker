@@ -86,6 +86,15 @@ export default function BottomNav() {
             }
           />
           <NavItem
+            to="/calculator"
+            label="1RM"
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-full h-full">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5h.008v.008H6.75V7.5Zm3 0h.008v.008H9.75V7.5Zm3 0h.008v.008H12.75V7.5Zm3 0h.008v.008H15.75V7.5ZM6.75 11.25h.008v.008H6.75v-.008Zm3 0h.008v.008H9.75v-.008Zm3 0h.008v.008H12.75v-.008Zm3 0h.008v.008H15.75v-.008ZM6.75 15h.008v.008H6.75V15Zm3 0h.008v.008H9.75V15Zm3 0h.008v.008H12.75V15Zm3 0h.008v.008H15.75V15ZM4.5 19.5h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+              </svg>
+            }
+          />
+          <NavItem
             to="/settings"
             label="設定"
             icon={

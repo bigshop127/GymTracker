@@ -12,6 +12,7 @@ import { useSettingsStore } from './store/settings';
 const Progress = lazy(() => import('./pages/Progress'));
 const ProgramGuide = lazy(() => import('./pages/ProgramGuide'));
 const ExerciseTracker = lazy(() => import('./pages/ExerciseTracker'));
+const RmCalculator = lazy(() => import('./pages/RmCalculator'));
 
 function App() {
   const initSettings = useSettingsStore((state) => state.initSettings);
@@ -73,6 +74,11 @@ function App() {
           <Route path="/tracker" element={
             <Suspense fallback={<div className="p-4 text-center text-slate-400 text-xs font-semibold animate-pulse">載入項目追蹤中...</div>}>
               <ExerciseTracker />
+            </Suspense>
+          } />
+          <Route path="/calculator" element={
+            <Suspense fallback={<div className="p-4 text-center text-slate-400 text-xs font-semibold animate-pulse">載入計算機中...</div>}>
+              <RmCalculator />
             </Suspense>
           } />
         </Routes>
