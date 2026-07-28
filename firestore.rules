@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// GymTracker 雲端同步規則
+// 資料路徑：users/{uid}/{table}/{docId}（table = exercises|workouts|templates|bodyMetrics|programs）
+// 每位登入使用者只能讀寫自己 uid 底下的子樹，彼此隔離。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
