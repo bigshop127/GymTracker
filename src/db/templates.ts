@@ -11,6 +11,9 @@ export function createTemplateFromWorkout(workout: Workout, name: string): Worko
     entries: workout.entries.map((entry) => ({
       id: crypto.randomUUID(),
       exerciseId: entry.exerciseId,
+      ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
+        ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
+        : {}),
       order: entry.order,
       defaultRestSeconds: entry.defaultRestSeconds,
       sets: entry.sets.map((setLog) => ({

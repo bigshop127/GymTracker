@@ -7,6 +7,7 @@ import { getTemplate } from '../db/templates';
 import { useRestTimerStore } from './restTimer';
 import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
+import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry } from '../lib/workoutEntries';
 
 interface ActiveWorkoutState {
   activeWorkout: Workout | null;
@@ -30,6 +31,9 @@ interface ActiveWorkoutState {
   updateWorkoutStartedAt: (startedAt: number) => Promise<void>;
   reorderEntries: (entries: WorkoutEntry[]) => Promise<void>;
   updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
+  selectEntryExercise: (entryId: string, exerciseId: string) => Promise<void>;
+  addAlternativeToEntry: (entryId: string, exerciseId: string) => Promise<void>;
+  removeAlternativeFromEntry: (entryId: string, exerciseId: string) => Promise<void>;
   startWorkoutFromTemplate: (template: Workout) => Promise<void>;
   startWorkoutFromTemplateEntity: (template: WorkoutTemplate) => Promise<void>;
   startWorkoutFromProgramSlot: (
@@ -446,6 +450,9 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       entries: template.entries.map((entry) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
+        ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
+          ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
+          : {}),
         order: entry.order,
         defaultRestSeconds: entry.defaultRestSeconds,
         sets: entry.sets.map((setLog) => ({
@@ -482,6 +489,9 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       entries: template.entries.map((entry) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
+        ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
+          ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
+          : {}),
         order: entry.order,
         defaultRestSeconds: entry.defaultRestSeconds,
         sets: entry.sets.map((setLog) => ({
@@ -542,6 +552,9 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         entries: template.entries.map((entry) => ({
           id: crypto.randomUUID(),
           exerciseId: entry.exerciseId,
+          ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
+            ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
+            : {}),
           order: entry.order,
           defaultRestSeconds: entry.defaultRestSeconds,
           sets: entry.sets.map((setLog) => ({
@@ -590,5 +603,41 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
 
     await saveWorkoutImmediate(newWorkout);
     set({ activeWorkout: newWorkout });
+  },
+
+  selectEntryExercise: async (entryId: string, exerciseId: string) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+    const updatedEntries = selectEntryExercise(activeWorkout.entries, entryId, exerciseId);
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      entries: updatedEntries,
+    };
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
+  },
+
+  addAlternativeToEntry: async (entryId: string, exerciseId: string) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+    const updatedEntries = addAlternativeToEntry(activeWorkout.entries, entryId, exerciseId);
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      entries: updatedEntries,
+    };
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
+  },
+
+  removeAlternativeFromEntry: async (entryId: string, exerciseId: string) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+    const updatedEntries = removeAlternativeFromEntry(activeWorkout.entries, entryId, exerciseId);
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      entries: updatedEntries,
+    };
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
   },
 }));

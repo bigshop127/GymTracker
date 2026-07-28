@@ -31,6 +31,9 @@ export default function WorkoutLogger() {
     updateWorkoutStartedAt,
     startWorkoutFromTemplateEntity,
     startWorkoutFromProgramSlot,
+    selectEntryExercise,
+    addAlternativeToEntry,
+    removeAlternativeFromEntry,
   } = useActiveWorkoutStore();
 
   const { settings } = useSettingsStore();
@@ -100,6 +103,21 @@ export default function WorkoutLogger() {
   const [programSlots, setProgramSlots] = useState<{ id: string; label: string; templateId?: string }[]>([]);
   const [estWeeksMin, setEstWeeksMin] = useState(8);
   const [estWeeksMax, setEstWeeksMax] = useState(12);
+
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [altTargetEntryId, setAltTargetEntryId] = useState<string | null>(null);
+
+  // 計算實際選定的動作 Entry ID (若為空或不存在則自動 fallback)
+  const activeEntryId = useMemo(() => {
+    if (!activeWorkout || activeWorkout.entries.length === 0) {
+      return null;
+    }
+    const exists = activeWorkout.entries.some((e) => e.id === selectedEntryId);
+    if (exists && selectedEntryId !== null) {
+      return selectedEntryId;
+    }
+    return activeWorkout.entries[0].id;
+  }, [activeWorkout, selectedEntryId]);
 
   const handleOpenCreateProgram = () => {
     setEditingProgramId(null);
@@ -282,7 +300,25 @@ export default function WorkoutLogger() {
   };
 
   const handleSelectExercise = async (exercise: Exercise) => {
-    await addExerciseToWorkout(exercise.id, exercise.muscleGroup === '有氧');
+    if (altTargetEntryId) {
+      if (exercise.muscleGroup === '有氧') {
+        alert('替代動作暫不支援有氧');
+        setAltTargetEntryId(null);
+        setIsSelectorOpen(false);
+        return;
+      }
+      await addAlternativeToEntry(altTargetEntryId, exercise.id);
+      setAltTargetEntryId(null);
+    } else {
+      await addExerciseToWorkout(exercise.id, exercise.muscleGroup === '有氧');
+      const updatedWorkout = useActiveWorkoutStore.getState().activeWorkout;
+      if (updatedWorkout && updatedWorkout.entries.length > 0) {
+        const lastEntry = updatedWorkout.entries[updatedWorkout.entries.length - 1];
+        if (lastEntry) {
+          setSelectedEntryId(lastEntry.id);
+        }
+      }
+    }
     setIsSelectorOpen(false);
   };
 
@@ -581,227 +617,352 @@ export default function WorkoutLogger() {
             />
           </div>
 
-          {/* 動作清單 (WorkoutEntry) */}
+          {/* 頂部分頁列 */}
+          <div className="flex items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+            <div className="flex-1 overflow-x-auto flex gap-2 pr-2 whitespace-nowrap scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {activeWorkout.entries.map((entry) => {
+                const ex = allExercises.find((e) => e.id === entry.exerciseId);
+                const isSelected = entry.id === activeEntryId;
+                const hasAlt = entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1;
+                
+                // 計算完成度
+                const totalSets = entry.sets.length;
+                const completedSets = entry.sets.filter((s) => s.completed).length;
+                const isAllCompleted = totalSets > 0 && completedSets === totalSets;
+                
+                return (
+                  <button
+                    key={entry.id}
+                    onClick={() => setSelectedEntryId(entry.id)}
+                    className={`px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition select-none cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>{ex ? ex.name : '讀取中...'}</span>
+                    {hasAlt && <span className="opacity-75">⇄</span>}
+                    {totalSets > 0 && (
+                      isAllCompleted ? (
+                        <span className="text-emerald-500 font-bold">●</span>
+                      ) : (
+                        <span className={`text-[10px] ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                          {completedSets}/{totalSets}
+                        </span>
+                      )
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {/* 尾端 ＋ 分頁 */}
+            <button
+              onClick={() => {
+                setAltTargetEntryId(null);
+                setIsSelectorOpen(true);
+              }}
+              className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition border border-transparent shadow-sm shrink-0 flex items-center justify-center cursor-pointer"
+              title="新增動作"
+            >
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
+              </svg>
+            </button>
+          </div>
+
+          {/* 動作面板區 */}
           <div className="space-y-4">
-            {activeWorkout.entries.map((entry) => {
+            {(() => {
+              if (activeWorkout.entries.length === 0) {
+                return (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
+                    <p className="text-slate-400 dark:text-slate-500 text-sm italic">
+                      尚未加入任何動作，請點擊右上角「＋」加入第一個動作。
+                    </p>
+                  </div>
+                );
+              }
+              
+              const entry = activeWorkout.entries.find((e) => e.id === activeEntryId);
+              if (!entry) return null;
+              
               const exercise = allExercises.find((ex) => ex.id === entry.exerciseId);
+              const isCardio = exercise?.muscleGroup === '有氧';
+              
               return (
-                <div key={entry.id} className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden space-y-3 pb-3">
+                <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden space-y-3 pb-3">
                   {/* 動作標頭 */}
-                  <div className="bg-slate-50/80 px-4 py-3 flex justify-between items-center border-b border-slate-100">
+                  <div className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 flex justify-between items-center border-b border-slate-100 dark:border-slate-800/60">
                     <div className="space-y-0.5">
-                      <h3 className="font-bold text-slate-800 text-sm">
+                      <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
                         {exercise ? exercise.name : '讀取中...'}
                       </h3>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-slate-500 bg-slate-200/50 font-bold px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/80 font-bold px-1.5 py-0.5 rounded">
                           {exercise ? `${exercise.muscleGroup} / ${exercise.equipment}` : ''}
                         </span>
                       </div>
                     </div>
                     <button
                       onClick={() => removeExerciseFromWorkout(entry.id)}
-                      className="text-xs text-rose-500 hover:text-rose-700 font-semibold transition"
+                      className="text-xs text-rose-500 hover:text-rose-700 font-semibold transition cursor-pointer"
                     >
                       移除動作
                     </button>
                   </div>
 
-                  {/* 組數明細 */}
-                  {(() => {
-                    const isCardio = exercise?.muscleGroup === '有氧';
-                    return (
-                      <div className="px-4 space-y-2.5">
-                        {entry.sets.length === 0 ? (
-                          <p className="text-xs text-slate-400 text-center py-4 italic">尚未新增任何組數</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {/* 欄位表頭：只有氧顯示 */}
-                            {isCardio && (
-                              <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
-                                <span className="col-span-1">組</span>
-                                <span className="col-span-5">時長 (分)</span>
-                                <span className="col-span-5">距離 (km)</span>
-                                <span className="col-span-1">完</span>
-                              </div>
-                            )}
-
-                            {/* 組輸入列 */}
-                            {entry.sets.map((setLog, idx) => (
-                              isCardio ? (
-                                /* ===== 有氧：維持 grid-cols-12 單列 ===== */
-                                <div
-                                  key={setLog.id}
-                                  className={`grid grid-cols-12 gap-1 items-center py-1.5 px-1 rounded-xl border border-transparent transition duration-200 ${
-                                    setLog.completed
-                                      ? 'bg-emerald-50/40 border-emerald-100/50'
-                                      : 'bg-slate-50/30'
-                                  }`}
+                  {/* UI ①: 替代動作列 */}
+                  <div className="px-4 py-2 border-b border-slate-100/50 dark:border-slate-800/30 space-y-2">
+                    {entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1 && (
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {entry.candidateExerciseIds.map((candId) => {
+                          const candEx = allExercises.find((ex) => ex.id === candId);
+                          const isCurrent = candId === entry.exerciseId;
+                          return (
+                            <div
+                              key={candId}
+                              className={`relative flex items-center rounded-lg text-xs transition ${
+                                isCurrent
+                                  ? 'bg-indigo-600 text-white font-bold'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => selectEntryExercise(entry.id, candId)}
+                                className="px-2.5 py-1.5 font-semibold cursor-pointer"
+                              >
+                                {candEx ? candEx.name : '讀取中...'}
+                              </button>
+                              
+                              {/* 移除非選定動作 */}
+                              {!isCurrent && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeAlternativeFromEntry(entry.id, candId)}
+                                  className="pr-2 pl-0.5 py-1.5 hover:text-rose-500 font-bold transition text-[10px] cursor-pointer"
+                                  title="移除此替代"
                                 >
-                                  <span className="col-span-1 text-center text-xs text-slate-400 font-bold">
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* ＋替代 按鈕 */}
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAltTargetEntryId(entry.id);
+                          setIsSelectorOpen(true);
+                        }}
+                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 px-2.5 py-1.5 rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800 flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
+                        </svg>
+                        ＋ 替代
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 組數明細 */}
+                  <div className="px-4 space-y-2.5">
+                    {entry.sets.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-4 italic">尚未新增任何組數</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {/* 欄位表頭：只有氧顯示 */}
+                        {isCardio && (
+                          <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider">
+                            <span className="col-span-1">組</span>
+                            <span className="col-span-5">時長 (分)</span>
+                            <span className="col-span-5">距離 (km)</span>
+                            <span className="col-span-1">完</span>
+                          </div>
+                        )}
+
+                        {/* 組輸入列 */}
+                        {entry.sets.map((setLog, idx) => (
+                          isCardio ? (
+                            /* ===== 有氧：維持 grid-cols-12 單列 ===== */
+                            <div
+                              key={setLog.id}
+                              className={`grid grid-cols-12 gap-1 items-center py-1.5 px-1 rounded-xl border border-transparent transition duration-200 ${
+                                setLog.completed
+                                  ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-100/50 dark:border-emerald-900/30'
+                                  : 'bg-slate-50/30 dark:bg-slate-800/10'
+                              }`}
+                            >
+                              <span className="col-span-1 text-center text-xs text-slate-400 font-bold">
+                                {idx + 1}
+                              </span>
+                              {/* 時長（分鐘） col-span-5 */}
+                              <div className="col-span-5">
+                                <NumberStepper
+                                  value={Math.round((setLog.durationSeconds ?? 0) / 60)}
+                                  onChange={(val) => updateSet(entry.id, setLog.id, { durationSeconds: val * 60 })}
+                                  step={1}
+                                  min={0}
+                                  decimals={0}
+                                />
+                              </div>
+                              {/* 距離（km） col-span-5 */}
+                              <div className="col-span-5">
+                                <NumberStepper
+                                  value={setLog.distanceKm ?? 0}
+                                  onChange={(val) => updateSet(entry.id, setLog.id, { distanceKm: val })}
+                                  step={0.5}
+                                  min={0}
+                                  decimals={1}
+                                />
+                              </div>
+                              {/* 完成 col-span-1 */}
+                              <div className="col-span-1 flex justify-center">
+                                <input
+                                  type="checkbox"
+                                  checked={setLog.completed}
+                                  onChange={(e) =>
+                                    updateSet(entry.id, setLog.id, { completed: e.target.checked })
+                                  }
+                                  className="w-5 h-5 text-emerald-600 border-slate-300 rounded-full focus:ring-emerald-500 accent-emerald-500 cursor-pointer shadow-sm"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            /* ===== 重訓：兩列卡片 ===== */
+                            <div
+                              key={setLog.id}
+                              className={`rounded-xl border p-2.5 space-y-2 transition duration-200 ${
+                                setLog.completed
+                                  ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30'
+                                  : 'bg-slate-50/30 dark:bg-slate-800/20 border-slate-100 dark:border-slate-800'
+                              }`}
+                            >
+                              {/* 第一列：組序 + 重量 + 次數 + 完成 */}
+                              <div className="flex items-end gap-2">
+                                <div className="shrink-0 flex flex-col items-center">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">組</span>
+                                  <span className="w-7 h-9 flex items-center justify-center text-sm font-bold text-slate-500">
                                     {idx + 1}
                                   </span>
-                                  {/* 時長（分鐘） col-span-5 */}
-                                  <div className="col-span-5">
-                                    <NumberStepper
-                                      value={Math.round((setLog.durationSeconds ?? 0) / 60)}
-                                      onChange={(val) => updateSet(entry.id, setLog.id, { durationSeconds: val * 60 })}
-                                      step={1}
-                                      min={0}
-                                      decimals={0}
-                                    />
-                                  </div>
-                                  {/* 距離（km） col-span-5 */}
-                                  <div className="col-span-5">
-                                    <NumberStepper
-                                      value={setLog.distanceKm ?? 0}
-                                      onChange={(val) => updateSet(entry.id, setLog.id, { distanceKm: val })}
-                                      step={0.5}
-                                      min={0}
-                                      decimals={1}
-                                    />
-                                  </div>
-                                  {/* 完成 col-span-1 */}
-                                  <div className="col-span-1 flex justify-center">
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                                    重量 ({currentUnit})
+                                  </span>
+                                  <NumberStepper
+                                    value={setLog.weight}
+                                    onChange={(val) => updateSet(entry.id, setLog.id, { weight: val })}
+                                    step={2.5}
+                                    min={0}
+                                    decimals={1}
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                                    次數
+                                  </span>
+                                  <NumberStepper
+                                    value={setLog.reps}
+                                    onChange={(val) => updateSet(entry.id, setLog.id, { reps: val })}
+                                    step={1}
+                                    min={0}
+                                    decimals={0}
+                                  />
+                                </div>
+                                <div className="shrink-0 flex flex-col items-center">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">完</span>
+                                  <div className="h-9 flex items-center">
                                     <input
                                       type="checkbox"
                                       checked={setLog.completed}
-                                      onChange={(e) =>
-                                        updateSet(entry.id, setLog.id, { completed: e.target.checked })
-                                      }
+                                      onChange={(e) => {
+                                        const isCompleted = e.target.checked;
+                                        updateSet(entry.id, setLog.id, { completed: isCompleted });
+                                        if (isCompleted) startTimer(settings?.defaultRestSeconds ?? 90);
+                                      }}
                                       className="w-5 h-5 text-emerald-600 border-slate-300 rounded-full focus:ring-emerald-500 accent-emerald-500 cursor-pointer shadow-sm"
                                     />
                                   </div>
                                 </div>
-                              ) : (
-                                /* ===== 重訓：兩列卡片 ===== */
-                                <div
-                                  key={setLog.id}
-                                  className={`rounded-xl border p-2.5 space-y-2 transition duration-200 ${
-                                    setLog.completed
-                                      ? 'bg-emerald-50/40 border-emerald-100'
-                                      : 'bg-slate-50/30 border-slate-100'
+                              </div>
+
+                              {/* 第二列：類別（縮排對齊，避開組序欄） */}
+                              <div className="flex items-center gap-2 pl-9">
+                                <button
+                                  type="button"
+                                  onClick={() => updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })}
+                                  className={`px-3 py-1.5 rounded-md text-[10px] font-extrabold select-none transition cursor-pointer ${
+                                    setLog.isWarmup
+                                      ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30'
+                                      : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30'
                                   }`}
                                 >
-                                  {/* 第一列：組序 + 重量 + 次數 + 完成 */}
-                                  <div className="flex items-end gap-2">
-                                    <div className="shrink-0 flex flex-col items-center">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">組</span>
-                                      <span className="w-7 h-9 flex items-center justify-center text-sm font-bold text-slate-500">
-                                        {idx + 1}
-                                      </span>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <span className="block text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                                        重量 ({currentUnit})
-                                      </span>
-                                      <NumberStepper
-                                        value={setLog.weight}
-                                        onChange={(val) => updateSet(entry.id, setLog.id, { weight: val })}
-                                        step={2.5}
-                                        min={0}
-                                        decimals={1}
-                                      />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <span className="block text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                                        次數
-                                      </span>
-                                      <NumberStepper
-                                        value={setLog.reps}
-                                        onChange={(val) => updateSet(entry.id, setLog.id, { reps: val })}
-                                        step={1}
-                                        min={0}
-                                        decimals={0}
-                                      />
-                                    </div>
-                                    <div className="shrink-0 flex flex-col items-center">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">完</span>
-                                      <div className="h-9 flex items-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={setLog.completed}
-                                          onChange={(e) => {
-                                            const isCompleted = e.target.checked;
-                                            updateSet(entry.id, setLog.id, { completed: isCompleted });
-                                            if (isCompleted) startTimer(settings?.defaultRestSeconds ?? 90);
-                                          }}
-                                          className="w-5 h-5 text-emerald-600 border-slate-300 rounded-full focus:ring-emerald-500 accent-emerald-500 cursor-pointer shadow-sm"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
+                                  {setLog.isWarmup ? '暖身組' : '正式組'}
+                                </button>
+                              </div>
 
-                                  {/* 第二列：類別（縮排對齊，避開組序欄） */}
-                                  <div className="flex items-center gap-2 pl-9">
-                                    <button
-                                      type="button"
-                                      onClick={() => updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })}
-                                      className={`px-3 py-1.5 rounded-md text-[10px] font-extrabold select-none transition cursor-pointer ${
-                                        setLog.isWarmup
-                                          ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                                          : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                                      }`}
-                                    >
-                                      {setLog.isWarmup ? '暖身組' : '正式組'}
-                                    </button>
-                                  </div>
-
-                                  {/* 第三列：RPE 訓練感受選單 */}
-                                  <div className="flex items-center gap-1.5 pl-9 w-full">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">感受</span>
-                                    <select
-                                      value={setLog.rpe || ''}
-                                      onChange={(e) =>
-                                        updateSet(entry.id, setLog.id, { rpe: parseFloat(e.target.value) || undefined })
-                                      }
-                                      className="border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs bg-white dark:bg-slate-900 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 font-bold text-slate-700 dark:text-slate-200 h-8 flex-1 w-full"
-                                    >
-                                      <option value="">無</option>
-                                      {RPE_OPTIONS.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                          {opt.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </div>
-                              )
-                            ))}
-                          </div>
-                        )}
-
-                        {/* 組操作按鈕 */}
-                        <div className="flex gap-2 pt-2 border-t border-slate-100">
-                          <button
-                            onClick={() => addSetToEntry(entry.id)}
-                            className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
-                          >
-                            ＋ 增加一組 (自動複製)
-                          </button>
-                          {entry.sets.length > 0 && (
-                            <button
-                              onClick={() =>
-                                removeSetFromEntry(entry.id, entry.sets[entry.sets.length - 1].id)
-                              }
-                              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition"
-                            >
-                              － 刪除一組
-                            </button>
-                          )}
-                        </div>
+                              {/* 第三列：RPE 訓練感受選單 */}
+                              <div className="flex items-center gap-1.5 pl-9 w-full">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">感受</span>
+                                <select
+                                  value={setLog.rpe || ''}
+                                  onChange={(e) =>
+                                    updateSet(entry.id, setLog.id, { rpe: parseFloat(e.target.value) || undefined })
+                                  }
+                                  className="border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs bg-white dark:bg-slate-900 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 font-bold text-slate-700 dark:text-slate-200 h-8 flex-1 w-full"
+                                >
+                                  <option value="">無</option>
+                                  {RPE_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )
+                        ))}
                       </div>
-                    );
-                  })()}
+                    )}
+
+                    {/* 組操作按鈕 */}
+                    <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        onClick={() => addSetToEntry(entry.id)}
+                        className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+                      >
+                        ＋ 增加一組 (自動複製)
+                      </button>
+                      {entry.sets.length > 0 && (
+                        <button
+                          onClick={() =>
+                            removeSetFromEntry(entry.id, entry.sets[entry.sets.length - 1].id)
+                          }
+                          className="px-3 py-2 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl transition cursor-pointer"
+                        >
+                          － 刪除一組
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
-            })}
+            })()}
           </div>
 
           {/* 新增動作觸發按鈕 */}
           <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="w-full py-3.5 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 font-bold rounded-2xl border border-dashed border-indigo-200 flex items-center justify-center gap-2 transition"
+            onClick={() => {
+              setAltTargetEntryId(null);
+              setIsSelectorOpen(true);
+            }}
+            className="w-full py-3.5 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 font-bold rounded-2xl border border-dashed border-indigo-200 dark:border-indigo-800 flex items-center justify-center gap-2 transition cursor-pointer"
           >
             <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
@@ -878,10 +1039,15 @@ export default function WorkoutLogger() {
       {isSelectorOpen && (
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
           <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">選擇要加入的動作</h3>
+            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
+              {altTargetEntryId ? '選擇替代動作' : '選擇要加入的動作'}
+            </h3>
             <button
-              onClick={() => setIsSelectorOpen(false)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1"
+              onClick={() => {
+                setIsSelectorOpen(false);
+                setAltTargetEntryId(null);
+              }}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
             >
               <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />

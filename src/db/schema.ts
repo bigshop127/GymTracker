@@ -38,6 +38,7 @@ export interface SetLog {
 export interface WorkoutEntry {
   id: string;
   exerciseId: string;
+  candidateExerciseIds?: string[]; // 替代動作候選清單（含當前選定）；缺省＝單一動作（向後相容）
   order: number;
   sets: SetLog[];
   defaultRestSeconds?: number;
