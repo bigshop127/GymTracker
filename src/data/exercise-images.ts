@@ -12,6 +12,7 @@ export const EXERCISE_IMAGE_SLUGS: Record<string, string> = {
   '蝴蝶機夾胸': 'butterfly',
   '纜繩夾胸': 'cable-crossover',
   '伏地挺身': 'pushups',
+  '雙槓臂屈伸（胸）': 'dips-chest-version',
   '引體向上': 'pullups',
   '滑輪下拉': 'wide-grip-lat-pulldown',
   '槓鈴划船': 'bent-over-barbell-row',

@@ -27,6 +27,7 @@ export const SEED_EXERCISES: ExerciseSeed[] = [
   { name: '蝴蝶機夾胸',     muscleGroup: '胸', equipment: '機械' },
   { name: '纜繩夾胸',       muscleGroup: '胸', equipment: '纜繩' },
   { name: '伏地挺身',       muscleGroup: '胸', equipment: '徒手' },
+  { name: '雙槓臂屈伸（胸）', muscleGroup: '胸', equipment: '徒手' },
 
   // ---- 背 ----
   { name: '引體向上',       muscleGroup: '背', equipment: '徒手' },
