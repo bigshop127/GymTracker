@@ -619,7 +619,7 @@ export default function WorkoutLogger() {
 
           {/* 頂部分頁列 */}
           <div className="flex items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-            <div className="flex-1 overflow-x-auto flex gap-2 pr-2 whitespace-nowrap scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="flex-1 min-w-0 overflow-x-auto flex gap-2 pr-2 whitespace-nowrap scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
               {activeWorkout.entries.map((entry) => {
                 const ex = allExercises.find((e) => e.id === entry.exerciseId);
                 const isSelected = entry.id === activeEntryId;
@@ -634,7 +634,7 @@ export default function WorkoutLogger() {
                   <button
                     key={entry.id}
                     onClick={() => setSelectedEntryId(entry.id)}
-                    className={`px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition select-none cursor-pointer ${
+                    className={`shrink-0 px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition select-none cursor-pointer ${
                       isSelected
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                         : 'bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
