@@ -619,7 +619,7 @@ export default function WorkoutLogger() {
 
           {/* 頂部分頁列 */}
           <div className="flex items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-            <div className="flex-1 min-w-0 overflow-x-auto flex gap-2 pr-2 whitespace-nowrap scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="flex-1 min-w-0 overflow-x-auto flex gap-2 pr-2 pb-1 whitespace-nowrap">
               {activeWorkout.entries.map((entry) => {
                 const ex = allExercises.find((e) => e.id === entry.exerciseId);
                 const isSelected = entry.id === activeEntryId;
