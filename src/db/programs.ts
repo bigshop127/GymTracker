@@ -1,19 +1,23 @@
 import { db, type TrainingProgram } from './schema';
 
 export async function listPrograms(): Promise<TrainingProgram[]> {
-  return db.programs.reverse().sortBy('createdAt');
+  const programs = await db.programs.reverse().sortBy('createdAt');
+  return programs.filter(p => !p.deletedAt);
 }
 
 export async function getActiveProgram(): Promise<TrainingProgram | null> {
   const activeProgram = await db.programs
     .where('status')
     .equals('active')
+    .and(p => !p.deletedAt)
     .first();
   return activeProgram || null;
 }
 
 export async function getProgram(id: string): Promise<TrainingProgram | undefined> {
-  return db.programs.get(id);
+  const program = await db.programs.get(id);
+  if (program && program.deletedAt) return undefined;
+  return program;
 }
 
 export async function saveProgram(program: TrainingProgram): Promise<void> {
@@ -22,10 +26,10 @@ export async function saveProgram(program: TrainingProgram): Promise<void> {
 
   if (updatedProgram.status === 'active') {
     await db.transaction('rw', db.programs, async () => {
-      const activePrograms = await db.programs
+      const activePrograms = (await db.programs
         .where('status')
         .equals('active')
-        .toArray();
+        .toArray()).filter(p => !p.deletedAt);
 
       for (const active of activePrograms) {
         if (active.id !== updatedProgram.id) {
@@ -45,5 +49,8 @@ export async function saveProgram(program: TrainingProgram): Promise<void> {
 }
 
 export async function deleteProgram(id: string): Promise<void> {
-  await db.programs.delete(id);
+  const program = await db.programs.get(id);
+  if (!program) return;
+  const now = Date.now();
+  await db.programs.put({ ...program, deletedAt: now, updatedAt: now });
 }

@@ -1,7 +1,8 @@
 import { db, type BodyMetric } from './schema';
 
 export async function listBodyMetrics(): Promise<BodyMetric[]> {
-  return db.bodyMetrics.reverse().sortBy('date');
+  const metrics = await db.bodyMetrics.reverse().sortBy('date');
+  return metrics.filter(m => !m.deletedAt);
 }
 
 export async function addBodyMetric(metric: Omit<BodyMetric, 'id' | 'updatedAt' | 'deletedAt'>): Promise<string> {
@@ -17,5 +18,8 @@ export async function updateBodyMetric(id: string, updates: Partial<Omit<BodyMet
 }
 
 export async function deleteBodyMetric(id: string): Promise<void> {
-  await db.bodyMetrics.delete(id);
+  const metric = await db.bodyMetrics.get(id);
+  if (!metric) return;
+  const now = Date.now();
+  await db.bodyMetrics.put({ ...metric, deletedAt: now, updatedAt: now });
 }

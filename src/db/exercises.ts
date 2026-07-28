@@ -2,7 +2,8 @@ import { db, type Exercise } from './schema';
 import { SEED_EXERCISES } from '../data/seed-exercises';
 
 export async function listExercises(): Promise<Exercise[]> {
-  return db.exercises.toArray();
+  const exercises = await db.exercises.toArray();
+  return exercises.filter(e => !e.deletedAt);
 }
 
 export async function addExercise(exercise: Omit<Exercise, 'id' | 'createdAt' | 'isCustom' | 'updatedAt' | 'deletedAt'>): Promise<string> {
@@ -30,11 +31,13 @@ export async function deleteExercise(id: string): Promise<void> {
   const exercise = await db.exercises.get(id);
   if (!exercise) return;
   if (!exercise.isCustom) throw new Error('Cannot delete built-in exercise');
-  await db.exercises.delete(id);
+  const now = Date.now();
+  await db.exercises.put({ ...exercise, deletedAt: now, updatedAt: now });
 }
 
 export async function seedExercisesIfEmpty(): Promise<void> {
-  const existing = await db.exercises.toArray();
+  const allExercises = await db.exercises.toArray();
+  const existing = allExercises.filter(e => !e.deletedAt);
   if (existing.length === 0) {
     const now = Date.now();
     const exercisesToInsert: Exercise[] = SEED_EXERCISES.map((seed, index) => ({

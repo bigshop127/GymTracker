@@ -6,7 +6,7 @@ import { ZONGYUAN_8WEEK_PLAN, ZONGYUAN_PROGRAM_NAME } from '../data/zongyuan-8we
 
 export async function isZongYuanProgramImported(): Promise<boolean> {
   const programs = await db.programs.toArray();
-  return programs.some((p) => p.name === ZONGYUAN_PROGRAM_NAME);
+  return programs.some((p) => p.name === ZONGYUAN_PROGRAM_NAME && !p.deletedAt);
 }
 
 /**

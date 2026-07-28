@@ -30,7 +30,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const unsub = onAuthChange(async (user) => {
       set({ user });
       if (user) {
+        const stored = localStorage.getItem(`gymtracker.lastSyncAt.${user.uid}`);
+        set({ lastSyncAt: stored ? parseInt(stored, 10) : null });
         await get().sync();
+      } else {
+        set({ lastSyncAt: null });
       }
     });
 
@@ -38,7 +42,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const handleVisibility = () => {
       const { user, lastSyncAt } = get();
       if (!document.hidden && user && lastSyncAt) {
-        deltaSync(user.uid, lastSyncAt).catch(console.error);
+        get().sync().catch(console.error);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -71,11 +75,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       set({ syncStatus: 'syncing', errorMessage: null });
       const { lastSyncAt } = get();
       if (lastSyncAt) {
-        await deltaSync(user.uid, lastSyncAt);
+        const SYNC_CLOCK_SKEW_MS = 5 * 60 * 1000;
+        await deltaSync(user.uid, Math.max(0, lastSyncAt - SYNC_CLOCK_SKEW_MS));
       } else {
         await fullSync(user.uid);
       }
-      set({ syncStatus: 'idle', lastSyncAt: Date.now() });
+      const now = Date.now();
+      localStorage.setItem(`gymtracker.lastSyncAt.${user.uid}`, now.toString());
+      set({ syncStatus: 'idle', lastSyncAt: now });
     } catch (err) {
       console.error('Sync error:', err);
       set({ syncStatus: 'error', errorMessage: err instanceof Error ? err.message : '同步失敗' });

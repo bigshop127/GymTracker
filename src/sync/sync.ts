@@ -21,7 +21,7 @@ interface SyncRecord {
 export async function pushDoc(uid: string, table: SyncTable, record: SyncRecord): Promise<void> {
   const fs = getFirebaseFirestore();
   const ref = doc(fs, 'users', uid, table, record.id);
-  await setDoc(ref, { ...record, updatedAt: Date.now() }, { merge: true });
+  await setDoc(ref, { ...record, updatedAt: record.updatedAt ?? Date.now() }, { merge: true });
 }
 
 // ── 從 Firestore 拉取某個 table 的全部資料 ─────────────────────────
@@ -52,10 +52,6 @@ type AnyDexieTable =
 // ── LWW merge：較新的 updatedAt 勝出 ──────────────────────────────
 async function mergeRecords(dexieTable: AnyDexieTable, cloudRecords: SyncRecord[]): Promise<void> {
   for (const cloud of cloudRecords) {
-    if (cloud.deletedAt) {
-      await (dexieTable as typeof db.exercises).delete(cloud.id);
-      continue;
-    }
     const local = await (dexieTable as typeof db.exercises).get(cloud.id) as SyncRecord | undefined;
     const localUpdatedAt = local?.updatedAt ?? 0;
     const cloudUpdatedAt = cloud.updatedAt ?? 0;
@@ -65,11 +61,34 @@ async function mergeRecords(dexieTable: AnyDexieTable, cloudRecords: SyncRecord[
   }
 }
 
+// ── 將本機更新的增量推送到雲端 ─────────────────────────────────────
+async function pushChangedSince(uid: string, since: number): Promise<void> {
+  const [exercises, workouts, templates, metrics, programs] = await Promise.all([
+    db.exercises.where('updatedAt').above(since).toArray(),
+    db.workouts.where('updatedAt').above(since).toArray(),
+    db.templates.where('updatedAt').above(since).toArray(),
+    db.bodyMetrics.where('updatedAt').above(since).toArray(),
+    db.programs.where('updatedAt').above(since).toArray(),
+  ]);
+
+  const pushBatch = async (table: SyncTable, records: SyncRecord[]) => {
+    await Promise.all(records.map(r => pushDoc(uid, table, r)));
+  };
+
+  await Promise.all([
+    pushBatch('exercises', exercises.filter(e => e.isCustom)),
+    pushBatch('workouts', workouts.filter(w => w.status === 'completed' || w.deletedAt !== undefined)),
+    pushBatch('templates', templates),
+    pushBatch('bodyMetrics', metrics),
+    pushBatch('programs', programs),
+  ]);
+}
+
 // ── 將本機全部資料推送到雲端 ─────────────────────────────────────
 async function pushAllToCloud(uid: string): Promise<void> {
   const [exercises, workouts, templates, metrics, programs] = await Promise.all([
     db.exercises.toArray(),
-    db.workouts.where('status').equals('completed').toArray(),
+    db.workouts.toArray(),
     db.templates.toArray(),
     db.bodyMetrics.toArray(),
     db.programs.toArray(),
@@ -81,7 +100,7 @@ async function pushAllToCloud(uid: string): Promise<void> {
 
   await Promise.all([
     pushBatch('exercises', exercises.filter(e => e.isCustom)),
-    pushBatch('workouts', workouts),
+    pushBatch('workouts', workouts.filter(w => w.status === 'completed' || w.deletedAt !== undefined)),
     pushBatch('templates', templates),
     pushBatch('bodyMetrics', metrics),
     pushBatch('programs', programs),
@@ -126,5 +145,7 @@ export async function deltaSync(uid: string, since: number): Promise<void> {
     mergeRecords(db.bodyMetrics, cloudMetrics),
     mergeRecords(db.programs, cloudPrograms),
   ]);
+
+  await pushChangedSince(uid, since);
 }
 

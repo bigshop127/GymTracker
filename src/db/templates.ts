@@ -30,11 +30,14 @@ export function createTemplateFromWorkout(workout: Workout, name: string): Worko
 }
 
 export async function listTemplates(): Promise<WorkoutTemplate[]> {
-  return db.templates.reverse().sortBy('createdAt');
+  const templates = await db.templates.reverse().sortBy('createdAt');
+  return templates.filter(t => !t.deletedAt);
 }
 
 export async function getTemplate(id: string): Promise<WorkoutTemplate | undefined> {
-  return db.templates.get(id);
+  const template = await db.templates.get(id);
+  if (template && template.deletedAt) return undefined;
+  return template;
 }
 
 export async function saveTemplate(template: WorkoutTemplate): Promise<void> {
@@ -42,5 +45,8 @@ export async function saveTemplate(template: WorkoutTemplate): Promise<void> {
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
-  await db.templates.delete(id);
+  const template = await db.templates.get(id);
+  if (!template) return;
+  const now = Date.now();
+  await db.templates.put({ ...template, deletedAt: now, updatedAt: now });
 }

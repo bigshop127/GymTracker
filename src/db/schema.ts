@@ -196,6 +196,9 @@ class GymTrackerDatabase extends Dexie {
     this.version(7).stores({
       programs: 'id, name, status, createdAt, updatedAt',
     });
+
+    // version(8): 軟刪除支援 (exercises, workouts, templates, bodyMetrics, programs)
+    this.version(8).stores({});
   }
 }
 

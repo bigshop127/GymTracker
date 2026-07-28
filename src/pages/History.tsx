@@ -12,6 +12,7 @@ import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { buildExerciseMap, getDaySummary } from '../lib/workoutSummary';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
+import { rpeToShortLabel } from '../lib/rpe';
 
 export default function History() {
   const navigate = useNavigate();
@@ -706,8 +707,8 @@ export default function History() {
                                       </span>
                                     )}
                                     {setLog.rpe && (
-                                      <span className="bg-slate-100 text-slate-600 font-extrabold px-1.5 py-0.5 rounded text-[8px]">
-                                        RPE {setLog.rpe}
+                                      <span className="bg-slate-100 text-slate-600 font-extrabold px-1.5 py-0.5 rounded text-[8px]" title={`RPE ${setLog.rpe}`}>
+                                        {rpeToShortLabel(setLog.rpe) || `RPE ${setLog.rpe}`}
                                       </span>
                                     )}
                                   </>

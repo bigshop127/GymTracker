@@ -4,6 +4,7 @@ export async function getActiveWorkout(): Promise<Workout | null> {
   const activeWorkout = await db.workouts
     .where('status')
     .equals('active')
+    .and(w => !w.deletedAt)
     .first();
   return activeWorkout || null;
 }
@@ -23,13 +24,17 @@ export async function completeWorkout(workoutId: string): Promise<void> {
 }
 
 export async function listCompletedWorkouts(): Promise<Workout[]> {
-  return db.workouts
+  const list = await db.workouts
     .where('status')
     .equals('completed')
     .reverse()
     .sortBy('startedAt');
+  return list.filter(w => !w.deletedAt);
 }
 
 export async function deleteWorkout(workoutId: string): Promise<void> {
-  await db.workouts.delete(workoutId);
+  const now = Date.now();
+  const workout = await db.workouts.get(workoutId);
+  if (!workout) return;
+  await db.workouts.put({ ...workout, deletedAt: now, updatedAt: now });
 }

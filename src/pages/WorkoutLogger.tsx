@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
 import { useRestTimerStore } from '../store/restTimer';
 import { listExercises } from '../db/exercises';
-import { type Exercise, type WorkoutTemplate } from '../db/schema';
+import { type Exercise, type WorkoutTemplate, type Workout } from '../db/schema';
 import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
+import { listCompletedWorkouts } from '../db/workouts';
+import { getSplitRotationStatus } from '../lib/splitRotation';
 import NumberStepper from '../components/NumberStepper';
 import ExerciseList from '../components/ExerciseList';
 import { useProgramStore } from '../store/program';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
+import { RPE_OPTIONS } from '../lib/rpe';
 
 export default function WorkoutLogger() {
   const {
@@ -41,7 +44,19 @@ export default function WorkoutLogger() {
     endProgram,
   } = useProgramStore();
 
-  const [now] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const handleUpdateNow = () => {
+      setNow(Date.now());
+    };
+    window.addEventListener('focus', handleUpdateNow);
+    document.addEventListener('visibilitychange', handleUpdateNow);
+    return () => {
+      window.removeEventListener('focus', handleUpdateNow);
+      document.removeEventListener('visibilitychange', handleUpdateNow);
+    };
+  }, []);
 
   useEffect(() => {
     initProgram();
@@ -51,6 +66,32 @@ export default function WorkoutLogger() {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [completedWorkouts, setCompletedWorkouts] = useState<Workout[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    listCompletedWorkouts()
+      .then((list) => {
+        if (active) {
+          setCompletedWorkouts(list);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load completed workouts:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeWorkout?.id, activeWorkout?.status]);
+
+  const { splitStatuses, doneCount } = useMemo(() => {
+    if (!activeProgram) {
+      return { splitStatuses: [], doneCount: 0 };
+    }
+    const statuses = getSplitRotationStatus(completedWorkouts, activeProgram, now);
+    const count = statuses.filter((s) => s.doneInWindow).length;
+    return { splitStatuses: statuses, doneCount: count };
+  }, [completedWorkouts, activeProgram, now]);
 
   // Program Form state
   const [isProgramFormOpen, setIsProgramFormOpen] = useState(false);
@@ -322,6 +363,50 @@ export default function WorkoutLogger() {
                   );
                 })}
               </div>
+
+              {/* 最近 7 天輪動 */}
+              {activeProgram && (
+                <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <span>最近 7 天輪動</span>
+                    <span>{doneCount} / 4</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {splitStatuses.map((status) => {
+                      const { chipClass, label } = (() => {
+                        if (status.doneInWindow) {
+                          return {
+                            chipClass: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40',
+                            label: `✓ ${status.category} ${status.daysAgo}天前`
+                          };
+                        }
+                        if (status.lastTrainedAt === null) {
+                          return {
+                            chipClass: 'bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800',
+                            label: `○ ${status.category} 未練過`
+                          };
+                        }
+                        const isVeryOld = status.daysAgo !== null && status.daysAgo > 10;
+                        return {
+                          chipClass: isVeryOld
+                            ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30'
+                            : 'bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800',
+                          label: `○ ${status.category} ${status.daysAgo}天前`
+                        };
+                      })();
+
+                      return (
+                        <span
+                          key={status.category}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition ${chipClass}`}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* 今日該練區塊 */}
               <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/50 dark:border-indigo-900/40 rounded-xl p-3 flex justify-between items-center">
@@ -647,29 +732,8 @@ export default function WorkoutLogger() {
                                     </div>
                                   </div>
 
-                                  {/* 第二列：RPE + 類別（縮排對齊，避開組序欄）*/}
+                                  {/* 第二列：類別（縮排對齊，避開組序欄） */}
                                   <div className="flex items-center gap-2 pl-9">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">RPE</span>
-                                      <select
-                                        value={setLog.rpe || ''}
-                                        onChange={(e) =>
-                                          updateSet(entry.id, setLog.id, { rpe: parseFloat(e.target.value) || undefined })
-                                        }
-                                        className="border border-slate-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:border-indigo-500 font-bold text-slate-700 h-8"
-                                      >
-                                        <option value="">無</option>
-                                        <option value="10">10</option>
-                                        <option value="9.5">9.5</option>
-                                        <option value="9">9</option>
-                                        <option value="8.5">8.5</option>
-                                        <option value="8">8</option>
-                                        <option value="7.5">7.5</option>
-                                        <option value="7">7</option>
-                                        <option value="6.5">6.5</option>
-                                        <option value="6">6</option>
-                                      </select>
-                                    </div>
                                     <button
                                       type="button"
                                       onClick={() => updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })}
@@ -679,8 +743,27 @@ export default function WorkoutLogger() {
                                           : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
                                       }`}
                                     >
-                                      {setLog.isWarmup ? '暖身' : '正式'}
+                                      {setLog.isWarmup ? '暖身組' : '正式組'}
                                     </button>
+                                  </div>
+
+                                  {/* 第三列：RPE 訓練感受選單 */}
+                                  <div className="flex items-center gap-1.5 pl-9 w-full">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">感受</span>
+                                    <select
+                                      value={setLog.rpe || ''}
+                                      onChange={(e) =>
+                                        updateSet(entry.id, setLog.id, { rpe: parseFloat(e.target.value) || undefined })
+                                      }
+                                      className="border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs bg-white dark:bg-slate-900 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 font-bold text-slate-700 dark:text-slate-200 h-8 flex-1 w-full"
+                                    >
+                                      <option value="">無</option>
+                                      {RPE_OPTIONS.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
                                 </div>
                               )
