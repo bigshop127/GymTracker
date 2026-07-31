@@ -3,6 +3,7 @@ import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
 import { useRestTimerStore } from '../store/restTimer';
 import { listExercises } from '../db/exercises';
+import { ASSISTED_EXERCISE_NAMES } from '../data/seed-exercises';
 import { type Exercise, type WorkoutTemplate, type Workout } from '../db/schema';
 import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
 import { listCompletedWorkouts } from '../db/workouts';
@@ -893,11 +894,11 @@ export default function WorkoutLogger() {
                               </div>
 
                               {/* 第二列：類別（縮排對齊，避開組序欄） */}
-                              <div className="flex items-center gap-2 pl-9">
+                              <div className="flex items-center justify-between gap-2 pl-9">
                                 <button
                                   type="button"
                                   onClick={() => updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })}
-                                  className={`px-3 py-1.5 rounded-md text-[10px] font-extrabold select-none transition cursor-pointer ${
+                                  className={`px-3 py-1.5 rounded-md text-[10px] font-extrabold select-none transition cursor-pointer shrink-0 ${
                                     setLog.isWarmup
                                       ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30'
                                       : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30'
@@ -905,6 +906,21 @@ export default function WorkoutLogger() {
                                 >
                                   {setLog.isWarmup ? '暖身組' : '正式組'}
                                 </button>
+
+                                {exercise && ASSISTED_EXERCISE_NAMES.has(exercise.name) && (
+                                  <div className="flex items-center gap-1.5 max-w-[9rem] ml-auto">
+                                    <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                                      輔助 ({currentUnit})
+                                    </span>
+                                    <NumberStepper
+                                      value={setLog.assistWeight ?? 0}
+                                      onChange={(val) => updateSet(entry.id, setLog.id, { assistWeight: val > 0 ? val : undefined })}
+                                      step={2.5}
+                                      min={0}
+                                      decimals={1}
+                                    />
+                                  </div>
+                                )}
                               </div>
 
                               {/* 第三列：RPE 訓練感受選單 */}

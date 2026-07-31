@@ -118,14 +118,14 @@ describe('Dexie version(9)：內建動作改用確定性 id', () => {
 
   test('範本裡的動作參照也被改寫', async () => {
     const t1 = await db.templates.get('t1') as WorkoutTemplate;
-    expect(t1.entries[0].exerciseId).toBe('seed:坐姿划船');
+    expect(t1.entries[0].exerciseId).toBe('seed:坐姿划船（寬握）');
     expect(t1.updatedAt).toBeGreaterThan(OLD_TIME);
   });
 
   test('舊 id 對照表有留下來（供其他裝置修復用）', async () => {
     const alias = await db.idAliases.get('rand-bench') as IdAlias;
     expect(alias.newId).toBe('seed:槓鈴臥推');
-    expect(await db.idAliases.count()).toBe(2);   // 只有兩個內建動作
+    expect(await db.idAliases.count()).toBe(3);   // 兩個 v9 內建動作 + 一個 v10 改名動作
   });
 
   test('repairExerciseIds 能用別台裝置同步來的對照表修好資料', async () => {
@@ -143,7 +143,7 @@ describe('Dexie version(9)：內建動作改用確定性 id', () => {
     expect(repaired).toBe(1);
 
     const w3 = await db.workouts.get('w3') as Workout;
-    expect(w3.entries[0].exerciseId).toBe('seed:坐姿划船');
+    expect(w3.entries[0].exerciseId).toBe('seed:坐姿划船（寬握）');
     expect(w3.updatedAt as number).toBeGreaterThan(OLD_TIME);
 
     // 再跑一次應該沒東西可修（冪等，不會一直 bump updatedAt 造成無限重推）

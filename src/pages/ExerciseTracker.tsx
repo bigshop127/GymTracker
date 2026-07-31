@@ -117,22 +117,31 @@ export default function ExerciseTracker() {
                           <div className="flex-1 flex flex-wrap gap-1.5">
                             {session.sets.map((set, idx) => {
                               const isTopSet = !isCardio && !set.isWarmup && set.weight === maxWeight && maxWeight > 0;
-                              return (
-                                <span
-                                  key={idx}
-                                  className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
-                                    set.isWarmup
-                                      ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400'
-                                      : isTopSet
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                                  }`}
-                                >
-                                  {isCardio
-                                    ? `${Math.round((set.durationSeconds ?? 0) / 60)}分${set.distanceKm ? ` ${set.distanceKm}km` : ''}`
-                                    : `${formatWeight(set.weight, currentUnit)}${currentUnit} × ${set.reps}`}
-                                </span>
-                              );
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`text-[10px] font-bold px-2 py-1 rounded-lg inline-flex items-center gap-1 ${
+                                      set.isWarmup
+                                        ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400'
+                                        : isTopSet
+                                          ? 'bg-indigo-600 text-white'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    {isCardio
+                                      ? `${Math.round((set.durationSeconds ?? 0) / 60)}分${set.distanceKm ? ` ${set.distanceKm}km` : ''}`
+                                      : (
+                                        <>
+                                          <span>{formatWeight(set.weight, currentUnit)}{currentUnit} × {set.reps}</span>
+                                          {set.assistWeight !== undefined && (
+                                            <span className={`text-[8px] font-medium ml-0.5 shrink-0 ${isTopSet ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}>
+                                              輔助 -{formatWeight(set.assistWeight, currentUnit)}{currentUnit}
+                                            </span>
+                                          )}
+                                        </>
+                                      )}
+                                  </span>
+                                );
                             })}
                           </div>
                         </div>

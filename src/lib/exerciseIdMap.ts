@@ -15,18 +15,33 @@ export function remapEntryExerciseIds(
 ): boolean {
   if (!entries || idMap.size === 0) return false;
 
+  // Helper to resolve chain of alias mapping
+  const resolveId = (id: string): string => {
+    let current = id;
+    const visited = new Set<string>();
+    while (idMap.has(current)) {
+      if (visited.has(current)) {
+        // Break cycle if any (should not happen)
+        break;
+      }
+      visited.add(current);
+      current = idMap.get(current)!;
+    }
+    return current;
+  };
+
   let changed = false;
   for (const entry of entries) {
-    const mapped = idMap.get(entry.exerciseId);
-    if (mapped && mapped !== entry.exerciseId) {
-      entry.exerciseId = mapped;
+    const target = resolveId(entry.exerciseId);
+    if (target !== entry.exerciseId) {
+      entry.exerciseId = target;
       changed = true;
     }
 
     const candidates = entry.candidateExerciseIds;
     if (candidates) {
       // 換完可能撞在一起（兩個舊 id 指向同一個新 id），順手去重
-      const next = [...new Set(candidates.map((id) => idMap.get(id) ?? id))];
+      const next = [...new Set(candidates.map(resolveId))];
       if (next.length !== candidates.length || next.some((id, i) => id !== candidates[i])) {
         entry.candidateExerciseIds = next;
         changed = true;

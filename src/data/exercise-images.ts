@@ -14,10 +14,12 @@ export const EXERCISE_IMAGE_SLUGS: Record<string, string> = {
   '伏地挺身': 'pushups',
   '雙槓臂屈伸（胸）': 'dips-chest-version',
   '引體向上': 'pullups',
-  '滑輪下拉': 'wide-grip-lat-pulldown',
+  '滑輪下拉（寬握）': 'wide-grip-lat-pulldown',
+  '滑輪下拉（窄握）': 'wide-grip-lat-pulldown',
   '槓鈴划船': 'bent-over-barbell-row',
   '啞鈴單手划船': 'one-arm-dumbbell-row',
-  '坐姿划船': 'seated-cable-rows',
+  '坐姿划船（寬握）': 'seated-cable-rows',
+  '坐姿划船（窄握）': 'seated-cable-rows',
   'T槓划船': 'lying-t-bar-row',
   '硬舉': 'barbell-deadlift',
   '直臂下壓': 'straight-arm-pulldown',
@@ -41,7 +43,8 @@ export const EXERCISE_IMAGE_SLUGS: Record<string, string> = {
   '錘式彎舉': 'hammer-curls',
   '牧師彎舉': 'preacher-curl',
   '纜繩彎舉': 'standing-biceps-cable-curl',
-  '纜繩下壓': 'triceps-pushdown',
+  '纜繩下壓（平把）': 'triceps-pushdown',
+  '纜繩下壓（繩索）': 'triceps-pushdown',
   '仰臥臂屈伸': 'lying-triceps-press',
   '啞鈴過頭臂屈伸': 'standing-dumbbell-triceps-extension',
   '雙槓撐體': 'dips-triceps-version',
@@ -76,14 +79,14 @@ const QCARD_NAMES = new Set<string>([
   // 胸
   '槓鈴臥推', '上斜槓鈴臥推', '啞鈴臥推', '上斜啞鈴臥推', '啞鈴飛鳥', '蝴蝶機夾胸', '纜繩夾胸', '伏地挺身',
   // 背
-  '引體向上', '滑輪下拉', '槓鈴划船', '啞鈴單手划船', '坐姿划船', 'T槓划船', '硬舉', '直臂下壓',
+  '引體向上', '滑輪下拉（寬握）', '滑輪下拉（窄握）', '槓鈴划船', '啞鈴單手划船', '坐姿划船（寬握）', '坐姿划船（窄握）', 'T槓划船', '硬舉', '直臂下壓',
   // 腿臀
   '槓鈴深蹲', '腿推', '腿屈伸', '腿後勾', '羅馬尼亞硬舉', '弓步蹲', '保加利亞分腿蹲', '站姿提踵',
   '槓鈴臀推', '臀橋', '髖外展機', '纜繩後踢腿',
   // 肩
   '槓鈴肩推', '啞鈴肩推', '啞鈴側平舉', '啞鈴前平舉', '反向飛鳥', '臉拉', '直立划船',
   // 手臂
-  '槓鈴彎舉', '啞鈴彎舉', '錘式彎舉', '牧師彎舉', '纜繩彎舉', '纜繩下壓', '仰臥臂屈伸', '啞鈴過頭臂屈伸', '雙槓撐體', '窄握臥推',
+  '槓鈴彎舉', '啞鈴彎舉', '錘式彎舉', '牧師彎舉', '纜繩彎舉', '纜繩下壓（平把）', '纜繩下壓（繩索）', '仰臥臂屈伸', '啞鈴過頭臂屈伸', '雙槓撐體', '窄握臥推',
   // 核心
   '棒式', '捲腹', '懸吊抬腿', '俄羅斯轉體', '滑輪捲腹',
 ]);

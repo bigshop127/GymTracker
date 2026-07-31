@@ -43,8 +43,9 @@
 ```typescript
 // ---- 列舉 ----
 type Unit = 'kg' | 'lb';
-type MuscleGroup = '胸' | '背' | '腿' | '肩' | '二頭' | '三頭' | '核心' | '臀' | '全身' | '有氧';
+type MuscleGroup = '胸' | '背' | '腿臀' | '肩' | '手臂' | '核心' | '有氧';
 type Equipment = '槓鈴' | '啞鈴' | '機械' | '纜繩' | '徒手' | '壺鈴' | '其他';
+type ArmSubGroup = '二頭' | '三頭';
 
 // ---- 動作（動作庫的一筆）----
 interface Exercise {
@@ -55,6 +56,7 @@ interface Exercise {
   isCustom: boolean;      // 內建 false / 使用者自訂 true
   notes?: string;
   createdAt: number;      // Date.now()
+  subGroup?: ArmSubGroup;  // (v1.11)
 }
 
 // ---- 一組（最小紀錄單位）----
@@ -66,6 +68,7 @@ interface SetLog {
   isWarmup: boolean;      // 暖身組不計入 PR / 容量統計
   completed: boolean;     // 是否已打勾完成
   createdAt: number;
+  assistWeight?: number;  // 輔助重量（kg）(v1.11)
 }
 
 // ---- 一次訓練中的某個動作（含多組）----
@@ -203,9 +206,10 @@ GymTracker/
 | Phase 14（v1.8） | 1RM 計算機分頁 | 獨立 1RM 速算工具分頁 + NumberStepper + 沿用既有 e1rm 公式與設定 |
 | Phase 15（v1.9） | 雲端同步修正 + 訓練感受選單 + 週輪動 | 修 3 個掉資料 bug（雙向增量/不覆寫 updatedAt/軟刪除墓碑）+ header 同步鈕 + RPE 改四句中文 + 拉推腿手滾動 7 天輪動；schema version(8) 軟刪除 |
 | Phase 16（v1.10） | 替代動作擇一紀錄 + 訓練菜單頂部分頁 | WorkoutEntry 加 candidateExerciseIds?（擇一切換、範本綁+當場加）+ 進行中訓練改頂部橫向捲動分頁（一頁一動作、點開才展開）；純函式 src/lib/workoutEntries.ts，無 Dexie 版本/Firestore 規則變更 |
+| Phase 17（v1.11） | 動作庫整理 + 輔助重量 + 手臂細分 | 內建動作拆分/改名/重分類 (version 10 遷移) + 輔助重量欄位 + 手臂細分二頭/三頭次級篩選與自訂部位。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-07-28）**：Phase 0–16 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.8（Phase 7–14）+ v1.9（Phase 15：雲端同步修正+感受選單+週輪動）+ v1.10（Phase 16：替代動作擇一紀錄+訓練菜單頂部分頁）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-07-31）**：Phase 0–17 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.10（Phase 7–16）+ v1.11（Phase 17：動作庫整理+輔助重量+手臂細分）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案
@@ -239,7 +243,8 @@ GymTracker/
 3. **weight 一律存 kg**，顯示層才換算 → 避免改單位時舊資料數值意義改變。
 4. **uuid** 用 `crypto.randomUUID()` —— **但「內建 seed 資料」不行**。內建動作若用隨機 uuid，每台裝置各生一套 id；雲端同步又只推自訂動作，於是 A 裝置的範本／訓練同步到 B 就指到查不到的 id（UI 卡在「讀取中...」，進度統計也被切成兩半）。內建資料一律用**確定性 id**（`seedExerciseId(name)` → `seed:動作名稱`，見 `src/data/seed-exercises.ts`）；歷史資料靠 Dexie version(9) + `idAliases` 對照表修復（`src/db/repairExerciseIds.ts`）。
 5. **Firestore 不收 `undefined` 欄位**：`setDoc()` 遇到任一個值為 undefined 的鍵（含 `entries[]` 巢狀）就整筆拋錯。搭配 `Promise.all` 會讓**一筆髒資料害整輪同步中斷**，而且 `lastSyncAt` 不前進 → 每次重試都撞同一筆，永久卡死。三層防護：`initializeFirestore({ ignoreUndefinedProperties: true })`、`pushDoc` 送出前 `stripUndefined()`、推送改 `Promise.allSettled`。
-   - 另注意 merge 寫入時「省略鍵」不等於「清空欄位」——雲端會留著舊值。要清空得送 `deleteField()`（只有頂層鍵需要；陣列裡的巢狀物件本來就是整包覆蓋）。
+    - 另注意 merge 寫入時「省略鍵」不等於「清空欄位」——雲端會留著舊值。要清空得送 `deleteField()`（只有頂層鍵需要；陣列裡的巢狀物件本來就是整包覆蓋）。
+6. **改內建動作的名稱＝改它的 id**：一定要配 version bump + `idAliases` 遷移。否則舊訓練/範本參照會失效，導致 UI 顯示「讀取中...」（如本機舊訓練或另一台裝置的同步資料）。
 
 ---
 

@@ -264,6 +264,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         ...(lastSet?.durationSeconds !== undefined && { durationSeconds: lastSet.durationSeconds }),
         ...(lastSet?.distanceKm !== undefined && { distanceKm: lastSet.distanceKm }),
         ...(lastSet?.calories !== undefined && { calories: lastSet.calories }),
+        ...(lastSet?.assistWeight !== undefined && { assistWeight: lastSet.assistWeight }),
       };
 
       return {
@@ -462,6 +463,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
           isWarmup: setLog.isWarmup,
           completed: false,
           createdAt: Date.now(),
+          ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
         })),
       })),
     };
@@ -505,6 +507,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
           ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
           ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
           ...(setLog.calories !== undefined && { calories: setLog.calories }),
+          ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
         })),
       })),
     };
@@ -567,6 +570,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
             ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
             ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
             ...(setLog.calories !== undefined && { calories: setLog.calories }),
+            ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
           })),
         })),
       };

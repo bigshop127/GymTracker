@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { seedExerciseId } from '../data/seed-exercises';
+import { seedExerciseId, SEED_EXERCISES } from '../data/seed-exercises';
 import { remapEntryExerciseIds } from '../lib/exerciseIdMap';
 
 // ---- 型別與介面定義 (依據 docs/ROADMAP.md §2) ----
@@ -7,6 +7,8 @@ import { remapEntryExerciseIds } from '../lib/exerciseIdMap';
 export type Unit = 'kg' | 'lb';
 export type MuscleGroup = '胸' | '背' | '腿臀' | '肩' | '手臂' | '核心' | '有氧';
 export type Equipment = '槓鈴' | '啞鈴' | '機械' | '纜繩' | '徒手' | '壺鈴' | '其他';
+
+export type ArmSubGroup = '二頭' | '三頭';
 
 // ---- 動作 (Exercise) ----
 export interface Exercise {
@@ -19,6 +21,7 @@ export interface Exercise {
   createdAt: number;      // Date.now()
   updatedAt?: number;     // 雲端同步用：最後修改時間
   deletedAt?: number;     // 雲端同步用：軟刪除時間
+  subGroup?: ArmSubGroup;
 }
 
 // ---- 一組 (SetLog) ----
@@ -34,6 +37,7 @@ export interface SetLog {
   durationSeconds?: number;  // 持續時長（秒）
   distanceKm?: number;       // 距離（公里）
   calories?: number;         // 消耗卡路里
+  assistWeight?: number;     // 輔助重量（kg，正數＝被機器/彈力帶抵銷掉的重量）
 }
 
 // ---- 一次訓練中的某個動作 (WorkoutEntry) ----
@@ -249,6 +253,104 @@ class GymTrackerDatabase extends Dexie {
       await tx.table('templates').toCollection().modify((t: WorkoutTemplate) => {
         if (remapEntryExerciseIds(t.entries, idMap)) t.updatedAt = now;
       });
+    });
+
+    // version(10): 內建動作拆分/改名/重分類；移除宗諺課表的「斜板推」
+    this.version(10).stores({}).upgrade(async (tx) => {
+      const now = Date.now();
+
+      // ── (1) 內建動作改名 → 換 id，沿用 idAliases ──
+      const RENAMES: [string, string][] = [
+        ['滑輪下拉', '滑輪下拉（寬握）'],
+        ['坐姿划船', '坐姿划船（寬握）'],
+        ['纜繩下壓', '纜繩下壓（平把）'],
+      ];
+      const idMap = new Map<string, string>();
+      for (const [oldName, newName] of RENAMES) {
+        const oldId = seedExerciseId(oldName);
+        const row: Exercise | undefined = await tx.table('exercises').get(oldId);
+        if (!row) continue;                       // 新裝置沒有舊資料，正常
+        const newId = seedExerciseId(newName);
+        await tx.table('exercises').delete(oldId);
+        await tx.table('exercises').put({ ...row, id: newId, name: newName, updatedAt: now });
+        idMap.set(oldId, newId);
+      }
+      if (idMap.size > 0) {
+        await tx.table('idAliases').bulkPut(
+          [...idMap].map(([id, newId]) => ({ id, newId, updatedAt: now })),
+        );
+        await tx.table('workouts').toCollection().modify((w: Workout) => {
+          if (remapEntryExerciseIds(w.entries, idMap)) w.updatedAt = now;
+        });
+        await tx.table('templates').toCollection().modify((t: WorkoutTemplate) => {
+          if (remapEntryExerciseIds(t.entries, idMap)) t.updatedAt = now;
+        });
+      }
+
+      // ── (2) 啞鈴飛鳥 胸 → 肩（id 不變，不需要 alias）──
+      // ── (3) 回填手臂動作的 subGroup（依 SEED_EXERCISES 對照）──
+      for (const seed of SEED_EXERCISES) {
+        const id = seedExerciseId(seed.name);
+        const row: Exercise | undefined = await tx.table('exercises').get(id);
+        if (row) {
+          let changed = false;
+          if (row.muscleGroup !== seed.muscleGroup) {
+            row.muscleGroup = seed.muscleGroup;
+            changed = true;
+          }
+          if (row.subGroup !== seed.subGroup) {
+            row.subGroup = seed.subGroup;
+            changed = true;
+          }
+          if (changed) {
+            row.updatedAt = now;
+            await tx.table('exercises').put(row);
+          }
+        }
+      }
+
+      // ── (4) 移除「斜板推」──
+      const customXieBanTui = await tx.table('exercises')
+        .filter((e: Exercise) => e.name === '斜板推' && e.isCustom)
+        .first();
+
+      if (customXieBanTui) {
+        await tx.table('exercises').put({
+          ...customXieBanTui,
+          deletedAt: now,
+          updatedAt: now
+        });
+
+        const xieBanTuiId = customXieBanTui.id;
+
+        await tx.table('templates').toCollection().modify((t: WorkoutTemplate) => {
+          if (!t.entries) return;
+          const oldLen = t.entries.length;
+          const nextEntries = t.entries.filter(entry => entry.exerciseId !== xieBanTuiId);
+          if (nextEntries.length < oldLen) {
+            nextEntries.forEach((entry, i) => {
+              entry.order = i;
+            });
+            t.entries = nextEntries;
+            t.updatedAt = now;
+          }
+        });
+
+        await tx.table('workouts')
+          .filter((w: Workout) => w.status === 'active')
+          .modify((w: Workout) => {
+            if (!w.entries) return;
+            const oldLen = w.entries.length;
+            const nextEntries = w.entries.filter(entry => entry.exerciseId !== xieBanTuiId);
+            if (nextEntries.length < oldLen) {
+              nextEntries.forEach((entry, i) => {
+                entry.order = i;
+              });
+              w.entries = nextEntries;
+              w.updatedAt = now;
+            }
+          });
+      }
     });
   }
 }

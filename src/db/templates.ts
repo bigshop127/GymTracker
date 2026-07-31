@@ -27,6 +27,7 @@ export function createTemplateFromWorkout(workout: Workout, name: string): Worko
         ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
         ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
         ...(setLog.calories !== undefined && { calories: setLog.calories }),
+        ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
       })),
     })),
   };

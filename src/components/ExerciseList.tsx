@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from 'react';
-import { type Exercise, type MuscleGroup, type Equipment } from '../db/schema';
+import { type Exercise, type MuscleGroup, type Equipment, type ArmSubGroup } from '../db/schema';
 import { listExercises, addExercise, updateExercise, deleteExercise } from '../db/exercises';
 import { getExerciseImages, getExerciseQCard } from '../data/exercise-images';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { MUSCLE_COLORS } from '../data/muscle-colors';
+import { sortExercisesForDisplay } from '../lib/exerciseOrder';
 
 const MUSCLE_GROUPS: MuscleGroup[] = ['有氧', '胸', '背', '腿臀', '肩', '手臂', '核心'];
 const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手', '壺鈴', '其他'];
@@ -186,6 +187,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | '全部'>('全部');
+  const [selectedSub, setSelectedSub] = useState<ArmSubGroup | '全部'>('全部');
   const [detailEx, setDetailEx] = useState<Exercise | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -195,6 +197,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
   const [formName, setFormName] = useState('');
   const [formMuscle, setFormMuscle] = useState<MuscleGroup>('胸');
   const [formEquipment, setFormEquipment] = useState<Equipment>('槓鈴');
+  const [formSub, setFormSub] = useState<ArmSubGroup | ''>('');
   const [formNotes, setFormNotes] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -212,19 +215,27 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     return () => clearTimeout(t);
   }, []);
 
+  const handleMuscleChange = (muscle: MuscleGroup | '全部') => {
+    setSelectedMuscle(muscle);
+    setSelectedSub('全部');
+  };
+
   const filteredExercises = useMemo(() => {
-    return exercises.filter((ex) => {
+    const filtered = exercises.filter((ex) => {
       const matchesSearch = ex.name.toLowerCase().includes(search.toLowerCase());
       const matchesMuscle = selectedMuscle === '全部' || ex.muscleGroup === selectedMuscle;
-      return matchesSearch && matchesMuscle;
+      const matchesSub = selectedMuscle !== '手臂' || selectedSub === '全部' || ex.subGroup === selectedSub;
+      return matchesSearch && matchesMuscle && matchesSub;
     });
-  }, [exercises, search, selectedMuscle]);
+    return sortExercisesForDisplay(filtered);
+  }, [exercises, search, selectedMuscle, selectedSub]);
 
   const handleOpenAdd = () => {
     setEditingExercise(null);
     setFormName('');
     setFormMuscle('胸');
     setFormEquipment('槓鈴');
+    setFormSub('');
     setFormNotes('');
     setFormError('');
     setIsFormOpen(true);
@@ -236,6 +247,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
     setFormName(ex.name);
     setFormMuscle(ex.muscleGroup);
     setFormEquipment(ex.equipment);
+    setFormSub(ex.subGroup || '');
     setFormNotes(ex.notes || '');
     setFormError('');
     setIsFormOpen(true);
@@ -247,6 +259,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
       setFormError('請輸入動作名稱');
       return;
     }
+    const subGroupVal = formMuscle === '手臂' ? (formSub || undefined) : undefined;
     try {
       if (editingExercise) {
         await updateExercise(editingExercise.id, {
@@ -254,6 +267,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
           muscleGroup: formMuscle,
           equipment: formEquipment,
           notes: formNotes.trim() || undefined,
+          subGroup: subGroupVal,
         });
       } else {
         await addExercise({
@@ -261,6 +275,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
           muscleGroup: formMuscle,
           equipment: formEquipment,
           notes: formNotes.trim() || undefined,
+          subGroup: subGroupVal,
         });
       }
       setIsFormOpen(false);
@@ -304,7 +319,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
         <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-none -mx-4 px-4">
           <button
-            onClick={() => setSelectedMuscle('全部')}
+            onClick={() => handleMuscleChange('全部')}
             className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-200 ${
               selectedMuscle === '全部'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
@@ -316,7 +331,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
           {MUSCLE_GROUPS.map((muscle) => (
             <button
               key={muscle}
-              onClick={() => setSelectedMuscle(muscle)}
+              onClick={() => handleMuscleChange(muscle)}
               className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition duration-200 ${
                 selectedMuscle === muscle
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 dark:shadow-none'
@@ -327,6 +342,24 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
             </button>
           ))}
         </div>
+
+        {selectedMuscle === '手臂' && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-none -mx-4 px-4 pt-1 animate-fadeIn">
+            {(['全部', '二頭', '三頭'] as const).map((sub) => (
+              <button
+                key={sub}
+                onClick={() => setSelectedSub(sub)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap transition duration-200 ${
+                  selectedSub === sub
+                    ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {sub}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 視圖切換（select 模式）+ 新增按鈕（manage 模式）*/}
@@ -414,7 +447,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
       {mode === 'manage' && detailEx && (() => {
         const imgs = getExerciseImages(detailEx.name);
         return (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-end justify-center">
             <div className="fixed inset-0" onClick={() => setDetailEx(null)} />
             <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto">
               <div className="flex justify-between items-start">
@@ -478,9 +511,9 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
 
       {/* 新增 / 編輯動作 Modal */}
       {isFormOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-end justify-center">
           <div className="fixed inset-0" onClick={() => setIsFormOpen(false)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 animate-slide-up">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 animate-slide-up max-h-[85vh] overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
                 {editingExercise ? '編輯自訂動作' : '新增自訂動作'}
@@ -536,6 +569,21 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
                   </select>
                 </div>
               </div>
+
+              {formMuscle === '手臂' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">細分部位</label>
+                  <select
+                    value={formSub}
+                    onChange={(e) => setFormSub(e.target.value as ArmSubGroup | '')}
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                  >
+                    <option value="">不分</option>
+                    <option value="二頭">二頭</option>
+                    <option value="三頭">三頭</option>
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400">動作備註 (選填)</label>

@@ -24,7 +24,12 @@ export async function updateExercise(id: string, updates: Partial<Omit<Exercise,
   const exercise = await db.exercises.get(id);
   if (!exercise) throw new Error('Exercise not found');
   if (!exercise.isCustom) throw new Error('Cannot update built-in exercise');
-  await db.exercises.update(id, { ...updates, updatedAt: Date.now() });
+  
+  const merged = { ...exercise, ...updates, updatedAt: Date.now() };
+  if (updates.subGroup === undefined) {
+    delete merged.subGroup;
+  }
+  await db.exercises.put(merged);
 }
 
 export async function deleteExercise(id: string): Promise<void> {
@@ -45,6 +50,7 @@ export async function seedExercisesIfEmpty(): Promise<void> {
       name: seed.name,
       muscleGroup: seed.muscleGroup,
       equipment: seed.equipment,
+      subGroup: seed.subGroup,
       isCustom: false,
       createdAt: now + index,
       updatedAt: now + index,
@@ -64,6 +70,7 @@ export async function seedExercisesIfEmpty(): Promise<void> {
       name: seed.name,
       muscleGroup: seed.muscleGroup,
       equipment: seed.equipment,
+      subGroup: seed.subGroup,
       isCustom: false,
       createdAt: now + index,
       updatedAt: now + index,

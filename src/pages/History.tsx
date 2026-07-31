@@ -711,6 +711,11 @@ export default function History() {
                                         {rpeToShortLabel(setLog.rpe) || `RPE ${setLog.rpe}`}
                                       </span>
                                     )}
+                                    {setLog.assistWeight !== undefined && (
+                                      <span className="text-[10px] text-slate-400 font-semibold">
+                                        輔助 -{formatWeight(setLog.assistWeight, currentUnit, 1)}{currentUnit}
+                                      </span>
+                                    )}
                                   </>
                                 )}
                               </div>
