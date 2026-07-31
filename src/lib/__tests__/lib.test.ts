@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { kgToLb, lbToKg, formatWeight } from '../units';
+import { kgToLb, lbToKg, formatWeight, toKgFromDisplay, weightStep } from '../units';
 import { calculateE1rm } from '../e1rm';
 import { calculateSetVolume, calculateEntryVolume, calculateWorkoutVolume } from '../volume';
 
@@ -17,6 +17,24 @@ describe('Units Library', () => {
   test('formatWeight correctly formats based on unit', () => {
     expect(formatWeight(100, 'kg')).toBe(100);
     expect(formatWeight(100, 'lb')).toBe(220.5); // 220.46226 rounded to 1 decimal
+  });
+
+  test('toKgFromDisplay 是 formatWeight 的反向操作', () => {
+    expect(toKgFromDisplay(100, 'kg')).toBe(100);
+    expect(toKgFromDisplay(220.46226, 'lb')).toBeCloseTo(100, 5);
+  });
+
+  test('輸入欄位往返一次不會漂移（lb 顯示 → 存 kg → 再顯示）', () => {
+    // 使用者在 lb 模式下打 135 → 存成 kg → 欄位重新顯示，必須還是 135
+    const stored = toKgFromDisplay(135, 'lb');
+    expect(formatWeight(stored, 'lb')).toBe(135);
+    // 反覆往返也不該累積誤差
+    expect(formatWeight(toKgFromDisplay(formatWeight(stored, 'lb'), 'lb'), 'lb')).toBe(135);
+  });
+
+  test('weightStep 依單位給級距', () => {
+    expect(weightStep('kg')).toBe(2.5);
+    expect(weightStep('lb')).toBe(5);
   });
 });
 

@@ -1,3 +1,12 @@
+/**
+ * 內建動作庫 seed。首次啟動由 db 的 seedExercisesIfEmpty() 寫入；
+ * 之後新增的 seed 動作也靠同一支函式「依名稱補齊」。
+ *
+ * ⚠️ 本陣列的**順序就是動作庫的顯示順序**（見 src/lib/exerciseOrder.ts）。
+ * ⚠️ 改一個動作的 name 等於改它的 id（見下方 seedExerciseId），
+ *    一定要配 Dexie version bump + idAliases 遷移，否則舊訓練/範本的參照會失效。
+ */
+
 import type { MuscleGroup, Equipment, ArmSubGroup } from '../db/schema';
 
 export interface ExerciseSeed {
@@ -9,6 +18,11 @@ export interface ExerciseSeed {
 
 /**
  * 內建動作的確定性 id：同一個名稱在任何裝置都得到同一個 id。
+ *
+ * 早期改用 crypto.randomUUID()，導致每台裝置的內建動作 id 都不一樣；
+ * 而雲端同步只推送自訂動作，跨裝置的範本／訓練因此指到查不到的 id
+ * （UI 卡在「讀取中...」，進度統計也被切成兩半）。
+ * 內建動作不上雲，靠這個純函式讓兩邊自然對齊即可。
  */
 export function seedExerciseId(name: string): string {
   return `seed:${name}`;

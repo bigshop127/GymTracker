@@ -13,6 +13,7 @@ import ExerciseList from '../components/ExerciseList';
 import { useProgramStore } from '../store/program';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
 import { RPE_OPTIONS } from '../lib/rpe';
+import { formatWeight, toKgFromDisplay, weightStep } from '../lib/units';
 
 export default function WorkoutLogger() {
   const {
@@ -857,9 +858,9 @@ export default function WorkoutLogger() {
                                     重量 ({currentUnit})
                                   </span>
                                   <NumberStepper
-                                    value={setLog.weight}
-                                    onChange={(val) => updateSet(entry.id, setLog.id, { weight: val })}
-                                    step={2.5}
+                                    value={formatWeight(setLog.weight, currentUnit)}
+                                    onChange={(val) => updateSet(entry.id, setLog.id, { weight: toKgFromDisplay(val, currentUnit) })}
+                                    step={weightStep(currentUnit)}
                                     min={0}
                                     decimals={1}
                                   />
@@ -916,9 +917,9 @@ export default function WorkoutLogger() {
                                   </span>
                                   <div className="flex-1 min-w-0">
                                     <NumberStepper
-                                      value={setLog.assistWeight ?? 0}
-                                      onChange={(val) => updateSet(entry.id, setLog.id, { assistWeight: val > 0 ? val : undefined })}
-                                      step={2.5}
+                                      value={formatWeight(setLog.assistWeight ?? 0, currentUnit)}
+                                      onChange={(val) => updateSet(entry.id, setLog.id, { assistWeight: val > 0 ? toKgFromDisplay(val, currentUnit) : undefined })}
+                                      step={weightStep(currentUnit)}
                                       min={0}
                                       decimals={1}
                                     />

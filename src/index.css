@@ -11,6 +11,17 @@
       transform: translateY(0);
     }
   }
+
+  --animate-fade-in: fade-in 0.15s ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 /* 隱藏滾動條且保持滾動功能 */

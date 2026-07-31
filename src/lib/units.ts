@@ -25,3 +25,18 @@ export function formatWeight(weightInKg: number, unit: 'kg' | 'lb', decimals = 1
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
 }
+
+/**
+ * 把使用者在「顯示單位」下輸入的數字換回 kg（儲存單位）。
+ * formatWeight 的反向操作：輸入欄位顯示用 formatWeight，回寫用這支。
+ */
+export function toKgFromDisplay(value: number, unit: 'kg' | 'lb'): number {
+  return unit === 'kg' ? value : lbToKg(value);
+}
+
+/**
+ * 重量輸入欄位的增減級距：kg 用 2.5（最小片一對），lb 用 5。
+ */
+export function weightStep(unit: 'kg' | 'lb'): number {
+  return unit === 'kg' ? 2.5 : 5;
+}

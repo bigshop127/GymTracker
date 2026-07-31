@@ -25,9 +25,12 @@ export async function updateExercise(id: string, updates: Partial<Omit<Exercise,
   if (!exercise) throw new Error('Exercise not found');
   if (!exercise.isCustom) throw new Error('Cannot update built-in exercise');
   
-  const merged = { ...exercise, ...updates, updatedAt: Date.now() };
-  if (updates.subGroup === undefined) {
-    delete merged.subGroup;
+  // 用 put 整筆覆寫（而非 update）才能真正清空欄位。
+  // 判斷要看「合併後」的值，不是看 updates：updates 沒帶這個鍵＝不動它，
+  // 帶了 undefined ＝要清空，兩者在 `updates.x === undefined` 下無法區分。
+  const merged: Exercise = { ...exercise, ...updates, updatedAt: Date.now() };
+  for (const key of ['subGroup', 'notes'] as const) {
+    if (merged[key] === undefined) delete merged[key];
   }
   await db.exercises.put(merged);
 }

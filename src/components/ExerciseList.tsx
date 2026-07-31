@@ -344,7 +344,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
         </div>
 
         {selectedMuscle === '手臂' && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-none -mx-4 px-4 pt-1 animate-fadeIn">
+          <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-none -mx-4 px-4 pt-1 animate-fade-in">
             {(['全部', '二頭', '三頭'] as const).map((sub) => (
               <button
                 key={sub}
