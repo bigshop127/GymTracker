@@ -6,6 +6,7 @@ import History from './pages/History';
 import ExerciseLibrary from './pages/ExerciseLibrary';
 import SettingsPage from './pages/SettingsPage';
 import { seedExercisesIfEmpty } from './db/exercises';
+import { repairExerciseIds } from './db/repairExerciseIds';
 import { useActiveWorkoutStore, flushPendingSave } from './store/activeWorkout';
 import { useSettingsStore } from './store/settings';
 
@@ -23,9 +24,11 @@ function App() {
       try {
         // 1. Seed 動作庫
         await seedExercisesIfEmpty();
-        // 2. 初始化全域設定
+        // 2. 修好指向舊動作 id 的訓練／範本（跨裝置同步留下的）
+        await repairExerciseIds();
+        // 3. 初始化全域設定
         await initSettings();
-        // 3. 恢復進行中訓練 (草稿)
+        // 4. 恢復進行中訓練 (草稿)
         await initActiveWorkout();
       } catch (err) {
         console.error('App initialization failed:', err);

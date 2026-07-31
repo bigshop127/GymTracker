@@ -17,6 +17,17 @@ export interface ExerciseSeed {
   equipment: Equipment;
 }
 
+/**
+ * 內建動作的確定性 id：同一個名稱在任何裝置都得到同一個 id。
+ *
+ * 早期改用 crypto.randomUUID()，導致每台裝置的內建動作 id 都不一樣；
+ * 而雲端同步只推送自訂動作，跨裝置的範本／訓練因此指到查不到的 id。
+ * 內建動作不上雲，靠這個純函式讓兩邊自然對齊即可。
+ */
+export function seedExerciseId(name: string): string {
+  return `seed:${name}`;
+}
+
 export const SEED_EXERCISES: ExerciseSeed[] = [
   // ---- 胸 ----
   { name: '槓鈴臥推',       muscleGroup: '胸', equipment: '槓鈴' },

@@ -1,4 +1,6 @@
 import Dexie, { type Table } from 'dexie';
+import { seedExerciseId } from '../data/seed-exercises';
+import { remapEntryExerciseIds } from '../lib/exerciseIdMap';
 
 // ---- 型別與介面定義 (依據 docs/ROADMAP.md §2) ----
 
@@ -118,6 +120,16 @@ export interface TrainingProgram {
   deletedAt?: number;                 // 雲端同步用：軟刪除
 }
 
+// ---- 動作 id 對照 (IdAlias) ----
+// 記錄「舊的隨機內建動作 id → 新的確定性 id」。
+// 這張表會參與雲端同步：各裝置把自己的舊 id 對照表推上去，
+// 於是任何一台都能修好其他裝置留下來的舊 id 參照。
+export interface IdAlias {
+  id: string;             // 舊 id
+  newId: string;          // 新 id（seedExerciseId(name)）
+  updatedAt: number;
+}
+
 // ---- Dexie 資料庫定義 ----
 
 class GymTrackerDatabase extends Dexie {
@@ -127,6 +139,7 @@ class GymTrackerDatabase extends Dexie {
   settings!: Table<Settings, string>;
   templates!: Table<WorkoutTemplate, string>;
   programs!: Table<TrainingProgram, string>;
+  idAliases!: Table<IdAlias, string>;
 
 
   constructor() {
@@ -200,6 +213,43 @@ class GymTrackerDatabase extends Dexie {
 
     // version(8): 軟刪除支援 (exercises, workouts, templates, bodyMetrics, programs)
     this.version(8).stores({});
+
+    // version(9): 內建動作改用確定性 id（seed:動作名稱），跨裝置一致。
+    // 舊的隨機 id 寫進 idAliases，並就地修好 workouts / templates 裡的參照。
+    this.version(9).stores({
+      idAliases: 'id, updatedAt',
+    }).upgrade(async (tx) => {
+      const now = Date.now();
+      const exercises: Exercise[] = await tx.table('exercises').toArray();
+
+      const idMap = new Map<string, string>();
+      const canonical = new Map<string, Exercise>();
+      for (const ex of exercises) {
+        if (ex.isCustom) continue;              // 自訂動作本來就會同步，id 不動
+        const newId = seedExerciseId(ex.name);
+        if (newId === ex.id) continue;          // 已經是新格式
+        idMap.set(ex.id, newId);
+        // 同名多筆（理論上不會發生）只留一筆，避免撞主鍵
+        if (!canonical.has(newId)) {
+          canonical.set(newId, { ...ex, id: newId, updatedAt: ex.updatedAt ?? now });
+        }
+      }
+      if (idMap.size === 0) return;
+
+      await tx.table('exercises').bulkDelete([...idMap.keys()]);
+      await tx.table('exercises').bulkPut([...canonical.values()]);
+      await tx.table('idAliases').bulkPut(
+        [...idMap].map(([oldId, newId]) => ({ id: oldId, newId, updatedAt: now })),
+      );
+
+      // 改寫參照；有動到的才 bump updatedAt，讓修好的版本推得上雲端
+      await tx.table('workouts').toCollection().modify((w: Workout) => {
+        if (remapEntryExerciseIds(w.entries, idMap)) w.updatedAt = now;
+      });
+      await tx.table('templates').toCollection().modify((t: WorkoutTemplate) => {
+        if (remapEntryExerciseIds(t.entries, idMap)) t.updatedAt = now;
+      });
+    });
   }
 }
 

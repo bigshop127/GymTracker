@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { initializeFirestore, type Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -31,7 +31,9 @@ export function getFirebaseAuth(): Auth {
 }
 
 export function getFirebaseFirestore(): Firestore {
-  if (!firestore) firestore = getFirestore(getFirebaseApp());
+  // ignoreUndefinedProperties：Firestore 預設遇到 undefined 欄位就整筆拋錯，
+  // 一筆髒資料會害整輪同步中斷。一律當成「該欄位不存在」處理。
+  if (!firestore) firestore = initializeFirestore(getFirebaseApp(), { ignoreUndefinedProperties: true });
   return firestore;
 }
 

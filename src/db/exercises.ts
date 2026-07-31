@@ -1,5 +1,5 @@
 import { db, type Exercise } from './schema';
-import { SEED_EXERCISES } from '../data/seed-exercises';
+import { SEED_EXERCISES, seedExerciseId } from '../data/seed-exercises';
 
 export async function listExercises(): Promise<Exercise[]> {
   const exercises = await db.exercises.toArray();
@@ -41,7 +41,7 @@ export async function seedExercisesIfEmpty(): Promise<void> {
   if (existing.length === 0) {
     const now = Date.now();
     const exercisesToInsert: Exercise[] = SEED_EXERCISES.map((seed, index) => ({
-      id: crypto.randomUUID(),
+      id: seedExerciseId(seed.name),
       name: seed.name,
       muscleGroup: seed.muscleGroup,
       equipment: seed.equipment,
@@ -49,7 +49,7 @@ export async function seedExercisesIfEmpty(): Promise<void> {
       createdAt: now + index,
       updatedAt: now + index,
     }));
-    await db.exercises.bulkAdd(exercisesToInsert);
+    await db.exercises.bulkPut(exercisesToInsert);
     console.log(`Seeded ${exercisesToInsert.length} default exercises.`);
     return;
   }
@@ -60,7 +60,7 @@ export async function seedExercisesIfEmpty(): Promise<void> {
   if (missing.length > 0) {
     const now = Date.now();
     const toInsert: Exercise[] = missing.map((seed, index) => ({
-      id: crypto.randomUUID(),
+      id: seedExerciseId(seed.name),
       name: seed.name,
       muscleGroup: seed.muscleGroup,
       equipment: seed.equipment,
@@ -68,7 +68,7 @@ export async function seedExercisesIfEmpty(): Promise<void> {
       createdAt: now + index,
       updatedAt: now + index,
     }));
-    await db.exercises.bulkAdd(toInsert);
+    await db.exercises.bulkPut(toInsert);
     console.log(`Added ${toInsert.length} missing seed exercises.`);
   }
 }

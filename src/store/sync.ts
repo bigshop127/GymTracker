@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { isConfigured } from '../lib/firebase';
 import { signInWithGoogle, signOut, onAuthChange, type User } from '../sync/auth';
 import { fullSync, deltaSync } from '../sync/sync';
+import { useActiveWorkoutStore } from './activeWorkout';
 
 type SyncStatus = 'idle' | 'syncing' | 'error';
 
@@ -74,11 +75,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       set({ syncStatus: 'syncing', errorMessage: null });
       const { lastSyncAt } = get();
+      let repaired = 0;
       if (lastSyncAt) {
         const SYNC_CLOCK_SKEW_MS = 5 * 60 * 1000;
-        await deltaSync(user.uid, Math.max(0, lastSyncAt - SYNC_CLOCK_SKEW_MS));
+        repaired = await deltaSync(user.uid, Math.max(0, lastSyncAt - SYNC_CLOCK_SKEW_MS));
       } else {
-        await fullSync(user.uid);
+        repaired = await fullSync(user.uid);
+      }
+      // 修好舊動作 id 後，記憶體中的訓練草稿是舊的，得重讀避免被覆寫回去
+      if (repaired > 0) {
+        await useActiveWorkoutStore.getState().initActiveWorkout();
       }
       const now = Date.now();
       localStorage.setItem(`gymtracker.lastSyncAt.${user.uid}`, now.toString());

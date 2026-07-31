@@ -237,7 +237,9 @@ GymTracker/
    - `registerSW.js` 有時不會被 emit → 設 `injectRegister: false`，在 `main.tsx` 手動 `navigator.serviceWorker.register(...)`。
 2. **休息計時器別用 `setInterval` 累加秒數**：手機鎖屏/切背景時 timer 會被節流，回來秒數全錯。存「結束目標時間戳」，每次 render 用 `target − Date.now()` 算剩餘。
 3. **weight 一律存 kg**，顯示層才換算 → 避免改單位時舊資料數值意義改變。
-4. **uuid** 用 `crypto.randomUUID()`。
+4. **uuid** 用 `crypto.randomUUID()` —— **但「內建 seed 資料」不行**。內建動作若用隨機 uuid，每台裝置各生一套 id；雲端同步又只推自訂動作，於是 A 裝置的範本／訓練同步到 B 就指到查不到的 id（UI 卡在「讀取中...」，進度統計也被切成兩半）。內建資料一律用**確定性 id**（`seedExerciseId(name)` → `seed:動作名稱`，見 `src/data/seed-exercises.ts`）；歷史資料靠 Dexie version(9) + `idAliases` 對照表修復（`src/db/repairExerciseIds.ts`）。
+5. **Firestore 不收 `undefined` 欄位**：`setDoc()` 遇到任一個值為 undefined 的鍵（含 `entries[]` 巢狀）就整筆拋錯。搭配 `Promise.all` 會讓**一筆髒資料害整輪同步中斷**，而且 `lastSyncAt` 不前進 → 每次重試都撞同一筆，永久卡死。三層防護：`initializeFirestore({ ignoreUndefinedProperties: true })`、`pushDoc` 送出前 `stripUndefined()`、推送改 `Promise.allSettled`。
+   - 另注意 merge 寫入時「省略鍵」不等於「清空欄位」——雲端會留著舊值。要清空得送 `deleteField()`（只有頂層鍵需要；陣列裡的巢狀物件本來就是整包覆蓋）。
 
 ---
 
