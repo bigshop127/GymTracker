@@ -310,45 +310,52 @@ class GymTrackerDatabase extends Dexie {
       }
 
       // ── (4) 移除「斜板推」──
-      const customXieBanTui = await tx.table('exercises')
+      // 兩台裝置各匯入過一次宗諺課表時，會有兩筆 uuid 不同的自訂「斜板推」被同步在一起，
+      // 所以要收全部而不是 first()。
+      const xieBanTuiRows: Exercise[] = await tx.table('exercises')
         .filter((e: Exercise) => e.name === '斜板推' && e.isCustom)
-        .first();
+        .toArray();
 
-      if (customXieBanTui) {
-        await tx.table('exercises').put({
-          ...customXieBanTui,
-          deletedAt: now,
-          updatedAt: now
-        });
+      if (xieBanTuiRows.length > 0) {
+        const removedIds = new Set(xieBanTuiRows.map((row) => row.id));
 
-        const xieBanTuiId = customXieBanTui.id;
+        // 已經有墓碑的不重蓋，免得白白 bump updatedAt 再推一次雲端
+        const toBury = xieBanTuiRows.filter((row) => row.deletedAt === undefined);
+        if (toBury.length > 0) {
+          await tx.table('exercises').bulkPut(
+            toBury.map((row) => ({ ...row, deletedAt: now, updatedAt: now })),
+          );
+        }
+
+        // 移除參照；候選清單（替代動作）也要清，否則切換時會出現查不到的動作
+        const stripEntries = (holder: { entries?: WorkoutEntry[] }): boolean => {
+          if (!holder.entries) return false;
+          const nextEntries = holder.entries.filter((entry) => !removedIds.has(entry.exerciseId));
+          let changed = nextEntries.length < holder.entries.length;
+          for (const entry of nextEntries) {
+            const candidates = entry.candidateExerciseIds;
+            if (!candidates) continue;
+            const nextCandidates = candidates.filter((id) => !removedIds.has(id));
+            if (nextCandidates.length !== candidates.length) {
+              entry.candidateExerciseIds = nextCandidates;
+              changed = true;
+            }
+          }
+          if (!changed) return false;
+          nextEntries.forEach((entry, i) => { entry.order = i; });
+          holder.entries = nextEntries;
+          return true;
+        };
 
         await tx.table('templates').toCollection().modify((t: WorkoutTemplate) => {
-          if (!t.entries) return;
-          const oldLen = t.entries.length;
-          const nextEntries = t.entries.filter(entry => entry.exerciseId !== xieBanTuiId);
-          if (nextEntries.length < oldLen) {
-            nextEntries.forEach((entry, i) => {
-              entry.order = i;
-            });
-            t.entries = nextEntries;
-            t.updatedAt = now;
-          }
+          if (stripEntries(t)) t.updatedAt = now;
         });
 
+        // 已完成的訓練是使用者真的做過的紀錄，一律不動
         await tx.table('workouts')
           .filter((w: Workout) => w.status === 'active')
           .modify((w: Workout) => {
-            if (!w.entries) return;
-            const oldLen = w.entries.length;
-            const nextEntries = w.entries.filter(entry => entry.exerciseId !== xieBanTuiId);
-            if (nextEntries.length < oldLen) {
-              nextEntries.forEach((entry, i) => {
-                entry.order = i;
-              });
-              w.entries = nextEntries;
-              w.updatedAt = now;
-            }
+            if (stripEntries(w)) w.updatedAt = now;
           });
       }
     });

@@ -894,7 +894,7 @@ export default function WorkoutLogger() {
                               </div>
 
                               {/* 第二列：類別（縮排對齊，避開組序欄） */}
-                              <div className="flex items-center justify-between gap-2 pl-9">
+                              <div className="flex items-center gap-2 pl-9">
                                 <button
                                   type="button"
                                   onClick={() => updateSet(entry.id, setLog.id, { isWarmup: !setLog.isWarmup })}
@@ -906,12 +906,15 @@ export default function WorkoutLogger() {
                                 >
                                   {setLog.isWarmup ? '暖身組' : '正式組'}
                                 </button>
+                              </div>
 
-                                {exercise && ASSISTED_EXERCISE_NAMES.has(exercise.name) && (
-                                  <div className="flex items-center gap-1.5 max-w-[9rem] ml-auto">
-                                    <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
-                                      輔助 ({currentUnit})
-                                    </span>
+                              {/* 第三列：輔助重量（僅助力機/彈力帶動作，比照感受列佔滿整行） */}
+                              {exercise && ASSISTED_EXERCISE_NAMES.has(exercise.name) && (
+                                <div className="flex items-center gap-1.5 pl-9 w-full">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    輔助 ({currentUnit})
+                                  </span>
+                                  <div className="flex-1 min-w-0">
                                     <NumberStepper
                                       value={setLog.assistWeight ?? 0}
                                       onChange={(val) => updateSet(entry.id, setLog.id, { assistWeight: val > 0 ? val : undefined })}
@@ -920,10 +923,10 @@ export default function WorkoutLogger() {
                                       decimals={1}
                                     />
                                   </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
 
-                              {/* 第三列：RPE 訓練感受選單 */}
+                              {/* 第四列：RPE 訓練感受選單 */}
                               <div className="flex items-center gap-1.5 pl-9 w-full">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">感受</span>
                                 <select

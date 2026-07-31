@@ -36,7 +36,9 @@ async function seedLegacyDatabase() {
     { id: seedExerciseId('窄握臥推'), name: '窄握臥推', muscleGroup: '手臂', equipment: '槓鈴', isCustom: false, createdAt: OLD_TIME, updatedAt: OLD_TIME },
     
     // Custom exercise "斜板推" to be soft deleted
-    { id: 'custom-xie-ban-tui', name: '斜板推', muscleGroup: '胸', equipment: '機械', isCustom: true, createdAt: OLD_TIME, updatedAt: OLD_TIME }
+    // 兩筆：模擬兩台裝置各匯入一次宗諺課表後同步在一起
+    { id: 'custom-xie-ban-tui', name: '斜板推', muscleGroup: '胸', equipment: '機械', isCustom: true, createdAt: OLD_TIME, updatedAt: OLD_TIME },
+    { id: 'custom-xie-ban-tui-2', name: '斜板推', muscleGroup: '胸', equipment: '機械', isCustom: true, createdAt: OLD_TIME, updatedAt: OLD_TIME }
   ]);
 
   // (2) Workouts
@@ -48,8 +50,16 @@ async function seedLegacyDatabase() {
       status: 'active',
       updatedAt: OLD_TIME,
       entries: [
-        { id: 'e1', exerciseId: seedExerciseId('滑輪下拉'), order: 0, sets: [{ id: 's1', weight: 40, reps: 10, isWarmup: false, completed: false, createdAt: OLD_TIME }] },
-        { id: 'e2', exerciseId: 'custom-xie-ban-tui', order: 1, sets: [{ id: 's2', weight: 50, reps: 10, isWarmup: false, completed: false, createdAt: OLD_TIME }] }
+        {
+          id: 'e1',
+          exerciseId: seedExerciseId('滑輪下拉'),
+          // 候選清單同時含「要改名的」與「要移除的」，兩種清理都要生效
+          candidateExerciseIds: [seedExerciseId('滑輪下拉'), 'custom-xie-ban-tui-2'],
+          order: 0,
+          sets: [{ id: 's1', weight: 40, reps: 10, isWarmup: false, completed: false, createdAt: OLD_TIME }],
+        },
+        { id: 'e2', exerciseId: 'custom-xie-ban-tui', order: 1, sets: [{ id: 's2', weight: 50, reps: 10, isWarmup: false, completed: false, createdAt: OLD_TIME }] },
+        { id: 'e2b', exerciseId: 'custom-xie-ban-tui-2', order: 2, sets: [] }
       ]
     },
     // Completed workout containing "斜板推" (should NOT be modified)
@@ -121,6 +131,19 @@ describe('Dexie version(10)：動作庫整理 + 輔助重量 + 手臂細分', ()
     expect(wActive.entries[0].exerciseId).toBe(seedExerciseId('滑輪下拉（寬握）'));
     expect(wActive.entries[0].order).toBe(0);
     expect(wActive.updatedAt).toBeGreaterThan(OLD_TIME);
+  });
+
+  test('斜板推：兩筆重複的自訂動作都被軟刪除（不是只清第一筆）', async () => {
+    for (const id of ['custom-xie-ban-tui', 'custom-xie-ban-tui-2']) {
+      const row = await db.exercises.get(id) as Exercise;
+      expect(row).toBeDefined();
+      expect(row.deletedAt).toBeGreaterThan(OLD_TIME);
+    }
+  });
+
+  test('斜板推：替代動作候選清單裡的參照也被清掉', async () => {
+    const wActive = await db.workouts.get('w-active') as Workout;
+    expect(wActive.entries[0].candidateExerciseIds).toEqual([seedExerciseId('滑輪下拉（寬握）')]);
   });
 
   test('已完成的 workout 沒被動到', async () => {
