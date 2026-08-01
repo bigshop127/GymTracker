@@ -207,9 +207,10 @@ GymTracker/
 | Phase 15（v1.9） | 雲端同步修正 + 訓練感受選單 + 週輪動 | 修 3 個掉資料 bug（雙向增量/不覆寫 updatedAt/軟刪除墓碑）+ header 同步鈕 + RPE 改四句中文 + 拉推腿手滾動 7 天輪動；schema version(8) 軟刪除 |
 | Phase 16（v1.10） | 替代動作擇一紀錄 + 訓練菜單頂部分頁 | WorkoutEntry 加 candidateExerciseIds?（擇一切換、範本綁+當場加）+ 進行中訓練改頂部橫向捲動分頁（一頁一動作、點開才展開）；純函式 src/lib/workoutEntries.ts，無 Dexie 版本/Firestore 規則變更 |
 | Phase 17（v1.11） | 動作庫整理 + 輔助重量 + 手臂細分 | 內建動作拆分/改名/重分類 (version 10 遷移) + 輔助重量欄位 + 手臂細分二頭/三頭次級篩選與自訂部位。 |
+| Phase 18（v1.12） | 孤兒動作參照三層修復 | 修掉「讀取中...」永久卡死：內建改名表改寫在程式碼裡（`SEED_RENAMES`，不再只靠 Dexie upgrade 產的 idAliases）＋宗諺課表按「範本名＋順序」反推救回名稱已失傳的孤兒 id（救到的對照寫回 idAliases 同步出去）＋UI 改顯示「⚠ 未知動作」並可一鍵重新指定（`replaceEntryExercise`）。無 schema 版本變更。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-07-31）**：Phase 0–17 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.10（Phase 7–16）+ v1.11（Phase 17：動作庫整理+輔助重量+手臂細分）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-08-01）**：Phase 0–18 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.10（Phase 7–16）+ v1.11（Phase 17：動作庫整理+輔助重量+手臂細分）+ v1.12（Phase 18：孤兒動作參照修復）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案
@@ -244,7 +245,10 @@ GymTracker/
 4. **uuid** 用 `crypto.randomUUID()` —— **但「內建 seed 資料」不行**。內建動作若用隨機 uuid，每台裝置各生一套 id；雲端同步又只推自訂動作，於是 A 裝置的範本／訓練同步到 B 就指到查不到的 id（UI 卡在「讀取中...」，進度統計也被切成兩半）。內建資料一律用**確定性 id**（`seedExerciseId(name)` → `seed:動作名稱`，見 `src/data/seed-exercises.ts`）；歷史資料靠 Dexie version(9) + `idAliases` 對照表修復（`src/db/repairExerciseIds.ts`）。
 5. **Firestore 不收 `undefined` 欄位**：`setDoc()` 遇到任一個值為 undefined 的鍵（含 `entries[]` 巢狀）就整筆拋錯。搭配 `Promise.all` 會讓**一筆髒資料害整輪同步中斷**，而且 `lastSyncAt` 不前進 → 每次重試都撞同一筆，永久卡死。三層防護：`initializeFirestore({ ignoreUndefinedProperties: true })`、`pushDoc` 送出前 `stripUndefined()`、推送改 `Promise.allSettled`。
     - 另注意 merge 寫入時「省略鍵」不等於「清空欄位」——雲端會留著舊值。要清空得送 `deleteField()`（只有頂層鍵需要；陣列裡的巢狀物件本來就是整包覆蓋）。
-6. **改內建動作的名稱＝改它的 id**：一定要配 version bump + `idAliases` 遷移。否則舊訓練/範本參照會失效，導致 UI 顯示「讀取中...」（如本機舊訓練或另一台裝置的同步資料）。
+6. **改內建動作的名稱＝改它的 id**：一定要配 version bump + `idAliases` 遷移，**而且要在 `SEED_RENAMES` 補一行**。Dexie 的 `upgrade()` 只在「舊庫升級」時跑：全新安裝／清過網站資料／換瀏覽器的裝置直接建新版庫，永遠不會產生對照，卻照樣從雲端拉到指向舊 id 的範本／訓練。改名表寫在程式碼裡（`src/data/seed-exercises.ts` 的 `SEED_RENAMES` → `STATIC_SEED_ID_ALIASES`），任何裝置只要跑到新版就修得動。
+7. **WorkoutEntry 只存 `exerciseId`、不存名稱** → id 一旦查不到就無從反推，任何自動修復都救不回來（`idAliases` 只有「當年還存著那筆舊動作列」的那台裝置生得出來，那台清過資料就永遠失傳）。因此：
+    - UI 一律要有 fallback，**不准再顯示「讀取中...」**——查不到就顯示「⚠ 未知動作」並提供「重新指定」（`replaceEntryExercise`），別讓使用者卡在假的載入中。
+    - 宗諺課表的 4 個範本有權威名單，可用「範本名＋entry 順序」反推（`src/lib/zongYuanIdRescue.ts`）；其餘範本沒有名單可對，只能靠使用者手動指定。
 
 ---
 

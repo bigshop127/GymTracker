@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry } from '../workoutEntries';
+import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry, replaceEntryExercise } from '../workoutEntries';
 import { createTemplateFromWorkout } from '../../db/templates';
 import { type WorkoutEntry, type Workout } from '../../db/schema';
 
@@ -83,6 +83,33 @@ describe('Workout Entries alternatives', () => {
     expect(selectEntryExercise(mockEntries, 'non-existent', 'ex-leg-press')).toEqual(mockEntries);
     expect(addAlternativeToEntry(mockEntries, 'non-existent', 'ex-dumbbell-press')).toEqual(mockEntries);
     expect(removeAlternativeFromEntry(mockEntries, 'non-existent', 'ex-leg-press')).toEqual(mockEntries);
+    expect(replaceEntryExercise(mockEntries, 'non-existent', 'ex-leg-press')).toEqual(mockEntries);
+  });
+
+  test('9. replaceEntryExercise: 單一動作直接換掉，組數不動', () => {
+    const result = replaceEntryExercise(mockEntries, 'entry-1', 'ex-dumbbell-press');
+    const entry = result.find(e => e.id === 'entry-1')!;
+    expect(entry.exerciseId).toBe('ex-dumbbell-press');
+    expect(entry.candidateExerciseIds).toBeUndefined();
+    expect(entry.sets).toEqual(mockEntries[0].sets);
+  });
+
+  test('10. replaceEntryExercise: 候選清單裡的舊 id 一併換掉', () => {
+    const result = replaceEntryExercise(mockEntries, 'entry-2', 'ex-hack-squat');
+    const entry = result.find(e => e.id === 'entry-2')!;
+    expect(entry.exerciseId).toBe('ex-hack-squat');
+    expect(entry.candidateExerciseIds).toEqual(['ex-hack-squat', 'ex-leg-press']);
+  });
+
+  test('11. replaceEntryExercise: 換成清單裡已有的動作時去重並收回單一動作', () => {
+    const result = replaceEntryExercise(mockEntries, 'entry-2', 'ex-leg-press');
+    const entry = result.find(e => e.id === 'entry-2')!;
+    expect(entry.exerciseId).toBe('ex-leg-press');
+    expect(entry.candidateExerciseIds).toBeUndefined();
+  });
+
+  test('12. replaceEntryExercise: 換成同一個動作視為沒事發生', () => {
+    expect(replaceEntryExercise(mockEntries, 'entry-1', 'ex-bench-press')).toEqual(mockEntries);
   });
 
   test('8. createTemplateFromWorkout: clones candidateExerciseIds', () => {

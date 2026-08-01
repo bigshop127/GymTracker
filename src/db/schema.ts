@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { seedExerciseId, SEED_EXERCISES } from '../data/seed-exercises';
+import { seedExerciseId, SEED_EXERCISES, SEED_RENAMES } from '../data/seed-exercises';
 import { remapEntryExerciseIds } from '../lib/exerciseIdMap';
 
 // ---- 型別與介面定義 (依據 docs/ROADMAP.md §2) ----
@@ -260,13 +260,9 @@ class GymTrackerDatabase extends Dexie {
       const now = Date.now();
 
       // ── (1) 內建動作改名 → 換 id，沿用 idAliases ──
-      const RENAMES: [string, string][] = [
-        ['滑輪下拉', '滑輪下拉（寬握）'],
-        ['坐姿划船', '坐姿划船（寬握）'],
-        ['纜繩下壓', '纜繩下壓（平把）'],
-      ];
+      // 名單見 SEED_RENAMES（同一份也給 repairExerciseIds 當內建對照用）
       const idMap = new Map<string, string>();
-      for (const [oldName, newName] of RENAMES) {
+      for (const [oldName, newName] of SEED_RENAMES) {
         const oldId = seedExerciseId(oldName);
         const row: Exercise | undefined = await tx.table('exercises').get(oldId);
         if (!row) continue;                       // 新裝置沒有舊資料，正常

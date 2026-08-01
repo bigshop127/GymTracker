@@ -34,6 +34,7 @@ export default function WorkoutLogger() {
     startWorkoutFromTemplateEntity,
     startWorkoutFromProgramSlot,
     selectEntryExercise,
+    replaceEntryExercise,
     addAlternativeToEntry,
     removeAlternativeFromEntry,
   } = useActiveWorkoutStore();
@@ -108,6 +109,8 @@ export default function WorkoutLogger() {
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [altTargetEntryId, setAltTargetEntryId] = useState<string | null>(null);
+  // 動作 id 在動作庫查不到時，讓使用者重新指定的目標 entry
+  const [rebindTargetEntryId, setRebindTargetEntryId] = useState<string | null>(null);
 
   // 計算實際選定的動作 Entry ID (若為空或不存在則自動 fallback)
   const activeEntryId = useMemo(() => {
@@ -302,7 +305,10 @@ export default function WorkoutLogger() {
   };
 
   const handleSelectExercise = async (exercise: Exercise) => {
-    if (altTargetEntryId) {
+    if (rebindTargetEntryId) {
+      await replaceEntryExercise(rebindTargetEntryId, exercise.id);
+      setRebindTargetEntryId(null);
+    } else if (altTargetEntryId) {
       if (exercise.muscleGroup === '有氧') {
         alert('替代動作暫不支援有氧');
         setAltTargetEntryId(null);
@@ -642,7 +648,9 @@ export default function WorkoutLogger() {
                         : 'bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <span>{ex ? ex.name : '讀取中...'}</span>
+                    <span className={ex ? '' : 'text-amber-600 dark:text-amber-500'}>
+                      {ex ? ex.name : '⚠ 未知動作'}
+                    </span>
                     {hasAlt && <span className="opacity-75">⇄</span>}
                     {totalSets > 0 && (
                       isAllCompleted ? (
@@ -661,6 +669,7 @@ export default function WorkoutLogger() {
             <button
               onClick={() => {
                 setAltTargetEntryId(null);
+                setRebindTargetEntryId(null);
                 setIsSelectorOpen(true);
               }}
               className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition border border-transparent shadow-sm shrink-0 flex items-center justify-center cursor-pointer"
@@ -696,13 +705,33 @@ export default function WorkoutLogger() {
                   {/* 動作標頭 */}
                   <div className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 flex justify-between items-center border-b border-slate-100 dark:border-slate-800/60">
                     <div className="space-y-0.5">
-                      <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
-                        {exercise ? exercise.name : '讀取中...'}
+                      <h3 className={`font-bold text-sm ${
+                        exercise
+                          ? 'text-slate-800 dark:text-slate-100'
+                          : 'text-amber-600 dark:text-amber-500'
+                      }`}>
+                        {exercise ? exercise.name : '⚠ 未知動作'}
                       </h3>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/80 font-bold px-1.5 py-0.5 rounded">
-                          {exercise ? `${exercise.muscleGroup} / ${exercise.equipment}` : ''}
-                        </span>
+                        {exercise ? (
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/80 font-bold px-1.5 py-0.5 rounded">
+                            {`${exercise.muscleGroup} / ${exercise.equipment}`}
+                          </span>
+                        ) : (
+                          /* 這個 id 在動作庫查不到（多半是舊資料／跨裝置同步留下的孤兒參照）。
+                             自動修復救不回來時，至少讓使用者一鍵重新指定，不要卡住整場訓練。 */
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAltTargetEntryId(null);
+                              setRebindTargetEntryId(entry.id);
+                              setIsSelectorOpen(true);
+                            }}
+                            className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 transition cursor-pointer"
+                          >
+                            此動作已不在動作庫 · 點我重新指定
+                          </button>
+                        )}
                       </div>
                     </div>
                     <button
@@ -734,7 +763,7 @@ export default function WorkoutLogger() {
                                 onClick={() => selectEntryExercise(entry.id, candId)}
                                 className="px-2.5 py-1.5 font-semibold cursor-pointer"
                               >
-                                {candEx ? candEx.name : '讀取中...'}
+                                {candEx ? candEx.name : '⚠ 未知動作'}
                               </button>
                               
                               {/* 移除非選定動作 */}
@@ -759,6 +788,7 @@ export default function WorkoutLogger() {
                       <button
                         type="button"
                         onClick={() => {
+                          setRebindTargetEntryId(null);
                           setAltTargetEntryId(entry.id);
                           setIsSelectorOpen(true);
                         }}
@@ -1060,12 +1090,17 @@ export default function WorkoutLogger() {
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
           <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
             <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
-              {altTargetEntryId ? '選擇替代動作' : '選擇要加入的動作'}
+              {rebindTargetEntryId
+                ? '重新指定動作'
+                : altTargetEntryId
+                  ? '選擇替代動作'
+                  : '選擇要加入的動作'}
             </h3>
             <button
               onClick={() => {
                 setIsSelectorOpen(false);
                 setAltTargetEntryId(null);
+                setRebindTargetEntryId(null);
               }}
               className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
             >

@@ -7,7 +7,7 @@ import { getTemplate } from '../db/templates';
 import { useRestTimerStore } from './restTimer';
 import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
-import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry } from '../lib/workoutEntries';
+import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry, replaceEntryExercise } from '../lib/workoutEntries';
 
 interface ActiveWorkoutState {
   activeWorkout: Workout | null;
@@ -32,6 +32,7 @@ interface ActiveWorkoutState {
   reorderEntries: (entries: WorkoutEntry[]) => Promise<void>;
   updateEntryDefaultRestSeconds: (entryId: string, restSeconds: number | undefined) => Promise<void>;
   selectEntryExercise: (entryId: string, exerciseId: string) => Promise<void>;
+  replaceEntryExercise: (entryId: string, exerciseId: string) => Promise<void>;
   addAlternativeToEntry: (entryId: string, exerciseId: string) => Promise<void>;
   removeAlternativeFromEntry: (entryId: string, exerciseId: string) => Promise<void>;
   startWorkoutFromTemplate: (template: Workout) => Promise<void>;
@@ -613,6 +614,18 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     const { activeWorkout } = get();
     if (!activeWorkout) return;
     const updatedEntries = selectEntryExercise(activeWorkout.entries, entryId, exerciseId);
+    const updatedWorkout: Workout = {
+      ...activeWorkout,
+      entries: updatedEntries,
+    };
+    await saveWorkoutImmediate(updatedWorkout);
+    set({ activeWorkout: updatedWorkout });
+  },
+
+  replaceEntryExercise: async (entryId: string, exerciseId: string) => {
+    const { activeWorkout } = get();
+    if (!activeWorkout) return;
+    const updatedEntries = replaceEntryExercise(activeWorkout.entries, entryId, exerciseId);
     const updatedWorkout: Workout = {
       ...activeWorkout,
       entries: updatedEntries,

@@ -43,6 +43,35 @@ export function addAlternativeToEntry(
 }
 
 /**
+ * 直接把某個 entry 的動作換成另一個（不是「多一個候選」，是「換掉」）。
+ * 用於動作 id 在動作庫查不到（孤兒參照）時讓使用者重新指定；
+ * 候選清單裡的舊 id 一併換掉，換完只剩一個候選就收回單一動作。
+ * 已經是同一個動作則原樣返回。
+ */
+export function replaceEntryExercise(
+  entries: WorkoutEntry[],
+  entryId: string,
+  exerciseId: string,
+): WorkoutEntry[] {
+  return entries.map(entry => {
+    if (entry.id !== entryId) return entry;
+    const oldId = entry.exerciseId;
+    if (oldId === exerciseId) return entry;
+
+    const updatedEntry: WorkoutEntry = { ...entry, exerciseId };
+    if (entry.candidateExerciseIds) {
+      const swapped = [...new Set(entry.candidateExerciseIds.map(id => (id === oldId ? exerciseId : id)))];
+      if (swapped.length <= 1) {
+        delete updatedEntry.candidateExerciseIds;
+      } else {
+        updatedEntry.candidateExerciseIds = swapped;
+      }
+    }
+    return updatedEntry;
+  });
+}
+
+/**
  * 移除一個替代候選。
  * - 不允許移除「當前選定」的那個（要換先 select 別的）。呼叫端應在 UI 就不給選定的 chip 出現 ✕。
  * - 移除後若清單長度 ≤ 1 → 直接把 candidateExerciseIds 設回 undefined，回到單一動作。

@@ -9,26 +9,31 @@ import type { WorkoutEntry } from '../db/schema';
  *
  * @returns 是否真的改動了任何一筆（呼叫端據此決定要不要 bump updatedAt）
  */
+/**
+ * 沿著對照表一路解析到終點（舊 id 可能被改過兩次以上：A→B→C）。
+ * 對照表沒收錄就原樣返回。
+ */
+export function resolveAliasId(id: string, idMap: ReadonlyMap<string, string>): string {
+  let current = id;
+  const visited = new Set<string>();
+  while (idMap.has(current)) {
+    if (visited.has(current)) {
+      // Break cycle if any (should not happen)
+      break;
+    }
+    visited.add(current);
+    current = idMap.get(current)!;
+  }
+  return current;
+}
+
 export function remapEntryExerciseIds(
   entries: WorkoutEntry[] | undefined,
   idMap: Map<string, string>,
 ): boolean {
   if (!entries || idMap.size === 0) return false;
 
-  // Helper to resolve chain of alias mapping
-  const resolveId = (id: string): string => {
-    let current = id;
-    const visited = new Set<string>();
-    while (idMap.has(current)) {
-      if (visited.has(current)) {
-        // Break cycle if any (should not happen)
-        break;
-      }
-      visited.add(current);
-      current = idMap.get(current)!;
-    }
-    return current;
-  };
+  const resolveId = (id: string) => resolveAliasId(id, idMap);
 
   let changed = false;
   for (const entry of entries) {

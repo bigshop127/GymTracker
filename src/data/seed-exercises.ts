@@ -28,6 +28,27 @@ export function seedExerciseId(name: string): string {
   return `seed:${name}`;
 }
 
+/**
+ * 內建動作歷次改名：[舊名, 新名]。改名＝換 id（見 seedExerciseId）。
+ *
+ * 這張表寫在程式碼裡，不是寫在 DB 的 idAliases，因為 Dexie 的 upgrade 只會在
+ * 「舊庫升級」時跑一次：全新安裝、清過網站資料、換瀏覽器的裝置直接建新版庫，
+ * 永遠不會產生對照，卻照樣會從雲端拉到指向舊 id 的範本／訓練 → 卡「未知動作」。
+ * 內建在程式碼裡，任何裝置只要跑到新版就修得動。
+ *
+ * ⚠️ 以後再改內建動作的名字，除了 version bump，也要在這裡補一行。
+ */
+export const SEED_RENAMES: readonly (readonly [string, string])[] = [
+  ['滑輪下拉', '滑輪下拉（寬握）'],
+  ['坐姿划船', '坐姿划船（寬握）'],
+  ['纜繩下壓', '纜繩下壓（平把）'],
+];
+
+/** SEED_RENAMES 展開成 id 對照（舊 seed id → 新 seed id）。 */
+export const STATIC_SEED_ID_ALIASES: ReadonlyMap<string, string> = new Map(
+  SEED_RENAMES.map(([oldName, newName]) => [seedExerciseId(oldName), seedExerciseId(newName)]),
+);
+
 export const SEED_EXERCISES: ExerciseSeed[] = [
   // ---- 胸 ----
   { name: '槓鈴臥推', muscleGroup: '胸', equipment: '槓鈴' },
