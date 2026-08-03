@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomNav from './BottomNav';
+import HistoryNavButtons from './HistoryNavButtons';
 import RestTimer from './RestTimer';
 import { useSettingsStore } from '../store/settings';
 import { useSyncStore } from '../store/sync';
@@ -67,6 +68,7 @@ export default function Layout({ children }: LayoutProps) {
         {/* Header Bar */}
         <header className="sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 h-14 flex items-center justify-between px-4 z-40 transition-colors duration-200">
           <div className="flex items-center gap-2">
+            <HistoryNavButtons />
             <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400 bg-clip-text text-transparent">
               GymTracker
             </span>
