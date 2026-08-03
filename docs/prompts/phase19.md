@@ -233,8 +233,32 @@ docs/ROADMAP.md                       表格補一列 Phase 19（v1.13）
 3. WorkoutLogger 的兩個 sheet（版型抄動作選擇器那段，state 就兩個 boolean：`isCardioSheetOpen`、`isRecentSheetOpen`）。
 4. `npm run build` + `vitest` + `eslint .` 全過 → 交給 Claude review。
 
+## 功能 C（追加）：「開始新訓練」改成先選部位
+
+> 2026-08-03 使用者看到成品後追加：頂部「開始新訓練」也要能挑——先跳部位（胸／背／腿…），點進去才出現最近三次紀錄。
+> 原本第 6 節寫「刻意不做」，此處推翻。
+
+兩步全螢幕 sheet，共用同一個容器（`isNewWorkoutSheetOpen` ＋ `selectedGroup`）：
+
+1. **今天要練哪裡？** 2 欄網格列出 7 個部位（順序沿用 `MUSCLE_ORDER`：胸／背／腿臀／肩／手臂／核心／有氧），每格副標顯示「N 天前練過／今天練過／未練過」。
+2. 點下部位 →
+   - 有過往紀錄 → 換成 **要沿用哪一次？**（同一張紀錄卡，共用 `renderRecentWorkoutCard`），底部「以空白訓練開始（胸）」，左上角 ‹ 可回上一步。
+   - 沒有紀錄 → **直接開一場空白訓練**，不停在空選單。
+
+差異點（與功能 B 對照）：
+
+| | 功能 B（開始今天訓練） | 功能 C（開始新訓練） |
+|---|---|---|
+| 比對依據 | `programSlotId` → 標題分類補位 | **實際做過的動作**：主要部位（組數最多）→「有練到就算」補位 |
+| 開訓帶 ctx | 帶 programId/slotId/cycleNumber | **不帶**（不屬於任何計畫，不推進 cursor） |
+| 空白起手 | `startWorkoutFromProgramSlot` | `startNewWorkout(部位)`——標題直接帶部位，讓自動命名與週輪動分類有依據 |
+
+比對刻意不看標題只看動作：標題可能是「今日訓練」或被改過，`getPrimaryMuscleGroups()` 讀的是真的做了什麼。
+
+新增純函式（`src/lib/recentSessions.ts`）：`getRecentWorkoutsForMuscleGroup()`、`getLastTrainedByMuscleGroup()`；`MUSCLE_ORDER` 改由 `src/lib/exerciseOrder.ts` 匯出共用。
+
 ## 6. 這版刻意不做（想做再開下一階段）
 
-- 「開始新訓練」與「我的範本」不套沿用選單。
+- 「我的範本」不套沿用選單（點範本＝明確指定，再問一次是多餘的）。
 - 沿用選單不做「只帶動作不帶重量」的第二種模式（要空重量就走底部的「用計畫範本開始」）。
 - 有氧鈕不做「直接新增一個有氧動作到目前訓練」——它只走範本，維持「簡易」。

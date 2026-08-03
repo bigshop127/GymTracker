@@ -1,7 +1,8 @@
 import { SEED_EXERCISES } from '../data/seed-exercises';
 import type { Exercise, MuscleGroup } from '../db/schema';
 
-const MUSCLE_ORDER: MuscleGroup[] = ['胸', '背', '腿臀', '肩', '手臂', '核心', '有氧'];
+/** 肌群的正規顯示順序（動作庫排序與部位選單共用同一份） */
+export const MUSCLE_ORDER: MuscleGroup[] = ['胸', '背', '腿臀', '肩', '手臂', '核心', '有氧'];
 const SEED_ORDER = new Map(SEED_EXERCISES.map((s, i) => [s.name, i]));
 
 /**

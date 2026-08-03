@@ -4,12 +4,17 @@ import { useSettingsStore } from '../store/settings';
 import { useRestTimerStore } from '../store/restTimer';
 import { listExercises } from '../db/exercises';
 import { ASSISTED_EXERCISE_NAMES } from '../data/seed-exercises';
-import { type Exercise, type WorkoutTemplate, type Workout } from '../db/schema';
+import { type Exercise, type WorkoutTemplate, type Workout, type MuscleGroup } from '../db/schema';
 import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
 import { listCompletedWorkouts } from '../db/workouts';
 import { getSplitRotationStatus, getCalendarDaysAgo } from '../lib/splitRotation';
 import { filterCardioTemplates, getTemplateTotalMinutes } from '../lib/cardioTemplates';
-import { getRecentWorkoutsForSlot } from '../lib/recentSessions';
+import {
+  getRecentWorkoutsForSlot,
+  getRecentWorkoutsForMuscleGroup,
+  getLastTrainedByMuscleGroup,
+} from '../lib/recentSessions';
+import { MUSCLE_ORDER } from '../lib/exerciseOrder';
 import NumberStepper from '../components/NumberStepper';
 import ExerciseList from '../components/ExerciseList';
 import { useProgramStore } from '../store/program';
@@ -78,6 +83,9 @@ export default function WorkoutLogger() {
   const [completedWorkouts, setCompletedWorkouts] = useState<Workout[]>([]);
   const [isCardioSheetOpen, setIsCardioSheetOpen] = useState(false);
   const [isRecentSheetOpen, setIsRecentSheetOpen] = useState(false);
+  // 「開始新訓練」的兩步流程：先選部位，再選要沿用哪一次
+  const [isNewWorkoutSheetOpen, setIsNewWorkoutSheetOpen] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<MuscleGroup | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -118,6 +126,17 @@ export default function WorkoutLogger() {
     if (!activeProgram || !currentSlot) return [];
     return getRecentWorkoutsForSlot(completedWorkouts, activeProgram.id, currentSlot.id, currentSlot.label);
   }, [completedWorkouts, activeProgram, currentSlot]);
+
+  // 「開始新訓練」選了部位之後，那個部位最近三次的紀錄
+  const recentGroupWorkouts = useMemo(() => {
+    if (!selectedGroup) return [];
+    return getRecentWorkoutsForMuscleGroup(completedWorkouts, selectedGroup, exerciseMap);
+  }, [completedWorkouts, selectedGroup, exerciseMap]);
+
+  const lastTrainedByGroup = useMemo(
+    () => getLastTrainedByMuscleGroup(completedWorkouts, exerciseMap),
+    [completedWorkouts, exerciseMap]
+  );
 
   // Program Form state
   const [isProgramFormOpen, setIsProgramFormOpen] = useState(false);
@@ -277,8 +296,52 @@ export default function WorkoutLogger() {
     }
   }, [activeWorkout]);
 
-  const handleStart = async () => {
-    await startNewWorkout('今日訓練');
+  const handleOpenNewWorkout = () => {
+    setSelectedGroup(null);
+    setIsNewWorkoutSheetOpen(true);
+  };
+
+  const closeNewWorkoutSheet = () => {
+    setIsNewWorkoutSheetOpen(false);
+    setSelectedGroup(null);
+  };
+
+  /** 空白訓練：標題直接帶部位，讓自動命名、週輪動分類都有依據 */
+  const handleStartBlankWorkout = async (group: MuscleGroup) => {
+    try {
+      await startNewWorkout(group);
+    } catch (err) {
+      console.error(err);
+      alert('開始訓練失敗');
+    } finally {
+      closeNewWorkoutSheet();
+    }
+  };
+
+  /** 選了部位：有過往紀錄就進第二步讓他挑，沒有就直接開一場空白訓練 */
+  const handlePickMuscleGroup = (group: MuscleGroup) => {
+    const recent = getRecentWorkoutsForMuscleGroup(completedWorkouts, group, exerciseMap);
+    if (recent.length === 0) {
+      void handleStartBlankWorkout(group);
+      return;
+    }
+    setSelectedGroup(group);
+  };
+
+  /** 沿用某個部位的過往紀錄開訓（不屬於任何計畫，故不帶 ctx） */
+  const handleStartFromPastGroupWorkout = async (source: Workout) => {
+    try {
+      await startWorkoutFromPastWorkout(source);
+    } catch (err) {
+      console.error(err);
+      if (err instanceof Error && err.message === 'ACTIVE_WORKOUT_EXISTS') {
+        alert('你目前有一個進行中的訓練，請先完成或取消後再開始。');
+      } else {
+        alert('開始訓練失敗');
+      }
+    } finally {
+      closeNewWorkoutSheet();
+    }
   };
 
   const handleStartFromTemplate = async (template: WorkoutTemplate) => {
@@ -377,6 +440,38 @@ export default function WorkoutLogger() {
     return `${date.getMonth() + 1}/${date.getDate()} (${relative})`;
   };
 
+  /** 「要沿用哪一次？」的紀錄卡（計畫流程與部位流程共用） */
+  const renderRecentWorkoutCard = (workout: Workout, onPick: () => void) => {
+    const { totalSets, preview } = summarizeWorkout(workout);
+    return (
+      <button
+        key={workout.id}
+        type="button"
+        onClick={onPick}
+        className="w-full text-left bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-3 shadow-sm hover:shadow transition cursor-pointer space-y-1"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 shrink-0">
+              {formatWhen(workout.startedAt)}
+            </span>
+            <span className="font-bold text-slate-800 dark:text-slate-200 text-sm truncate">
+              {workout.title}
+            </span>
+          </div>
+          {workout.location && (
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold shrink-0">
+              @{workout.location}
+            </span>
+          )}
+        </div>
+        <p className="text-[10px] text-slate-400 font-medium">
+          {workout.entries.length} 個動作 • {totalSets} 組{preview && ` • ${preview}`}
+        </p>
+      </button>
+    );
+  };
+
   const handleRenameTemplate = async (template: WorkoutTemplate) => {
     const newName = window.prompt('重新命名範本：', template.name);
     if (newName !== null && newName.trim() !== '') {
@@ -453,7 +548,7 @@ export default function WorkoutLogger() {
             </p>
           </div>
           <button
-            onClick={handleStart}
+            onClick={handleOpenNewWorkout}
             className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none transition transform hover:-translate-y-0.5 cursor-pointer"
           >
             開始新訓練
@@ -1174,6 +1269,89 @@ export default function WorkoutLogger() {
         </div>
       )}
 
+      {/* 開始新訓練：① 選部位 → ② 選要沿用哪一次 (全屏) */}
+      {isNewWorkoutSheetOpen && (
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+          <div className="flex justify-between items-start px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <div className="flex items-start gap-2">
+              {selectedGroup && (
+                <button
+                  onClick={() => setSelectedGroup(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-1 cursor-pointer"
+                  title="回上一步"
+                >
+                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                  </svg>
+                </button>
+              )}
+              <div className="space-y-0.5">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
+                  {selectedGroup ? '要沿用哪一次？' : '今天要練哪裡？'}
+                </h3>
+                {selectedGroup && (
+                  <p className="text-[11px] font-bold text-slate-400">部位：{selectedGroup}</p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={closeNewWorkoutSheet}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
+            >
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
+              {!selectedGroup ? (
+                <div className="grid grid-cols-2 gap-2.5">
+                  {MUSCLE_ORDER.map((group) => {
+                    const lastTrainedAt = lastTrainedByGroup.get(group);
+                    const daysAgo = lastTrainedAt === undefined ? null : getCalendarDaysAgo(lastTrainedAt, now);
+                    return (
+                      <button
+                        key={group}
+                        type="button"
+                        onClick={() => handlePickMuscleGroup(group)}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 rounded-2xl py-4 px-3 shadow-sm transition cursor-pointer space-y-1"
+                      >
+                        <span className="block font-extrabold text-slate-800 dark:text-slate-200 text-base">
+                          {group}
+                        </span>
+                        <span className="block text-[10px] font-bold text-slate-400">
+                          {daysAgo === null
+                            ? '未練過'
+                            : daysAgo === 0
+                              ? '今天練過'
+                              : daysAgo === 1
+                                ? '昨天練過'
+                                : `${daysAgo} 天前練過`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  {recentGroupWorkouts.map((w) =>
+                    renderRecentWorkoutCard(w, () => handleStartFromPastGroupWorkout(w))
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleStartBlankWorkout(selectedGroup)}
+                    className="w-full py-3 mt-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                  >
+                    以空白訓練開始（{selectedGroup}）
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 有氧範本選擇器 (全屏) */}
       {isCardioSheetOpen && (
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
@@ -1248,36 +1426,9 @@ export default function WorkoutLogger() {
           </div>
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
-              {recentSlotWorkouts.map((w) => {
-                const { totalSets, preview } = summarizeWorkout(w);
-                return (
-                  <button
-                    key={w.id}
-                    type="button"
-                    onClick={() => handleStartFromPastWorkout(w)}
-                    className="w-full text-left bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-3 shadow-sm hover:shadow transition cursor-pointer space-y-1"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 shrink-0">
-                          {formatWhen(w.startedAt)}
-                        </span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200 text-sm truncate">
-                          {w.title}
-                        </span>
-                      </div>
-                      {w.location && (
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold shrink-0">
-                          @{w.location}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-medium">
-                      {w.entries.length} 個動作 • {totalSets} 組{preview && ` • ${preview}`}
-                    </p>
-                  </button>
-                );
-              })}
+              {recentSlotWorkouts.map((w) =>
+                renderRecentWorkoutCard(w, () => handleStartFromPastWorkout(w))
+              )}
 
               <button
                 type="button"

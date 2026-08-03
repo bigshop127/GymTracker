@@ -1,6 +1,11 @@
 import { describe, test, expect } from 'vitest';
-import { getRecentWorkoutsForSlot } from '../recentSessions';
-import { type Workout } from '../../db/schema';
+import {
+  getRecentWorkoutsForSlot,
+  getRecentWorkoutsForMuscleGroup,
+  getLastTrainedByMuscleGroup,
+} from '../recentSessions';
+import { buildExerciseMap } from '../workoutSummary';
+import { type Workout, type Exercise, type WorkoutEntry, type SetLog } from '../../db/schema';
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = 1_700_000_000_000;
@@ -110,5 +115,107 @@ describe('getRecentWorkoutsForSlot', () => {
     ];
     expect(getRecentWorkoutsForSlot(workouts, PROGRAM_ID, SLOT_PUSH, '推 (Push)', 1).map((w) => w.id))
       .toEqual(['w1']);
+  });
+});
+
+// ---- 部位流程（開始新訓練 → 選部位）----
+
+function makeExercise(id: string, name: string, muscleGroup: Exercise['muscleGroup']): Exercise {
+  return { id, name, muscleGroup, equipment: '其他', isCustom: false, createdAt: now };
+}
+
+const exMap = buildExerciseMap([
+  makeExercise('bench', '槓鈴臥推', '胸'),
+  makeExercise('fly', '蝴蝶機', '胸'),
+  makeExercise('row', '槓鈴划船', '背'),
+  makeExercise('curl', '二頭彎舉', '手臂'),
+  makeExercise('squat', '深蹲', '腿臀'),
+]);
+
+function makeSet(): SetLog {
+  return { id: crypto.randomUUID(), weight: 60, reps: 10, isWarmup: false, completed: true, createdAt: now };
+}
+
+function entriesOf(spec: [string, number][]): WorkoutEntry[] {
+  return spec.map(([exerciseId, setCount], order) => ({
+    id: `${exerciseId}-${order}`,
+    exerciseId,
+    order,
+    sets: Array.from({ length: setCount }, makeSet),
+  }));
+}
+
+describe('getRecentWorkoutsForMuscleGroup', () => {
+  test('主要部位（組數最多）相符的優先，取最近 3 筆', () => {
+    const workouts = [
+      makeWorkout('chest1', 1, { entries: entriesOf([['bench', 4], ['curl', 2]]) }),
+      makeWorkout('back1', 2, { entries: entriesOf([['row', 5]]) }),
+      makeWorkout('chest2', 3, { entries: entriesOf([['fly', 3]]) }),
+      makeWorkout('chest3', 4, { entries: entriesOf([['bench', 3]]) }),
+      makeWorkout('chest4', 5, { entries: entriesOf([['bench', 3]]) }),
+    ];
+    expect(getRecentWorkoutsForMuscleGroup(workouts, '胸', exMap).map((w) => w.id))
+      .toEqual(['chest1', 'chest2', 'chest3']);
+  });
+
+  test('主要部位不足 3 筆時，用「有練到就算」補位（新→舊、不重複）', () => {
+    const workouts = [
+      makeWorkout('chestMain', 1, { entries: entriesOf([['bench', 4], ['curl', 1]]) }),
+      makeWorkout('backDay', 2, { entries: entriesOf([['row', 5], ['bench', 1]]) }),
+      makeWorkout('legDay', 3, { entries: entriesOf([['squat', 5]]) }),
+      makeWorkout('armDay', 4, { entries: entriesOf([['curl', 4], ['fly', 1]]) }),
+    ];
+    expect(getRecentWorkoutsForMuscleGroup(workouts, '胸', exMap).map((w) => w.id))
+      .toEqual(['chestMain', 'backDay', 'armDay']);
+  });
+
+  test('標題不參與判定——看的是實際做過的動作', () => {
+    const workouts = [
+      makeWorkout('mislabeled', 1, { title: '腿 (Leg)', entries: entriesOf([['bench', 4]]) }),
+      makeWorkout('emptyChestTitle', 2, { title: '胸日', entries: [] }),
+    ];
+    expect(getRecentWorkoutsForMuscleGroup(workouts, '胸', exMap).map((w) => w.id))
+      .toEqual(['mislabeled']);
+  });
+
+  test('只收 completed、濾掉軟刪除', () => {
+    const workouts = [
+      makeWorkout('draft', 0, { status: 'active', entries: entriesOf([['bench', 4]]) }),
+      makeWorkout('deleted', 1, { deletedAt: now, entries: entriesOf([['bench', 4]]) }),
+      makeWorkout('alive', 2, { entries: entriesOf([['bench', 4]]) }),
+    ];
+    expect(getRecentWorkoutsForMuscleGroup(workouts, '胸', exMap).map((w) => w.id)).toEqual(['alive']);
+  });
+
+  test('孤兒動作（動作庫查無）不會被算成任何部位', () => {
+    const workouts = [makeWorkout('ghost', 1, { entries: entriesOf([['nope', 4]]) })];
+    expect(getRecentWorkoutsForMuscleGroup(workouts, '胸', exMap)).toEqual([]);
+  });
+
+  test('沒練過這個部位 → 空陣列（呼叫端據此直接開空白訓練）', () => {
+    const workouts = [makeWorkout('back', 1, { entries: entriesOf([['row', 5]]) })];
+    expect(getRecentWorkoutsForMuscleGroup(workouts, '核心', exMap)).toEqual([]);
+  });
+});
+
+describe('getLastTrainedByMuscleGroup', () => {
+  test('每個部位取最近一次的 startedAt（含次要部位）', () => {
+    const workouts = [
+      makeWorkout('recent', 1, { entries: entriesOf([['bench', 4], ['curl', 1]]) }),
+      makeWorkout('older', 5, { entries: entriesOf([['bench', 4], ['row', 2]]) }),
+    ];
+    const map = getLastTrainedByMuscleGroup(workouts, exMap);
+    expect(map.get('胸')).toBe(now - 1 * DAY);
+    expect(map.get('手臂')).toBe(now - 1 * DAY);
+    expect(map.get('背')).toBe(now - 5 * DAY);
+    expect(map.has('腿臀')).toBe(false);
+  });
+
+  test('未完成與已刪除的不算', () => {
+    const workouts = [
+      makeWorkout('draft', 0, { status: 'active', entries: entriesOf([['squat', 4]]) }),
+      makeWorkout('deleted', 0, { deletedAt: now, entries: entriesOf([['squat', 4]]) }),
+    ];
+    expect(getLastTrainedByMuscleGroup(workouts, exMap).has('腿臀')).toBe(false);
   });
 });
