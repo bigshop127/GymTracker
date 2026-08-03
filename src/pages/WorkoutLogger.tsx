@@ -17,6 +17,7 @@ import {
 import { MUSCLE_ORDER } from '../lib/exerciseOrder';
 import NumberStepper from '../components/NumberStepper';
 import ExerciseList from '../components/ExerciseList';
+import SheetHeader from '../components/SheetHeader';
 import { useProgramStore } from '../store/program';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
 import { RPE_OPTIONS } from '../lib/rpe';
@@ -496,6 +497,12 @@ export default function WorkoutLogger() {
         alert('刪除範本失敗');
       }
     }
+  };
+
+  const closeSelector = () => {
+    setIsSelectorOpen(false);
+    setAltTargetEntryId(null);
+    setRebindTargetEntryId(null);
   };
 
   const handleSelectExercise = async (exercise: Exercise) => {
@@ -1272,37 +1279,12 @@ export default function WorkoutLogger() {
       {/* 開始新訓練：① 選部位 → ② 選要沿用哪一次 (全屏) */}
       {isNewWorkoutSheetOpen && (
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
-          <div className="flex justify-between items-start px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <div className="flex items-start gap-2">
-              {selectedGroup && (
-                <button
-                  onClick={() => setSelectedGroup(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-1 cursor-pointer"
-                  title="回上一步"
-                >
-                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                  </svg>
-                </button>
-              )}
-              <div className="space-y-0.5">
-                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
-                  {selectedGroup ? '要沿用哪一次？' : '今天要練哪裡？'}
-                </h3>
-                {selectedGroup && (
-                  <p className="text-[11px] font-bold text-slate-400">部位：{selectedGroup}</p>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={closeNewWorkoutSheet}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-            >
-              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <SheetHeader
+            title={selectedGroup ? '要沿用哪一次？' : '今天要練哪裡？'}
+            subtitle={selectedGroup ? `部位：${selectedGroup}` : undefined}
+            onBack={selectedGroup ? () => setSelectedGroup(null) : closeNewWorkoutSheet}
+            onClose={closeNewWorkoutSheet}
+          />
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
               {!selectedGroup ? (
@@ -1355,17 +1337,7 @@ export default function WorkoutLogger() {
       {/* 有氧範本選擇器 (全屏) */}
       {isCardioSheetOpen && (
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
-          <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">選擇有氧範本</h3>
-            <button
-              onClick={() => setIsCardioSheetOpen(false)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-            >
-              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <SheetHeader title="選擇有氧範本" onBack={() => setIsCardioSheetOpen(false)} />
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
               {cardioTemplates.length === 0 ? (
@@ -1410,20 +1382,11 @@ export default function WorkoutLogger() {
       {/* 沿用最近訓練紀錄 (全屏) */}
       {isRecentSheetOpen && currentSlot && (
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
-          <div className="flex justify-between items-start px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <div className="space-y-0.5">
-              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">要沿用哪一次？</h3>
-              <p className="text-[11px] font-bold text-slate-400">今天該練：{currentSlot.label}</p>
-            </div>
-            <button
-              onClick={() => setIsRecentSheetOpen(false)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-            >
-              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <SheetHeader
+            title="要沿用哪一次？"
+            subtitle={`今天該練：${currentSlot.label}`}
+            onBack={() => setIsRecentSheetOpen(false)}
+          />
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
               {recentSlotWorkouts.map((w) =>
@@ -1445,27 +1408,16 @@ export default function WorkoutLogger() {
       {/* 動作選擇器 (全屏) */}
       {isSelectorOpen && (
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
-          <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
-              {rebindTargetEntryId
+          <SheetHeader
+            title={
+              rebindTargetEntryId
                 ? '重新指定動作'
                 : altTargetEntryId
                   ? '選擇替代動作'
-                  : '選擇要加入的動作'}
-            </h3>
-            <button
-              onClick={() => {
-                setIsSelectorOpen(false);
-                setAltTargetEntryId(null);
-                setRebindTargetEntryId(null);
-              }}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-            >
-              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+                  : '選擇要加入的動作'
+            }
+            onBack={closeSelector}
+          />
           {/* 內容區：撐滿剩餘高度可捲動 */}
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4">
@@ -1478,18 +1430,11 @@ export default function WorkoutLogger() {
       {/* 建立/編輯計畫 (全屏 Sheet) */}
       {isProgramFormOpen && (
         <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col">
-          <div className="flex justify-between items-center px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
-            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
-              {editingProgramId ? '編輯訓練計畫' : '建立訓練計畫'}
-            </h3>
-            <button
-              onClick={() => setIsProgramFormOpen(false)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 cursor-pointer"
-            >
-              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="bg-white dark:bg-slate-900 shrink-0">
+            <SheetHeader
+              title={editingProgramId ? '編輯訓練計畫' : '建立訓練計畫'}
+              onBack={() => setIsProgramFormOpen(false)}
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
