@@ -61,7 +61,8 @@ function getStartOfDay(timestamp: number): number {
   return date.getTime();
 }
 
-function calculateDaysAgo(startedAt: number, now: number): number {
+/** 相差幾個「日曆天」（不是 24 小時整除，跨午夜就算一天） */
+export function getCalendarDaysAgo(startedAt: number, now: number): number {
   const startOfTrained = getStartOfDay(startedAt);
   const startOfNow = getStartOfDay(now);
   const diffMs = startOfNow - startOfTrained;
@@ -95,7 +96,7 @@ export function getSplitRotationStatus(
     if (workout.startedAt <= now) {
       if (current.lastTrainedAt === null || workout.startedAt > current.lastTrainedAt) {
         current.lastTrainedAt = workout.startedAt;
-        current.daysAgo = calculateDaysAgo(workout.startedAt, now);
+        current.daysAgo = getCalendarDaysAgo(workout.startedAt, now);
       }
       if (workout.startedAt > since) {
         current.doneInWindow = true;

@@ -44,6 +44,10 @@ interface ActiveWorkoutState {
     slotLabel: string,
     cycleNumber: number
   ) => Promise<void>;
+  startWorkoutFromPastWorkout: (
+    source: Workout,
+    ctx?: { programId: string; slotId: string; slotLabel: string; cycleNumber: number }
+  ) => Promise<void>;
 }
 
 // 用於防抖動 (debounce) 儲存文字輸入的計時器
@@ -605,6 +609,68 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         entries: [],
       };
     }
+
+    await saveWorkoutImmediate(newWorkout);
+    set({ activeWorkout: newWorkout });
+  },
+
+  /**
+   * 以「過去某一次完成的訓練」開一場新訓練：動作與組數照抄，**重量/次數沿用**，
+   * completed 一律 false、rpe 不帶（上次的主觀感受不該預填成這次的預設）。
+   *
+   * 與 startWorkoutFromTemplate(workout) 的差別：那顆是歷史頁的「重複這次訓練」，
+   * 語意是重量歸零重做；兩者刻意並存，不要合併。
+   */
+  startWorkoutFromPastWorkout: async (
+    source: Workout,
+    ctx?: { programId: string; slotId: string; slotLabel: string; cycleNumber: number }
+  ) => {
+    const existing = get().activeWorkout;
+    if (existing) {
+      throw new Error('ACTIVE_WORKOUT_EXISTS');
+    }
+
+    cancelPendingSave();
+    useRestTimerStore.getState().skipTimer();
+
+    const now = Date.now();
+    const newWorkout: Workout = {
+      id: crypto.randomUUID(),
+      title: ctx ? ctx.slotLabel : source.title,
+      startedAt: now,
+      status: 'active',
+      location: source.location,
+      // 計畫資訊要帶回去：finishWorkout 靠它推進 cursor、7 天輪動靠它算分類。
+      // 沒有 ctx 時整組鍵省略，不要塞 undefined（Firestore 不收）。
+      ...(ctx
+        ? {
+            programId: ctx.programId,
+            programSlotId: ctx.slotId,
+            programCycleNumber: ctx.cycleNumber,
+          }
+        : {}),
+      entries: source.entries.map((entry) => ({
+        id: crypto.randomUUID(),
+        exerciseId: entry.exerciseId,
+        ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
+          ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
+          : {}),
+        order: entry.order,
+        defaultRestSeconds: entry.defaultRestSeconds,
+        sets: entry.sets.map((setLog) => ({
+          id: crypto.randomUUID(),
+          weight: setLog.weight,
+          reps: setLog.reps,
+          isWarmup: setLog.isWarmup,
+          completed: false,
+          createdAt: now,
+          ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
+          ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
+          ...(setLog.calories !== undefined && { calories: setLog.calories }),
+          ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
+        })),
+      })),
+    };
 
     await saveWorkoutImmediate(newWorkout);
     set({ activeWorkout: newWorkout });
