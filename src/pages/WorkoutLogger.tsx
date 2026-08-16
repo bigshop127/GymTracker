@@ -152,6 +152,14 @@ export default function WorkoutLogger() {
     };
   }, [todayStr, activeWorkout?.id, activeWorkout?.status]);
 
+  const templatesById = useMemo(() => {
+    const map = new Map<string, WorkoutTemplate>();
+    for (const t of templates) {
+      map.set(t.id, t);
+    }
+    return map;
+  }, [templates]);
+
   const todayPlan = useMemo(() => {
     if (!activeProgram) return null;
     const overridesMap = new Map<string, DayOverride>();
@@ -168,9 +176,10 @@ export default function WorkoutLogger() {
       restOverrideDays: settings?.restOverrideDays ?? 7,
       exerciseMap,
       today: now,
+      templatesById,
     });
     return plans[0] || null;
-  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, exerciseMap, now]);
+  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, exerciseMap, now, templatesById]);
 
   const handleCancelPause = async () => {
     if (!todayOverride) return;
@@ -181,6 +190,18 @@ export default function WorkoutLogger() {
     } catch (err) {
       console.error(err);
       alert('取消暫停失敗');
+    }
+  };
+
+  const handleCancelForcedRest = async () => {
+    if (!todayOverride) return;
+    try {
+      const updated = { ...todayOverride, forcedRest: false };
+      await saveDayOverride(updated);
+      await loadTodayOverride();
+    } catch (err) {
+      console.error(err);
+      alert('取消強制休息失敗');
     }
   };
 
@@ -746,7 +767,28 @@ export default function WorkoutLogger() {
                   );
                 }
 
-                if (showSuggestion && todayPlan.suggestion === 'restOrCardio') {
+                if (showSuggestion && todayPlan.suggestion === 'forcedRest') {
+                  return (
+                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 py-6 w-full">
+                      <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                        訓練狀態
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+                        今天已標記強制休息
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCancelForcedRest}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 font-bold underline hover:text-indigo-700 transition cursor-pointer"
+                      >
+                        取消強制休息
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (showSuggestion && (todayPlan.suggestion === 'restOrCardio' || todayPlan.suggestion === 'cardio')) {
+                  const isCardioOnly = todayPlan.suggestion === 'cardio';
                   return (
                     <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 w-full">
                       <div className="space-y-1">
@@ -754,7 +796,7 @@ export default function WorkoutLogger() {
                           訓練建議
                         </span>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          今天班表較累，建議休息或有氧
+                          {isCardioOnly ? '腿日前後，建議安排有氧訓練' : '今天班表較累，建議休息或有氧'}
                         </p>
                       </div>
                       

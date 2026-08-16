@@ -4,10 +4,17 @@ import {
   type TrainingProgram,
   type ProgramSlot,
   type Workout,
-  type Exercise
+  type Exercise,
+  type WorkoutTemplate,
+  type MuscleGroup
 } from '../db/schema';
 
-export type DayPlanSuggestion = 'train' | 'restOrCardio' | 'paused' | 'noProgram' | 'past';
+export type DayPlanSuggestion =
+  | 'train' | 'restOrCardio' | 'cardio' | 'paused' | 'forcedRest' | 'noProgram' | 'past';
+
+export type SlotCategory = 'legs' | 'chestBack' | 'other';
+
+const MAX_CONSECUTIVE_TRAIN_DAYS = 3;
 
 export interface PlannedDay {
   dateStr: string;
@@ -67,17 +74,18 @@ export function getWeekStart(dateStr: string): string {
   return getLocalDateStr(date.getTime());
 }
 
-export type ShiftCodeCategory = 'A' | 'B' | 'C' | 'combo' | 'dayoff' | 'unable';
+export type ShiftCodeCategory = 'A' | 'B' | 'C' | 'combo' | 'dayoff' | 'unable' | 'forcedRest';
 
 export function classifyShiftCodeCategory(code: string): ShiftCodeCategory {
   if (code === 'A' || code === 'B' || code === 'C') return code;
   if (code === '休假') return 'dayoff';
   if (code === '今日無法') return 'unable';
+  if (code === '強制休息' || code === 'forcedRest') return 'forcedRest';
   return 'combo'; // AB/AC/BC/ABC 一律歸這類
 }
 
 export const SHIFT_CODE_EMOJI: Record<ShiftCodeCategory, string> = {
-  A: '🌅', B: '☀️', C: '🌙', combo: '🔥', dayoff: '🏖️', unable: '🚫',
+  A: '🌅', B: '☀️', C: '🌙', combo: '🔥', dayoff: '🏖️', unable: '🚫', forcedRest: '🛌',
 };
 
 // 月曆角落徽章用：比照 locationStyle.ts 的 getLocationColor 寫法，回傳 hex 直接進 inline style。
@@ -88,6 +96,7 @@ export const SHIFT_CODE_HEX: Record<ShiftCodeCategory, string> = {
   combo: '#f43f5e',   // rose-500
   dayoff: '#10b981',  // emerald-500
   unable: '#334155',  // slate-700
+  forcedRest: '#0891b2', // cyan-600
 };
 
 // 九宮格按鈕用：完整 Tailwind class 字面值查表
@@ -98,7 +107,36 @@ export const SHIFT_CODE_BUTTON_CLASSES: Record<ShiftCodeCategory, string> = {
   combo: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400',
   dayoff: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400',
   unable: 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300',
+  forcedRest: 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-900 text-cyan-600 dark:text-cyan-400',
 };
+
+export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
+  A: 'bg-blue-50 dark:bg-blue-950/30',
+  B: 'bg-amber-50 dark:bg-amber-950/30',
+  C: 'bg-purple-50 dark:bg-purple-950/30',
+  combo: 'bg-rose-50 dark:bg-rose-950/30',
+  dayoff: 'bg-emerald-50 dark:bg-emerald-950/30',
+  unable: 'bg-slate-100 dark:bg-slate-800/60',
+  forcedRest: 'bg-cyan-50 dark:bg-cyan-950/30',
+};
+
+export function classifySlotCategory(
+  slot: ProgramSlot,
+  templatesById: Map<string, WorkoutTemplate>,
+  exerciseMap: Map<string, Exercise>,
+): SlotCategory {
+  if (!slot.templateId) return 'other';
+  const template = templatesById.get(slot.templateId);
+  if (!template) return 'other';
+  const groups = new Set<MuscleGroup>();
+  for (const entry of template.entries) {
+    const ex = exerciseMap.get(entry.exerciseId);
+    if (ex) groups.add(ex.muscleGroup);
+  }
+  if (groups.has('腿臀')) return 'legs';
+  if (groups.has('胸') || groups.has('背')) return 'chestBack';
+  return 'other';
+}
 
 export interface GenerateMonthPlanInput {
   dateStrings: string[];              // 要顯示的整個月曆範圍（含當月已過去的日期），由小到大排序
@@ -111,6 +149,7 @@ export interface GenerateMonthPlanInput {
   exerciseMap: Map<string, Exercise>; // 判斷「是不是純有氧」用，buildExerciseMap() 建
   today: number;                      // Date.now()，測試時可以注入固定時間
   weeklyTargetSessions?: number;       // 新增：settings?.weeklyTargetSessions ?? 4
+  templatesById: Map<string, WorkoutTemplate>;  // 新增：listTemplates() 建的 id→WorkoutTemplate 表
 }
 
 export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
@@ -125,6 +164,7 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     exerciseMap,
     today,
     weeklyTargetSessions = 4,
+    templatesById,
   } = input;
 
   const todayStr = getLocalDateStr(today);
@@ -165,6 +205,8 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
 
   let simCursor = activeProgram ? activeProgram.cursor : 0;
   const slots = activeProgram ? activeProgram.slots : [];
+  const slotCategories = slots.map(s => classifySlotCategory(s, templatesById, exerciseMap));
+  const allOther = slotCategories.every(cat => cat === 'other');
 
   const plannedDays: PlannedDay[] = [];
 
@@ -180,11 +222,16 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     }
   }
 
+  let consecutiveTrainDays = 0;
+  let yesterdayWasLegsTrain = false;
+  let effectiveWeeklyTarget = weeklyTargetSessions;
+
   for (const dateStr of dateStrings) {
     const weekStart = getWeekStart(dateStr);
     if (weekStart !== currentWeekStart) {
       currentWeekStart = weekStart;
       trainedThisWeek = 0;
+      effectiveWeeklyTarget = weeklyTargetSessions;
     }
 
     const isPast = dateStr < todayStr;
@@ -196,6 +243,9 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       trainedThisWeek += 1; // 不管過去或今天，有實際紀錄就算這週練過一次
     }
 
+    const upcomingCategory = slots.length > 0 ? slotCategories[simCursor % slots.length] : 'other';
+    const nextCategory = slots.length > 0 ? slotCategories[(simCursor + 1) % slots.length] : 'other';
+
     let suggestion: DayPlanSuggestion;
     let suggestedSlot: ProgramSlot | null = null;
 
@@ -204,31 +254,66 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     } else if (override?.paused) {
       suggestion = 'paused';
       daysSinceWeights += 1;
+      consecutiveTrainDays = 0;
+      yesterdayWasLegsTrain = false;
+      effectiveWeeklyTarget = Math.max(0, effectiveWeeklyTarget - 1);
+    } else if (override?.forcedRest) {
+      suggestion = 'forcedRest';
+      daysSinceWeights += 1;
+      consecutiveTrainDays = 0;
+      yesterdayWasLegsTrain = false;
+      effectiveWeeklyTarget = Math.max(0, effectiveWeeklyTarget - 1);
     } else {
       const hasExplicitShift = !!override && !override.isDayOff && !!override.shiftLetters && override.shiftLetters.length > 0;
-      let policy: ShiftPolicy;
+      let wantsTrain: boolean;
+
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dow = new Date(y, m - 1, d).getDay();
+      const daysLeftInWeek = 7 - dow; // 含今天
+      const remainingQuota = effectiveWeeklyTarget - trainedThisWeek;
+      const urgent = remainingQuota >= daysLeftInWeek; // 剩下的天數已經不夠湊到目標，沒有選擇餘地
 
       if (hasExplicitShift) {
         const key = [...override!.shiftLetters!].sort().join('');
-        policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
-        if (policy === 'restOrCardio' && daysSinceWeights >= restOverrideDays) {
-          policy = 'train';
-        }
+        let policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
+        if (policy === 'restOrCardio' && daysSinceWeights >= restOverrideDays) policy = 'train';
+        wantsTrain = policy === 'train';
+      } else if (remainingQuota <= 0) {
+        wantsTrain = false;
+      } else if (urgent) {
+        wantsTrain = true; // 週目標急迫性：沒有選擇餘地，優先於 a/c
+      } else if (allOther) {
+        wantsTrain = true; // 退化成 Phase 23 運作：所有 slots 均為 'other' 時，直接建議訓練
       } else {
-        // 沒登記，或明確標「休假」：交給每週目標次數
-        policy = trainedThisWeek < weeklyTargetSessions ? 'train' : 'restOrCardio';
+        // 規則 c：有餘裕時只挑推/拉（胸背相關），腿/手先讓路、遞延到 urgent 時才消耗
+        wantsTrain = upcomingCategory === 'chestBack';
+        // 規則 a：不急迫時，腿日前後盡量避開
+        if (wantsTrain && (nextCategory === 'legs' || yesterdayWasLegsTrain)) {
+          wantsTrain = false;
+        }
       }
 
-      if (policy === 'train' && slots.length > 0) {
+      // 規則 b：連續訓練天數硬上限，優先度最高，連明確排班都能推翻
+      if (wantsTrain && consecutiveTrainDays >= MAX_CONSECUTIVE_TRAIN_DAYS) {
+        wantsTrain = false;
+      }
+
+      if (wantsTrain && slots.length > 0) {
         suggestion = 'train';
         suggestedSlot = slots[simCursor % slots.length];
+        yesterdayWasLegsTrain = upcomingCategory === 'legs';
         simCursor += 1;
         daysSinceWeights = 0;
-        if (!actualWorkout) {
-          trainedThisWeek += 1;
-        }
+        consecutiveTrainDays += 1;
+        if (!actualWorkout) trainedThisWeek += 1;
       } else {
-        suggestion = activeProgram ? 'restOrCardio' : 'noProgram';
+        consecutiveTrainDays = 0;
+        yesterdayWasLegsTrain = false;
+        if (activeProgram) {
+          suggestion = upcomingCategory === 'legs' ? 'cardio' : 'restOrCardio';
+        } else {
+          suggestion = 'noProgram';
+        }
         daysSinceWeights += 1;
       }
     }

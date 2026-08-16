@@ -213,9 +213,11 @@ GymTracker/
 | Phase 21（v1.15） | 班表感知的月訓練計畫自動生成 | 月計畫純函式即時計算＋`dayOverrides` 表（記錄班別代碼與手動暫停）＋設定頁自訂對照表與門檻＋課表頁頂部月曆與編輯日期彈出面版；schema version(11) 儲存與 Firestore 同步。 |
 | Phase 22（v1.16） | 月曆長按拖曳批次編輯班表 | 月曆格子改用 pointer 事件判定長按與拖曳範圍＋高亮反白視覺＋批次編輯 Sheet 套用同一組設定至多日。 |
 | Phase 23（v1.17） | 班表獨立分頁＋每週目標次數＋今日無法快速鍵 | 班表獨立為 /schedule 路由並有獨立 NavItem ＋ 新增 settings.weeklyTargetSessions 決定未登記/休假訓練頻率 ＋ 9 宮格面板一鍵單點即存 ＋ 今日無法（paused: true）直接跳過 ＋ 分類配色與 emoji。 |
+| Phase 24（v1.18） | 進度頁與歷史清單視覺強化 | Progress 頁 1RM/最大重量 PR 卡片各自識別色 + 趨勢圖圓點上地點色 + 圖表加部位圖示 + 歷史清單卡片加部位圖示與地點色徽章。 |
+| Phase 25（v1.19） | 班別狀態擴充＋月曆滿版配色＋智慧排課規則 | 新增 forcedRest 狀態（z-index 修正/10顆按鈕分區/扣抵週目標） + 月曆格滿版配色 + 智慧排課腿日前後/避免連練/胸背優先（只看當天要不要練，不碰 slot 順序與 cursor/cycleCount）。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-08-16）**：Phase 0–23 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.17（Phase 7–23）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-08-16）**：Phase 0–25 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.19（Phase 7–25）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案

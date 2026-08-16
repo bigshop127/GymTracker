@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProgramStore } from '../store/program';
 import { listCompletedWorkouts } from '../db/workouts';
 import { listExercises } from '../db/exercises';
+import { listTemplates } from '../db/templates';
 import {
   listDayOverridesInRange,
   saveDayOverride,
@@ -20,22 +21,24 @@ import {
   classifyShiftCodeCategory,
   SHIFT_CODE_HEX,
   SHIFT_CODE_BUTTON_CLASSES,
+  SHIFT_CODE_CELL_BG_CLASSES,
 } from '../lib/shiftPlan';
-import { type DayOverride, type ShiftLetter, type Workout, type Exercise } from '../db/schema';
+import { type DayOverride, type ShiftLetter, type Workout, type Exercise, type WorkoutTemplate } from '../db/schema';
 import { getDaySummary } from '../lib/workoutSummary';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
 
 const BUTTON_CONFIGS = [
-  { label: 'A', value: { shiftLetters: ['A'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'A' }, category: 'A' as const, display: '🌅 A 班' },
-  { label: 'B', value: { shiftLetters: ['B'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'B' }, category: 'B' as const, display: '☀️ B 班' },
-  { label: 'C', value: { shiftLetters: ['C'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'C' }, category: 'C' as const, display: '🌙 C 班' },
-  { label: 'AB', value: { shiftLetters: ['A', 'B'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'AB' }, category: 'combo' as const, display: '🔥 AB 班' },
-  { label: 'AC', value: { shiftLetters: ['A', 'C'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'AC' }, category: 'combo' as const, display: '🔥 AC 班' },
-  { label: 'BC', value: { shiftLetters: ['B', 'C'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'BC' }, category: 'combo' as const, display: '🔥 BC 班' },
-  { label: 'ABC', value: { shiftLetters: ['A', 'B', 'C'] as ShiftLetter[], isDayOff: undefined, paused: undefined, rawLabel: 'ABC' }, category: 'combo' as const, display: '🔥 ABC 班' },
-  { label: '休假', value: { shiftLetters: undefined, isDayOff: true, paused: undefined, rawLabel: '休假' }, category: 'dayoff' as const, display: '🏖️ 休假' },
-  { label: '今日無法', value: { shiftLetters: undefined, isDayOff: undefined, paused: true, rawLabel: '今日無法' }, category: 'unable' as const, display: '🚫 今日無法' },
+  { label: 'A', value: { shiftLetters: ['A'] as ShiftLetter[], isDayOff: undefined, paused: undefined, forcedRest: undefined, rawLabel: 'A' }, category: 'A' as const, display: '🌅 A 班' },
+  { label: 'B', value: { shiftLetters: ['B'] as ShiftLetter[], isDayOff: undefined, paused: undefined, forcedRest: undefined, rawLabel: 'B' }, category: 'B' as const, display: '☀️ B 班' },
+  { label: 'C', value: { shiftLetters: ['C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'C' }, category: 'C' as const, display: '🌙 C 班' },
+  { label: 'AB', value: { shiftLetters: ['A', 'B'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AB' }, category: 'combo' as const, display: '🔥 AB 班' },
+  { label: 'AC', value: { shiftLetters: ['A', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AC' }, category: 'combo' as const, display: '🔥 AC 班' },
+  { label: 'BC', value: { shiftLetters: ['B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'BC' }, category: 'combo' as const, display: '🔥 BC 班' },
+  { label: 'ABC', value: { shiftLetters: ['A', 'B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'ABC' }, category: 'combo' as const, display: '🔥 ABC 班' },
+  { label: '休假', value: { shiftLetters: undefined, isDayOff: true, paused: undefined, forcedRest: undefined, rawLabel: '休假' }, category: 'dayoff' as const, display: '🏖️ 休假' },
+  { label: '今日無法', value: { shiftLetters: undefined, isDayOff: undefined, paused: true, forcedRest: undefined, rawLabel: '今日無法' }, category: 'unable' as const, display: '🚫 今日無法' },
+  { label: '強制休息', value: { shiftLetters: undefined, isDayOff: undefined, paused: undefined, forcedRest: true, rawLabel: '強制休息' }, category: 'forcedRest' as const, display: '🛌 強制休息' },
 ];
 
 export default function SchedulePage() {
@@ -65,6 +68,7 @@ export default function SchedulePage() {
   const [dayOverrides, setDayOverrides] = useState<DayOverride[]>([]);
   const [completedWorkouts, setCompletedWorkouts] = useState<Workout[]>([]);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
+  const [allTemplates, setAllTemplates] = useState<WorkoutTemplate[]>([]);
   const { activeWorkout } = useActiveWorkoutStore();
   const { settings } = useSettingsStore();
   const [reloadTrigger, setReloadTrigger] = useState(0);
@@ -92,11 +96,13 @@ export default function SchedulePage() {
       listDayOverridesInRange(startDateStr, endDateStr),
       listCompletedWorkouts(),
       listExercises(),
-    ]).then(([overrides, workouts, exercises]) => {
+      listTemplates(),
+    ]).then(([overrides, workouts, exercises, templates]) => {
       if (active) {
         setDayOverrides(overrides);
         setCompletedWorkouts(workouts);
         setAllExercises(exercises);
+        setAllTemplates(templates);
       }
     }).catch((err) => {
       console.error('Failed to load overrides data:', err);
@@ -139,6 +145,14 @@ export default function SchedulePage() {
     return map;
   }, [allExercises]);
 
+  const templatesById = useMemo(() => {
+    const map = new Map<string, WorkoutTemplate>();
+    for (const t of allTemplates) {
+      map.set(t.id, t);
+    }
+    return map;
+  }, [allTemplates]);
+
   const plannedDays = useMemo(() => {
     if (dateStrings.length === 0) return [];
     return generateMonthPlan({
@@ -152,8 +166,9 @@ export default function SchedulePage() {
       exerciseMap,
       today: now,
       weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
+      templatesById,
     });
-  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, exerciseMap, now]);
+  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, exerciseMap, now, templatesById]);
 
   const plannedDayMap = useMemo(() => {
     const map = new Map<string, PlannedDay>();
@@ -286,6 +301,7 @@ export default function SchedulePage() {
         shiftLetters: config.value.shiftLetters,
         isDayOff: config.value.isDayOff,
         paused: config.value.paused,
+        forcedRest: config.value.forcedRest,
         rawLabel: config.value.rawLabel,
       });
       setReloadTrigger((t) => t + 1);
@@ -299,6 +315,7 @@ export default function SchedulePage() {
         shiftLetters: config.value.shiftLetters,
         isDayOff: config.value.isDayOff,
         paused: config.value.paused,
+        forcedRest: config.value.forcedRest,
         rawLabel: config.value.rawLabel,
       });
       setReloadTrigger((t) => t + 1);
@@ -399,11 +416,17 @@ export default function SchedulePage() {
             } else if (override?.paused) {
               labelText = '今日無法';
               labelColorClass = 'text-[8px] text-slate-400 dark:text-slate-500 opacity-60';
+            } else if (override?.forcedRest || suggestion === 'forcedRest') {
+              labelText = '強制休息';
+              labelColorClass = 'text-[8px] text-cyan-600 dark:text-cyan-400 font-semibold';
             } else if (suggestion === 'train' && suggestedSlot) {
               labelText = suggestedSlot.label;
               labelColorClass = 'text-[9px] font-bold text-indigo-600 dark:text-indigo-400';
             } else if (suggestion === 'restOrCardio') {
               labelText = '休息/有氧';
+              labelColorClass = 'text-[8px] font-semibold text-slate-500 dark:text-slate-400';
+            } else if (suggestion === 'cardio') {
+              labelText = '建議有氧';
               labelColorClass = 'text-[8px] font-semibold text-slate-500 dark:text-slate-400';
             }
 
@@ -412,6 +435,9 @@ export default function SchedulePage() {
             if (override?.paused) {
               badgeText = '🚫';
               badgeCategory = 'unable';
+            } else if (override?.forcedRest) {
+              badgeText = '🛌';
+              badgeCategory = 'forcedRest';
             } else if (override?.isDayOff) {
               badgeText = '休';
               badgeCategory = 'dayoff';
@@ -442,6 +468,8 @@ export default function SchedulePage() {
                     ? 'bg-indigo-100/50 dark:bg-indigo-900/30 ring-2 ring-indigo-400 dark:ring-indigo-500 z-10'
                     : isToday
                     ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800'
+                    : badgeCategory
+                    ? SHIFT_CODE_CELL_BG_CLASSES[badgeCategory]
                     : 'bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
@@ -470,7 +498,7 @@ export default function SchedulePage() {
 
       {/* 編輯日期 Sheet */}
       {selectedDateStr && (
-        <div className="fixed inset-0 bg-black/40 dark:bg-slate-950/60 backdrop-blur-sm z-50 flex items-end justify-center">
+        <div className="fixed inset-0 bg-black/40 dark:bg-slate-950/60 backdrop-blur-sm z-[60] flex items-end justify-center">
           <div className="fixed inset-0" onClick={() => setSelectedDateStr(null)} />
           <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up transition-colors duration-200">
             {/* 標頭 */}
@@ -498,18 +526,39 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {/* 內容：九宮格單點即存 */}
-            <div className="grid grid-cols-3 gap-2 pt-2">
-              {BUTTON_CONFIGS.map((config) => (
-                <button
-                  key={config.label}
-                  type="button"
-                  onClick={() => handleSingleSave(config)}
-                  className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
-                >
-                  {config.display}
-                </button>
-              ))}
+            {/* 內容：分區 */}
+            <div className="space-y-4 pt-2">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">班別登記</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {BUTTON_CONFIGS.slice(0, 8).map((config) => (
+                    <button
+                      key={config.label}
+                      type="button"
+                      onClick={() => handleSingleSave(config)}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                    >
+                      {config.display}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">訓練覆寫</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {BUTTON_CONFIGS.slice(8, 10).map((config) => (
+                    <button
+                      key={config.label}
+                      type="button"
+                      onClick={() => handleSingleSave(config)}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                    >
+                      {config.display}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -517,7 +566,7 @@ export default function SchedulePage() {
 
       {/* 批次編輯日期 Sheet */}
       {rangeEditDates && rangeEditDates.length > 0 && (
-        <div className="fixed inset-0 bg-black/40 dark:bg-slate-950/60 backdrop-blur-sm z-50 flex items-end justify-center">
+        <div className="fixed inset-0 bg-black/40 dark:bg-slate-950/60 backdrop-blur-sm z-[60] flex items-end justify-center">
           <div className="fixed inset-0" onClick={() => setRangeEditDates(null)} />
           <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up transition-colors duration-200">
             {/* 標頭 */}
@@ -545,18 +594,39 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {/* 內容：九宮格單點即存 */}
-            <div className="grid grid-cols-3 gap-2 pt-2">
-              {BUTTON_CONFIGS.map((config) => (
-                <button
-                  key={config.label}
-                  type="button"
-                  onClick={() => handleBatchSave(config)}
-                  className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
-                >
-                  {config.display}
-                </button>
-              ))}
+            {/* 內容：分區 */}
+            <div className="space-y-4 pt-2">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">班別登記</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {BUTTON_CONFIGS.slice(0, 8).map((config) => (
+                    <button
+                      key={config.label}
+                      type="button"
+                      onClick={() => handleBatchSave(config)}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                    >
+                      {config.display}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">訓練覆寫</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {BUTTON_CONFIGS.slice(8, 10).map((config) => (
+                    <button
+                      key={config.label}
+                      type="button"
+                      onClick={() => handleBatchSave(config)}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                    >
+                      {config.display}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
