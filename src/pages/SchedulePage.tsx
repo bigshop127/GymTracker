@@ -304,6 +304,7 @@ export default function SchedulePage() {
         forcedRest: config.value.forcedRest,
         rawLabel: config.value.rawLabel,
         pinnedSlotId: existing?.pinnedSlotId,
+        pinnedOutcome: existing?.pinnedOutcome,
       });
       setReloadTrigger((t) => t + 1);
       setSelectedDateStr(null);
@@ -322,6 +323,7 @@ export default function SchedulePage() {
           forcedRest: config.value.forcedRest,
           rawLabel: config.value.rawLabel,
           pinnedSlotId: existing?.pinnedSlotId,
+          pinnedOutcome: existing?.pinnedOutcome,
         });
       }));
       setReloadTrigger((t) => t + 1);
@@ -329,7 +331,7 @@ export default function SchedulePage() {
     }
   };
 
-  const handlePinSave = async (slotId: string | undefined) => {
+  const handlePinSave = async (next: { slotId: string } | { outcome: 'rest' | 'cardio' } | null) => {
     if (!selectedDateStr) return;
     const existing = overridesByDate.get(selectedDateStr);
     await saveDayOverride({
@@ -339,7 +341,8 @@ export default function SchedulePage() {
       paused: existing?.paused,
       forcedRest: existing?.forcedRest,
       rawLabel: existing?.rawLabel,
-      pinnedSlotId: slotId,
+      pinnedSlotId: next && 'slotId' in next ? next.slotId : undefined,
+      pinnedOutcome: next && 'outcome' in next ? next.outcome : undefined,
     });
     setReloadTrigger((t) => t + 1);
   };
@@ -518,6 +521,16 @@ export default function SchedulePage() {
                     {pinBadgeText}{plannedDay.pinConflict ? '⚠️' : ''}
                   </span>
                 )}
+                {override?.pinnedOutcome && (
+                  <span
+                    className={`absolute bottom-0.5 left-1 text-[7px] font-extrabold px-1 py-0.2 rounded leading-none flex items-center text-white ${
+                      override.pinnedOutcome === 'cardio' ? 'bg-teal-600' : 'bg-slate-600'
+                    }`}
+                    title={override.pinnedOutcome === 'cardio' ? '指定：有氧' : '指定：休息'}
+                  >
+                    {override.pinnedOutcome === 'cardio' ? '🏃' : '😴'}
+                  </span>
+                )}
                 <div className="h-4 flex items-center justify-center">
                   {iconHtml ? (
                     <svg viewBox="0 0 24 24" fill="currentColor" style={{ color: iconColor }}
@@ -596,33 +609,69 @@ export default function SchedulePage() {
                 </div>
               </div>
 
-              {activeProgram && activeProgram.slots.length > 0 && (
+              {activeProgram && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
                   <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
-                    指定訓練部位
+                    指定當天安排
                   </span>
+                  {activeProgram.slots.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      {activeProgram.slots.map((slot) => {
+                        const alreadyDoneThisLap = activeProgram.completedSlotIdsThisLap.includes(slot.id);
+                        const isPinned = overridesByDate.get(selectedDateStr)?.pinnedSlotId === slot.id;
+                        return (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            disabled={alreadyDoneThisLap}
+                            onClick={() => handlePinSave(isPinned ? null : { slotId: slot.id })}
+                            className={`py-3 text-center font-bold text-xs rounded-xl transition border ${
+                              alreadyDoneThisLap
+                                ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'
+                                : isPinned
+                                ? 'bg-violet-600 border-violet-600 text-white shadow-sm'
+                                : 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900 text-violet-600 dark:text-violet-400 hover:opacity-80'
+                            }`}
+                          >
+                            {slot.label}{alreadyDoneThisLap ? '（這輪已練過）' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
-                    {activeProgram.slots.map((slot) => {
-                      const alreadyDoneThisLap = activeProgram.completedSlotIdsThisLap.includes(slot.id);
-                      const isPinned = overridesByDate.get(selectedDateStr)?.pinnedSlotId === slot.id;
+                    {(() => {
+                      const isPinnedRest = overridesByDate.get(selectedDateStr)?.pinnedOutcome === 'rest';
                       return (
                         <button
-                          key={slot.id}
                           type="button"
-                          disabled={alreadyDoneThisLap}
-                          onClick={() => handlePinSave(isPinned ? undefined : slot.id)}
+                          onClick={() => handlePinSave(isPinnedRest ? null : { outcome: 'rest' })}
                           className={`py-3 text-center font-bold text-xs rounded-xl transition border ${
-                            alreadyDoneThisLap
-                              ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'
-                              : isPinned
-                              ? 'bg-violet-600 border-violet-600 text-white shadow-sm'
-                              : 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900 text-violet-600 dark:text-violet-400 hover:opacity-80'
+                            isPinnedRest
+                              ? 'bg-slate-600 border-slate-600 text-white shadow-sm'
+                              : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:opacity-80'
                           }`}
                         >
-                          {slot.label}{alreadyDoneThisLap ? '（這輪已練過）' : ''}
+                          😴 休息
                         </button>
                       );
-                    })}
+                    })()}
+                    {(() => {
+                      const isPinnedCardio = overridesByDate.get(selectedDateStr)?.pinnedOutcome === 'cardio';
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handlePinSave(isPinnedCardio ? null : { outcome: 'cardio' })}
+                          className={`py-3 text-center font-bold text-xs rounded-xl transition border ${
+                            isPinnedCardio
+                              ? 'bg-teal-600 border-teal-600 text-white shadow-sm'
+                              : 'bg-teal-50 dark:bg-teal-950/40 border-teal-200 dark:border-teal-900 text-teal-600 dark:text-teal-400 hover:opacity-80'
+                          }`}
+                        >
+                          🏃 有氧
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               )}

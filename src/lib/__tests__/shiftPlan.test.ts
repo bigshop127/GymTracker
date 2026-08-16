@@ -748,6 +748,37 @@ describe('shiftPlan', () => {
       expect(result[2].suggestedSlot?.id).toBe('slot-push');
     });
 
+    test('驗收 3-b：pinnedOutcome 指定休息／有氧時，即使週目標餘裕滿滿也直接定案，不進訓練池', () => {
+      const dates = ['2026-08-16', '2026-08-17', '2026-08-18'];
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-16', { id: '2026-08-16', pinnedOutcome: 'rest', updatedAt: now });
+      overrides.set('2026-08-17', { id: '2026-08-17', pinnedOutcome: 'cardio', updatedAt: now });
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 7, // 餘裕拉滿，證明是 pinnedOutcome 硬性定案而不是自然被建議休息
+        templatesById: templatesMap,
+      });
+
+      expect(result[0].suggestion).toBe('restOrCardio');
+      expect(result[0].suggestedSlot).toBeNull();
+
+      expect(result[1].suggestion).toBe('cardio');
+      expect(result[1].suggestedSlot).toBeNull();
+
+      // 前兩天沒有消耗訓練池，第三天沒有 override 時應該拿池子裡第一個 slot（拉）
+      expect(result[2].suggestion).toBe('train');
+      expect(result[2].suggestedSlot?.id).toBe('slot-pull');
+    });
+
     test('驗收 4：指定部位已在之前被消耗，則 pinConflict 為 true 且退回一般建議', () => {
       const dates = ['2026-08-16', '2026-08-17'];
       const overrides = new Map<string, DayOverride>();

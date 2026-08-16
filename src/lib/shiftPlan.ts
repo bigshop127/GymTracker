@@ -340,7 +340,10 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       const remainingQuota = effectiveWeeklyTarget - trainedThisWeek;
       const urgent = remainingQuota >= daysLeftInWeek; // 剩下的天數已經不夠湊到目標，沒有選擇餘地
 
-      if (resolvedPinSlot) {
+      if (override?.pinnedOutcome) {
+        // 指定當天就是休息或有氧，不進訓練池、不看班別/週目標，直接定案
+        wantsTrain = false;
+      } else if (resolvedPinSlot) {
         wantsTrain = true;
       } else if (hasExplicitShift) {
         const key = [...override!.shiftLetters!].sort().join('');
@@ -398,7 +401,11 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       } else {
         consecutiveTrainDays = 0;
         yesterdayWasLegsTrain = false;
-        if (activeProgram) {
+        if (override?.pinnedOutcome === 'cardio') {
+          suggestion = 'cardio';
+        } else if (override?.pinnedOutcome === 'rest') {
+          suggestion = 'restOrCardio';
+        } else if (activeProgram) {
           suggestion = upcomingCategory === 'legs' ? 'cardio' : 'restOrCardio';
         } else {
           suggestion = 'noProgram';

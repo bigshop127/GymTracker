@@ -216,9 +216,10 @@ GymTracker/
 | Phase 24（v1.18） | 進度頁與歷史清單視覺強化 | Progress 頁 1RM/最大重量 PR 卡片各自識別色 + 趨勢圖圓點上地點色 + 圖表加部位圖示 + 歷史清單卡片加部位圖示與地點色徽章。 |
 | Phase 25（v1.19） | 班別狀態擴充＋月曆滿版配色＋智慧排課規則 | 新增 forcedRest 狀態（z-index 修正/10顆按鈕分區/扣抵週目標） + 月曆格滿版配色 + 智慧排課腿日前後/避免連練/胸背優先（只看當天要不要練，不碰 slot 順序與 cursor/cycleCount）。 |
 | Phase 26（v1.20） | 班別配色分色＋預設政策校正＋指定訓練部位 | `ShiftCodeCategory` 拆分＋預設 policies 修正 ＋ `DayOverride.pinnedSlotId` ＋ `completedSlotIdsThisLap` 取代 `cursor` (含 Dexie version 12) ＋ 月曆指定提示與 conflict 標記 ＋ `WorkoutLogger` 循序列表連動修復。 |
+| Phase 26.1（v1.21） | 訓練排程隔天分散＋AB/AC/BC 底色改色＋指定休息／有氧 | `generateMonthPlan` 明確排班分支追加「週目標已達成不硬練」＋「沒有 urgent 壓力偏好隔天訓練」，避免連續訓練天數擠成一坨 ＋ AB/AC/BC 底色改用 indigo/green/yellow（原本 rose/orange/pink 色相太集中） ＋ 新增 `DayOverride.pinnedOutcome`（'rest' \| 'cardio'），「指定訓練部位」面板擴充成「指定當天安排」可直接指定休息或有氧。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-08-16）**：Phase 0–26 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.20（Phase 7–26）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-08-17）**：Phase 0–26.1 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.21（Phase 7–26.1）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案

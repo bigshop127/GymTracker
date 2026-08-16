@@ -89,6 +89,7 @@ export interface DayOverride {
   paused?: boolean;               // 手動暫停訓練建議（急事/下雨），跟班別無關，任何一天都能單獨勾
   forcedRest?: boolean;           // 強制休息日：不上班也不健身，連有氧都沒有；跟 shiftLetters/isDayOff/paused 四選一互斥
   pinnedSlotId?: string;          // 指定當天要練哪個 ProgramSlot；跟 shiftLetters/isDayOff/paused/forcedRest 是獨立維度，可共存
+  pinnedOutcome?: 'rest' | 'cardio'; // 指定當天就是休息或有氧（不指定訓練部位）；跟 pinnedSlotId 互斥，UI 上是同一組單選
   updatedAt: number;
   deletedAt?: number;             // 沿用既有軟刪除慣例
 }
