@@ -16,8 +16,8 @@ describe('全新資料庫：直接建在最新版本，不跑遷移', () => {
     await db.open();
   });
 
-  test('開得起來，且版本是 11', () => {
-    expect(db.verno).toBe(11);
+  test('開得起來，且版本是 12', () => {
+    expect(db.verno).toBe(12);
   });
 
   test('沒有跑過遷移 → 沒有任何 id 對照，repairExerciseIds 是 no-op', async () => {

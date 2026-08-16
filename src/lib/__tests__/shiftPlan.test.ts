@@ -38,9 +38,9 @@ describe('shiftPlan', () => {
   });
 
   describe('classifyShiftCode', () => {
-    test('輸入順序不同 [A, B] 與 [B, A] 應正規化為同一個 key', () => {
-      const o1: DayOverride = { id: '2026-08-17', shiftLetters: ['A', 'B'], updatedAt: now };
-      const o2: DayOverride = { id: '2026-08-17', shiftLetters: ['B', 'A'], updatedAt: now };
+    test('輸入順序不同 [A, B, C] 與 [C, B, A] 應正規化為同一個 key', () => {
+      const o1: DayOverride = { id: '2026-08-17', shiftLetters: ['A', 'B', 'C'], updatedAt: now };
+      const o2: DayOverride = { id: '2026-08-17', shiftLetters: ['C', 'B', 'A'], updatedAt: now };
       expect(classifyShiftCode(o1, undefined)).toBe('restOrCardio');
       expect(classifyShiftCode(o2, undefined)).toBe('restOrCardio');
     });
@@ -71,7 +71,7 @@ describe('shiftPlan', () => {
         { id: 'slot-背', label: '背' },
         { id: 'slot-腿', label: '腿' },
       ],
-      cursor: 0,
+      completedSlotIdsThisLap: [],
       cycleCount: 0,
       estimatedWeeks: { min: 4, max: 8 },
       status: 'active',
@@ -114,7 +114,7 @@ describe('shiftPlan', () => {
       for (let i = 16; i <= 25; i++) {
         const dStr = `2026-08-${i}`;
         dates.push(dStr);
-        overrides.set(dStr, { id: dStr, shiftLetters: ['A', 'B'], updatedAt: now });
+        overrides.set(dStr, { id: dStr, shiftLetters: ['A', 'B', 'C'], updatedAt: now });
       }
 
       // 我們希望模擬 8/16 ~ 8/25 的結果
@@ -200,8 +200,8 @@ describe('shiftPlan', () => {
       };
 
       const overrides = new Map<string, DayOverride>();
-      overrides.set('2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B'], updatedAt: now });
-      overrides.set('2026-08-17', { id: '2026-08-17', shiftLetters: ['A', 'B'], updatedAt: now });
+      overrides.set('2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now });
+      overrides.set('2026-08-17', { id: '2026-08-17', shiftLetters: ['A', 'B', 'C'], updatedAt: now });
 
       // 情境一：最近一次重訓是 8/14，而 8/15 只有純有氧。
       // 計算 daysSinceWeights 是看 8/14，到今天 8/16 為 2 天，到明 8/17 為 3 天。
@@ -273,15 +273,16 @@ describe('shiftPlan', () => {
       expect(result[2].suggestion).toBe('train');
     });
 
-    test('simCursor 大於 slots 長度時能正確 wrap', () => {
-      const programWithCursor: TrainingProgram = {
+    test('completedSlotIdsThisLap 包含部分 slot 時能正確建議下一個', () => {
+      const programWithCompleted: TrainingProgram = {
         ...program,
-        cursor: 4, // length = 3, so cursor 4 % 3 = 1 -> 肩/背
+        completedSlotIdsThisLap: ['slot-胸'], // 胸已練過，下一個應建議背
+        cycleCount: 1,
       };
 
       const result = generateMonthPlan({
         dateStrings: ['2026-08-16'],
-        activeProgram: programWithCursor,
+        activeProgram: programWithCompleted,
         completedWorkouts: [],
         activeWorkoutToday: null,
         overridesByDate: new Map(),
@@ -339,8 +340,8 @@ describe('shiftPlan', () => {
       expect(classifyShiftCodeCategory('C')).toBe('C');
       expect(classifyShiftCodeCategory('休假')).toBe('dayoff');
       expect(classifyShiftCodeCategory('今日無法')).toBe('unable');
-      expect(classifyShiftCodeCategory('AB')).toBe('combo');
-      expect(classifyShiftCodeCategory('ABC')).toBe('combo');
+      expect(classifyShiftCodeCategory('AB')).toBe('AB');
+      expect(classifyShiftCodeCategory('ABC')).toBe('ABC');
     });
   });
 
@@ -354,7 +355,7 @@ describe('shiftPlan', () => {
         { id: 'slot-腿', label: '腿' },
         { id: 'slot-肩', label: '肩' },
       ],
-      cursor: 0,
+      completedSlotIdsThisLap: [],
       cycleCount: 0,
       estimatedWeeks: { min: 4, max: 8 },
       status: 'active',
@@ -448,7 +449,7 @@ describe('shiftPlan', () => {
         { id: 'slot-legs', label: '腿', templateId: 'temp-legs' }, // legs
         { id: 'slot-arms', label: '手', templateId: 'temp-arms' }, // other
       ],
-      cursor: 0,
+      completedSlotIdsThisLap: [],
       cycleCount: 0,
       estimatedWeeks: { min: 4, max: 8 },
       status: 'active',
@@ -499,7 +500,7 @@ describe('shiftPlan', () => {
       ];
       const programWithLegsCursor: TrainingProgram = {
         ...program,
-        cursor: 2, // Leg day slot is next
+        completedSlotIdsThisLap: ['slot-pull', 'slot-push'], // Leg day slot is next
       };
       const result = generateMonthPlan({
         dateStrings: dates,
@@ -588,7 +589,7 @@ describe('shiftPlan', () => {
       ];
       const programWithLegsCursor: TrainingProgram = {
         ...program,
-        cursor: 2, // Leg day slot is next
+        completedSlotIdsThisLap: ['slot-pull', 'slot-push'], // Leg day slot is next
       };
       const result = generateMonthPlan({
         dateStrings: dates,
@@ -608,6 +609,149 @@ describe('shiftPlan', () => {
       expect(result[0].dateStr).toBe('2026-08-21');
       expect(result[0].suggestion).toBe('train');
       expect(result[0].suggestedSlot?.label).toBe('腿');
+    });
+  });
+
+  describe('Phase 26 指定部位與組合班預設政策新測試', () => {
+    const workoutTemplates = [
+      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-legs', name: '腿 (Legs)', entries: [{ id: 'e3', exerciseId: 'squat', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-arms', name: '手 (Arms)', entries: [{ id: 'e4', exerciseId: 'run', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+    ];
+    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
+
+    const program: TrainingProgram = {
+      id: 'prog-26',
+      name: '測試計畫26',
+      slots: [
+        { id: 'slot-pull', label: '拉', templateId: 'temp-pull' }, // chestBack
+        { id: 'slot-push', label: '推', templateId: 'temp-push' }, // chestBack
+        { id: 'slot-arms', label: '手', templateId: 'temp-arms' }, // other
+        { id: 'slot-legs', label: '腿', templateId: 'temp-legs' }, // legs
+      ],
+      completedSlotIdsThisLap: [],
+      cycleCount: 0,
+      estimatedWeeks: { min: 4, max: 8 },
+      status: 'active',
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    test('驗收 2：全新環境下 AC/BC 建議訓練，ABC 建議休息', () => {
+      const dates = ['2026-08-16', '2026-08-17', '2026-08-18'];
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'C'], updatedAt: now });
+      overrides.set('2026-08-17', { id: '2026-08-17', shiftLetters: ['B', 'C'], updatedAt: now });
+      overrides.set('2026-08-18', { id: '2026-08-18', shiftLetters: ['A', 'B', 'C'], updatedAt: now });
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      });
+
+      expect(result[0].suggestion).toBe('train'); // AC -> train
+      expect(result[1].suggestion).toBe('train'); // BC -> train
+      expect(result[2].suggestion).toBe('restOrCardio'); // ABC -> restOrCardio
+    });
+
+    test('驗收 3：指定部位且不衝突時，建議該部位且從池子中排除', () => {
+      const dates = ['2026-08-16', '2026-08-17', '2026-08-18'];
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-16', { id: '2026-08-16', pinnedSlotId: 'slot-legs', updatedAt: now });
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 7,
+        templatesById: templatesMap,
+      });
+
+      expect(result[0].suggestion).toBe('train');
+      expect(result[0].suggestedSlot?.id).toBe('slot-legs');
+      expect(result[0].pinConflict).toBe(false);
+
+      expect(result[1].suggestion).toBe('train');
+      expect(result[1].suggestedSlot?.id).toBe('slot-pull');
+
+      expect(result[2].suggestion).toBe('train');
+      expect(result[2].suggestedSlot?.id).toBe('slot-push');
+    });
+
+    test('驗收 4：指定部位已在之前被消耗，則 pinConflict 為 true 且退回一般建議', () => {
+      const dates = ['2026-08-16', '2026-08-17'];
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-17', { id: '2026-08-17', pinnedSlotId: 'slot-pull', updatedAt: now });
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 7,
+        templatesById: templatesMap,
+      });
+
+      expect(result[0].suggestedSlot?.id).toBe('slot-pull');
+      expect(result[1].pinConflict).toBe(true);
+      expect(result[1].suggestion).toBe('train');
+      expect(result[1].suggestedSlot?.id).toBe('slot-push');
+    });
+
+    test('驗收 5：連續訓練天數達上限時，指定部位仍會被推翻且 pinConflict 為 true', () => {
+      const dates = ['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19'];
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-19', { id: '2026-08-19', pinnedSlotId: 'slot-arms', updatedAt: now });
+
+      const program3: TrainingProgram = {
+        ...program,
+        slots: [
+          { id: 'slot-pull', label: '拉', templateId: 'temp-pull' },
+          { id: 'slot-push', label: '推', templateId: 'temp-push' },
+        ],
+      };
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program3,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 5,
+        templatesById: templatesMap,
+      });
+
+      expect(result[0].suggestion).toBe('train');
+      expect(result[1].suggestion).toBe('train');
+      expect(result[2].suggestion).toBe('train');
+      expect(result[3].suggestion).not.toBe('train'); // blocked by rule b
+      expect(result[3].pinConflict).toBe(true);
     });
   });
 });

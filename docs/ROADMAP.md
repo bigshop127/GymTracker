@@ -136,7 +136,7 @@ interface TrainingProgram {
   id: string;
   name: string;            // 計畫名稱
   slots: ProgramSlot[];    // 循環排程項目
-  cursor: number;          // 目前執行 slot 索引
+  completedSlotIdsThisLap: string[]; // 這一輪已消耗的 slot id
   cycleCount: number;      // 已完成輪數
   estimatedWeeks: { min: number; max: number }; // 預估週數
   status: 'active' | 'completed';
@@ -215,9 +215,10 @@ GymTracker/
 | Phase 23（v1.17） | 班表獨立分頁＋每週目標次數＋今日無法快速鍵 | 班表獨立為 /schedule 路由並有獨立 NavItem ＋ 新增 settings.weeklyTargetSessions 決定未登記/休假訓練頻率 ＋ 9 宮格面板一鍵單點即存 ＋ 今日無法（paused: true）直接跳過 ＋ 分類配色與 emoji。 |
 | Phase 24（v1.18） | 進度頁與歷史清單視覺強化 | Progress 頁 1RM/最大重量 PR 卡片各自識別色 + 趨勢圖圓點上地點色 + 圖表加部位圖示 + 歷史清單卡片加部位圖示與地點色徽章。 |
 | Phase 25（v1.19） | 班別狀態擴充＋月曆滿版配色＋智慧排課規則 | 新增 forcedRest 狀態（z-index 修正/10顆按鈕分區/扣抵週目標） + 月曆格滿版配色 + 智慧排課腿日前後/避免連練/胸背優先（只看當天要不要練，不碰 slot 順序與 cursor/cycleCount）。 |
+| Phase 26（v1.20） | 班別配色分色＋預設政策校正＋指定訓練部位 | `ShiftCodeCategory` 拆分＋預設 policies 修正 ＋ `DayOverride.pinnedSlotId` ＋ `completedSlotIdsThisLap` 取代 `cursor` (含 Dexie version 12) ＋ 月曆指定提示與 conflict 標記 ＋ `WorkoutLogger` 循序列表連動修復。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-08-16）**：Phase 0–25 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.19（Phase 7–25）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-08-16）**：Phase 0–26 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.20（Phase 7–26）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案

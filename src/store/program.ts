@@ -13,7 +13,7 @@ interface ProgramState {
   ) => Promise<void>;
   updateProgram: (updates: Partial<Omit<TrainingProgram, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   endProgram: () => Promise<void>;
-  advanceCursor: () => Promise<void>;
+  completeSlot: (slotId: string) => Promise<void>;
 }
 
 export const useProgramStore = create<ProgramState>((set, get) => ({
@@ -54,7 +54,7 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
         id: crypto.randomUUID(),
         name,
         slots,
-        cursor: 0,
+        completedSlotIdsThisLap: [],
         cycleCount: 0,
         estimatedWeeks,
         status: 'active',
@@ -76,18 +76,16 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     if (!activeProgram) return;
 
     try {
-      let cursor = activeProgram.cursor;
+      let completedSlotIdsThisLap = activeProgram.completedSlotIdsThisLap;
       if (updates.slots) {
-        const newLength = updates.slots.length;
-        if (newLength > 0 && cursor >= newLength) {
-          cursor = newLength - 1;
-        }
+        const validIds = new Set(updates.slots.map(s => s.id));
+        completedSlotIdsThisLap = completedSlotIdsThisLap.filter(id => validIds.has(id));
       }
 
       const updatedProgram: TrainingProgram = {
         ...activeProgram,
         ...updates,
-        ...(updates.slots && { cursor }),
+        completedSlotIdsThisLap,
         updatedAt: Date.now(),
       };
       await saveProgram(updatedProgram);
@@ -115,18 +113,28 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     }
   },
 
-  advanceCursor: async () => {
+  completeSlot: async (slotId: string) => {
     const { activeProgram } = get();
     if (!activeProgram) return;
 
+    // 驗證 slotId 是否屬於目前的 activeProgram.slots
+    const slotExists = activeProgram.slots.some((s) => s.id === slotId);
+    if (!slotExists) return;
+
     try {
-      const nextCursor = (activeProgram.cursor + 1) % activeProgram.slots.length;
-      const wrapped = nextCursor === 0;
-      const cycleCount = wrapped ? activeProgram.cycleCount + 1 : activeProgram.cycleCount;
+      const already = activeProgram.completedSlotIdsThisLap.includes(slotId);
+      let completed = already
+        ? activeProgram.completedSlotIdsThisLap
+        : [...activeProgram.completedSlotIdsThisLap, slotId];
+      let cycleCount = activeProgram.cycleCount;
+      if (completed.length >= activeProgram.slots.length) {
+        cycleCount += 1;
+        completed = [];
+      }
 
       const updatedProgram: TrainingProgram = {
         ...activeProgram,
-        cursor: nextCursor,
+        completedSlotIdsThisLap: completed,
         cycleCount,
         updatedAt: Date.now(),
       };
@@ -134,7 +142,7 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
       await saveProgram(updatedProgram);
       set({ activeProgram: updatedProgram });
     } catch (error) {
-      console.error('Failed to advance program cursor:', error);
+      console.error('Failed to complete program slot:', error);
     }
   },
 }));

@@ -41,7 +41,7 @@ describe('Split Rotation Library', () => {
         { id: 's3', label: '腿 (Leg)' },
         { id: 's4', label: '手 (Arms)' },
       ],
-      cursor: 0,
+      completedSlotIdsThisLap: [],
       cycleCount: 0,
       estimatedWeeks: { min: 8, max: 12 },
       status: 'active',

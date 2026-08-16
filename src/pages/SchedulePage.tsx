@@ -8,7 +8,6 @@ import {
   listDayOverridesInRange,
   saveDayOverride,
   clearDayOverride,
-  bulkSaveDayOverride,
 } from '../db/dayOverrides';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
@@ -32,10 +31,10 @@ const BUTTON_CONFIGS = [
   { label: 'A', value: { shiftLetters: ['A'] as ShiftLetter[], isDayOff: undefined, paused: undefined, forcedRest: undefined, rawLabel: 'A' }, category: 'A' as const, display: '🌅 A 班' },
   { label: 'B', value: { shiftLetters: ['B'] as ShiftLetter[], isDayOff: undefined, paused: undefined, forcedRest: undefined, rawLabel: 'B' }, category: 'B' as const, display: '☀️ B 班' },
   { label: 'C', value: { shiftLetters: ['C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'C' }, category: 'C' as const, display: '🌙 C 班' },
-  { label: 'AB', value: { shiftLetters: ['A', 'B'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AB' }, category: 'combo' as const, display: '🔥 AB 班' },
-  { label: 'AC', value: { shiftLetters: ['A', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AC' }, category: 'combo' as const, display: '🔥 AC 班' },
-  { label: 'BC', value: { shiftLetters: ['B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'BC' }, category: 'combo' as const, display: '🔥 BC 班' },
-  { label: 'ABC', value: { shiftLetters: ['A', 'B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'ABC' }, category: 'combo' as const, display: '🔥 ABC 班' },
+  { label: 'AB', value: { shiftLetters: ['A', 'B'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AB' }, category: 'AB' as const, display: '🌆 AB 班' },
+  { label: 'AC', value: { shiftLetters: ['A', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AC' }, category: 'AC' as const, display: '🔀 AC 班' },
+  { label: 'BC', value: { shiftLetters: ['B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'BC' }, category: 'BC' as const, display: '🌄 BC 班' },
+  { label: 'ABC', value: { shiftLetters: ['A', 'B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'ABC' }, category: 'ABC' as const, display: '🔥 ABC 班' },
   { label: '休假', value: { shiftLetters: undefined, isDayOff: true, paused: undefined, forcedRest: undefined, rawLabel: '休假' }, category: 'dayoff' as const, display: '🏖️ 休假' },
   { label: '今日無法', value: { shiftLetters: undefined, isDayOff: undefined, paused: true, forcedRest: undefined, rawLabel: '今日無法' }, category: 'unable' as const, display: '🚫 今日無法' },
   { label: '強制休息', value: { shiftLetters: undefined, isDayOff: undefined, paused: undefined, forcedRest: true, rawLabel: '強制休息' }, category: 'forcedRest' as const, display: '🛌 強制休息' },
@@ -296,6 +295,7 @@ export default function SchedulePage() {
 
   const handleSingleSave = async (config: typeof BUTTON_CONFIGS[number]) => {
     if (selectedDateStr) {
+      const existing = overridesByDate.get(selectedDateStr);
       await saveDayOverride({
         id: selectedDateStr,
         shiftLetters: config.value.shiftLetters,
@@ -303,6 +303,7 @@ export default function SchedulePage() {
         paused: config.value.paused,
         forcedRest: config.value.forcedRest,
         rawLabel: config.value.rawLabel,
+        pinnedSlotId: existing?.pinnedSlotId,
       });
       setReloadTrigger((t) => t + 1);
       setSelectedDateStr(null);
@@ -311,16 +312,36 @@ export default function SchedulePage() {
 
   const handleBatchSave = async (config: typeof BUTTON_CONFIGS[number]) => {
     if (rangeEditDates && rangeEditDates.length > 0) {
-      await bulkSaveDayOverride(rangeEditDates, {
-        shiftLetters: config.value.shiftLetters,
-        isDayOff: config.value.isDayOff,
-        paused: config.value.paused,
-        forcedRest: config.value.forcedRest,
-        rawLabel: config.value.rawLabel,
-      });
+      await Promise.all(rangeEditDates.map((d) => {
+        const existing = overridesByDate.get(d);
+        return saveDayOverride({
+          id: d,
+          shiftLetters: config.value.shiftLetters,
+          isDayOff: config.value.isDayOff,
+          paused: config.value.paused,
+          forcedRest: config.value.forcedRest,
+          rawLabel: config.value.rawLabel,
+          pinnedSlotId: existing?.pinnedSlotId,
+        });
+      }));
       setReloadTrigger((t) => t + 1);
       setRangeEditDates(null);
     }
+  };
+
+  const handlePinSave = async (slotId: string | undefined) => {
+    if (!selectedDateStr) return;
+    const existing = overridesByDate.get(selectedDateStr);
+    await saveDayOverride({
+      id: selectedDateStr,
+      shiftLetters: existing?.shiftLetters,
+      isDayOff: existing?.isDayOff,
+      paused: existing?.paused,
+      forcedRest: existing?.forcedRest,
+      rawLabel: existing?.rawLabel,
+      pinnedSlotId: slotId,
+    });
+    setReloadTrigger((t) => t + 1);
   };
 
   if (!activeProgram) {
@@ -446,6 +467,9 @@ export default function SchedulePage() {
               badgeCategory = classifyShiftCodeCategory(badgeText);
             }
 
+            const pinnedSlot = activeProgram?.slots.find((s) => s.id === override?.pinnedSlotId);
+            const pinBadgeText = pinnedSlot ? pinnedSlot.label.charAt(0) : '';
+
             return (
               <button
                 key={cell.dateStr}
@@ -480,6 +504,18 @@ export default function SchedulePage() {
                     className="absolute top-0.5 right-1 text-[7px] font-extrabold text-white px-1 py-0.2 rounded"
                   >
                     {badgeText}
+                  </span>
+                )}
+                {override?.pinnedSlotId && pinnedSlot && (
+                  <span
+                    className={`absolute bottom-0.5 left-1 text-[7px] font-extrabold px-1 py-0.2 rounded leading-none flex items-center ${
+                      plannedDay.pinConflict
+                        ? 'bg-slate-400 dark:bg-slate-600 text-white ring-1 ring-red-500'
+                        : 'bg-violet-600 text-white'
+                    }`}
+                    title={plannedDay.pinConflict ? `指定部位已衝突：${pinnedSlot.label}` : `指定部位：${pinnedSlot.label}`}
+                  >
+                    {pinBadgeText}{plannedDay.pinConflict ? '⚠️' : ''}
                   </span>
                 )}
                 <div className="h-4 flex items-center justify-center">
@@ -536,7 +572,7 @@ export default function SchedulePage() {
                       key={config.label}
                       type="button"
                       onClick={() => handleSingleSave(config)}
-                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category as ShiftCodeCategory]}`}
                     >
                       {config.display}
                     </button>
@@ -552,13 +588,44 @@ export default function SchedulePage() {
                       key={config.label}
                       type="button"
                       onClick={() => handleSingleSave(config)}
-                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category as ShiftCodeCategory]}`}
                     >
                       {config.display}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {activeProgram && activeProgram.slots.length > 0 && (
+                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
+                    指定訓練部位
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {activeProgram.slots.map((slot) => {
+                      const alreadyDoneThisLap = activeProgram.completedSlotIdsThisLap.includes(slot.id);
+                      const isPinned = overridesByDate.get(selectedDateStr)?.pinnedSlotId === slot.id;
+                      return (
+                        <button
+                          key={slot.id}
+                          type="button"
+                          disabled={alreadyDoneThisLap}
+                          onClick={() => handlePinSave(isPinned ? undefined : slot.id)}
+                          className={`py-3 text-center font-bold text-xs rounded-xl transition border ${
+                            alreadyDoneThisLap
+                              ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'
+                              : isPinned
+                              ? 'bg-violet-600 border-violet-600 text-white shadow-sm'
+                              : 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900 text-violet-600 dark:text-violet-400 hover:opacity-80'
+                          }`}
+                        >
+                          {slot.label}{alreadyDoneThisLap ? '（這輪已練過）' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -604,7 +671,7 @@ export default function SchedulePage() {
                       key={config.label}
                       type="button"
                       onClick={() => handleBatchSave(config)}
-                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category as ShiftCodeCategory]}`}
                     >
                       {config.display}
                     </button>
@@ -620,7 +687,7 @@ export default function SchedulePage() {
                       key={config.label}
                       type="button"
                       onClick={() => handleBatchSave(config)}
-                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category]}`}
+                      className={`py-3 text-center font-bold text-xs rounded-xl transition border hover:opacity-80 active:opacity-90 ${SHIFT_CODE_BUTTON_CLASSES[config.category as ShiftCodeCategory]}`}
                     >
                       {config.display}
                     </button>

@@ -129,22 +129,13 @@ export default function WorkoutLogger() {
     return `${y}-${m}-${day}`;
   }, [now]);
 
-  const loadTodayOverride = async () => {
-    try {
-      const override = await getDayOverride(todayStr);
-      setTodayOverride(override || null);
-    } catch (err) {
-      console.error('Failed to load today override:', err);
-    }
-  };
-
   useEffect(() => {
     let active = true;
     getDayOverride(todayStr).then((override) => {
       if (active) {
         setTodayOverride(override || null);
       }
-    }).catch(err => {
+    }).catch((err) => {
       console.error('Failed to load today override:', err);
     });
     return () => {
@@ -184,9 +175,12 @@ export default function WorkoutLogger() {
   const handleCancelPause = async () => {
     if (!todayOverride) return;
     try {
-      const updated = { ...todayOverride, paused: false };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { updatedAt, ...updated } = todayOverride;
+      updated.paused = false;
       await saveDayOverride(updated);
-      await loadTodayOverride();
+      const latest = await getDayOverride(todayStr);
+      setTodayOverride(latest || null);
     } catch (err) {
       console.error(err);
       alert('取消暫停失敗');
@@ -196,12 +190,33 @@ export default function WorkoutLogger() {
   const handleCancelForcedRest = async () => {
     if (!todayOverride) return;
     try {
-      const updated = { ...todayOverride, forcedRest: false };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { updatedAt, ...updated } = todayOverride;
+      updated.forcedRest = false;
       await saveDayOverride(updated);
-      await loadTodayOverride();
+      const latest = await getDayOverride(todayStr);
+      setTodayOverride(latest || null);
     } catch (err) {
       console.error(err);
       alert('取消強制休息失敗');
+    }
+  };
+
+  const handlePinToday = async (slotId: string) => {
+    try {
+      const nextPin = todayOverride?.pinnedSlotId === slotId ? undefined : slotId;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { updatedAt, ...base } = todayOverride ?? { id: todayStr };
+      await saveDayOverride({
+        ...base,
+        id: todayStr,
+        pinnedSlotId: nextPin,
+      });
+      const latest = await getDayOverride(todayStr);
+      setTodayOverride(latest || null);
+    } catch (err) {
+      console.error('Failed to pin today slot:', err);
+      alert('指定部位失敗');
     }
   };
 
@@ -212,7 +227,7 @@ export default function WorkoutLogger() {
   );
 
   // 今天該練的那一格，以及它最近三次的訓練紀錄
-  const currentSlot = activeProgram ? activeProgram.slots[activeProgram.cursor] : undefined;
+  const currentSlot = todayPlan?.suggestedSlot ?? undefined;
   const recentSlotWorkouts = useMemo(() => {
     if (!activeProgram || !currentSlot) return [];
     return getRecentWorkoutsForSlot(completedWorkouts, activeProgram.id, currentSlot.id, currentSlot.label);
@@ -680,20 +695,25 @@ export default function WorkoutLogger() {
 
               {/* 循序列表：可點選切換「今天該練」，不一定要照順序 */}
               <div className="flex flex-wrap gap-1.5 items-center pt-0.5">
-                {activeProgram.slots.map((s, idx) => {
-                  const isCurrent = idx === activeProgram.cursor;
+                {activeProgram.slots.map((s) => {
+                  const isCurrent = s.id === currentSlot?.id;
+                  const isCompletedThisLap = activeProgram.completedSlotIdsThisLap.includes(s.id);
                   return (
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => updateProgram({ cursor: idx })}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition cursor-pointer ${
-                        isCurrent
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      disabled={isCompletedThisLap}
+                      onClick={() => handlePinToday(s.id)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition cursor-pointer border ${
+                        isCompletedThisLap
+                          ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600'
+                          : isCurrent
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
+                      title={isCompletedThisLap ? '這輪已練過' : undefined}
                     >
-                      {s.label}
+                      {s.label}{isCompletedThisLap ? ' (已練)' : ''}
                     </button>
                   );
                 })}
@@ -798,6 +818,17 @@ export default function WorkoutLogger() {
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                           {isCardioOnly ? '腿日前後，建議安排有氧訓練' : '今天班表較累，建議休息或有氧'}
                         </p>
+                        {todayPlan?.pinConflict && (
+                          <span className="text-[10px] text-red-500 font-medium block mt-1">
+                            {todayPlan.pinConflictReason === 'consecutiveLimit'
+                              ? '⚠️ 連續訓練天數已達上限，指定部位未生效'
+                              : todayPlan.pinConflictReason === 'consumed'
+                              ? '⚠️ 你指定的部位這輪已練過，指定部位未生效'
+                              : todayPlan.pinConflictReason === 'removed'
+                              ? '⚠️ 指定的部位已從計畫中移除，指定部位未生效'
+                              : '⚠️ 指定部位衝突，指定部位未生效'}
+                          </span>
+                        )}
                       </div>
                       
                       {/* 放大版有氧按鈕 */}
@@ -833,9 +864,20 @@ export default function WorkoutLogger() {
                         <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block mb-0.5">
                           今天該練
                         </span>
-                        <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">
-                          {activeProgram.slots[activeProgram.cursor]?.label || '未設定'}
+                        <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm block">
+                          {currentSlot?.label || '未設定'}
                         </span>
+                        {todayPlan?.pinConflict && (
+                          <span className="text-[10px] text-red-500 font-medium block mt-1">
+                            {todayPlan.pinConflictReason === 'consumed'
+                              ? '⚠️ 你指定的部位這輪已練過，改為建議訓練'
+                              : todayPlan.pinConflictReason === 'removed'
+                              ? '⚠️ 指定的部位已從計畫中移除，改為建議訓練'
+                              : todayPlan.pinConflictReason === 'consecutiveLimit'
+                              ? '⚠️ 連續訓練天數已達上限，改為建議訓練'
+                              : '⚠️ 指定部位已衝突，改為建議訓練'}
+                          </span>
+                        )}
                       </div>
                       <button
                         onClick={handleStartTodayWorkout}

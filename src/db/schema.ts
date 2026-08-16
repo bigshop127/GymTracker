@@ -88,6 +88,7 @@ export interface DayOverride {
   rawLabel?: string;              // 選填，原始顯示文字例如 'AC早'——只用來顯示，不參與判斷邏輯
   paused?: boolean;               // 手動暫停訓練建議（急事/下雨），跟班別無關，任何一天都能單獨勾
   forcedRest?: boolean;           // 強制休息日：不上班也不健身，連有氧都沒有；跟 shiftLetters/isDayOff/paused 四選一互斥
+  pinnedSlotId?: string;          // 指定當天要練哪個 ProgramSlot；跟 shiftLetters/isDayOff/paused/forcedRest 是獨立維度，可共存
   updatedAt: number;
   deletedAt?: number;             // 沿用既有軟刪除慣例
 }
@@ -131,7 +132,7 @@ export interface TrainingProgram {
   id: string;
   name: string;                      // 例：'五分化 8-12週'
   slots: ProgramSlot[];               // 有序循環清單，長度任意
-  cursor: number;                     // 下一個要練的 slot index（0-based）
+  completedSlotIdsThisLap: string[];   // 取代 cursor：這一輪（尚未跑滿一圈）已消耗的 slot id
   cycleCount: number;                 // 已完整跑完幾輪，從 0 起算
   estimatedWeeks: { min: number; max: number };  // 參考值，例：{min:8, max:12}，可隨時編輯
   status: 'active' | 'completed';     // 同時只能有一個 'active'
@@ -378,6 +379,18 @@ class GymTrackerDatabase extends Dexie {
     // version(11): 班表感知的月訓練計畫自動生成
     this.version(11).stores({
       dayOverrides: 'id, updatedAt',
+    });
+
+    // version(12): TrainingProgram.cursor（線性索引）→ completedSlotIdsThisLap（本輪未消耗 slot 池）
+    this.version(12).stores({}).upgrade(async (tx) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await tx.table('programs').toCollection().modify((p: any) => {
+        const cursor = typeof p.cursor === 'number' ? p.cursor : 0;
+        const slots = Array.isArray(p.slots) ? p.slots : [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        p.completedSlotIdsThisLap = slots.slice(0, cursor).map((s: any) => s.id);
+        delete p.cursor;
+      });
     });
   }
 }

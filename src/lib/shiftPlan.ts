@@ -24,6 +24,8 @@ export interface PlannedDay {
   actualWorkout: Workout | null;      // 當天已有紀錄（completed 或 active）就帶進來；有值時 UI 顯示優先權高於 suggestion
   suggestion: DayPlanSuggestion;
   suggestedSlot: ProgramSlot | null;  // 只有 suggestion === 'train' 才有值
+  pinConflict: boolean;               // 新增：這天有指定部位，但這一輪已經練過/找不到 slot，指定沒有生效
+  pinConflictReason?: 'consumed' | 'consecutiveLimit' | 'removed'; // 衝突原因描述
 }
 
 export const DEFAULT_SHIFT_POLICIES: Record<string, ShiftPolicy> = {
@@ -31,9 +33,9 @@ export const DEFAULT_SHIFT_POLICIES: Record<string, ShiftPolicy> = {
   'A': 'train',
   'B': 'train',
   'C': 'train',
-  'AB': 'restOrCardio',
-  'AC': 'restOrCardio',
-  'BC': 'restOrCardio',
+  'AB': 'train',
+  'AC': 'train',
+  'BC': 'train',
   'ABC': 'restOrCardio',
 };
 
@@ -74,18 +76,22 @@ export function getWeekStart(dateStr: string): string {
   return getLocalDateStr(date.getTime());
 }
 
-export type ShiftCodeCategory = 'A' | 'B' | 'C' | 'combo' | 'dayoff' | 'unable' | 'forcedRest';
+export type ShiftCodeCategory =
+  | 'A' | 'B' | 'C' | 'AB' | 'AC' | 'BC' | 'ABC' | 'dayoff' | 'unable' | 'forcedRest';
 
 export function classifyShiftCodeCategory(code: string): ShiftCodeCategory {
   if (code === 'A' || code === 'B' || code === 'C') return code;
   if (code === '休假') return 'dayoff';
   if (code === '今日無法') return 'unable';
   if (code === '強制休息' || code === 'forcedRest') return 'forcedRest';
-  return 'combo'; // AB/AC/BC/ABC 一律歸這類
+  if (code === 'AB' || code === 'AC' || code === 'BC' || code === 'ABC') return code;
+  return 'unable'; // 防禦性 fallback，理論上不會走到
 }
 
 export const SHIFT_CODE_EMOJI: Record<ShiftCodeCategory, string> = {
-  A: '🌅', B: '☀️', C: '🌙', combo: '🔥', dayoff: '🏖️', unable: '🚫', forcedRest: '🛌',
+  A: '🌅', B: '☀️', C: '🌙',
+  AB: '🌆', AC: '🔀', BC: '🌄', ABC: '🔥',
+  dayoff: '🏖️', unable: '🚫', forcedRest: '🛌',
 };
 
 // 月曆角落徽章用：比照 locationStyle.ts 的 getLocationColor 寫法，回傳 hex 直接進 inline style。
@@ -93,7 +99,10 @@ export const SHIFT_CODE_HEX: Record<ShiftCodeCategory, string> = {
   A: '#3b82f6',      // blue-500
   B: '#f59e0b',      // amber-500
   C: '#a855f7',       // purple-500
-  combo: '#f43f5e',   // rose-500
+  AB: '#f43f5e',   // rose-500（剩晚上）
+  AC: '#f97316',   // orange-500（剩下午）
+  BC: '#ec4899',   // pink-500（剩早上）
+  ABC: '#dc2626',  // red-600（整天沒空，用最強烈的顏色跟其他三個區分）
   dayoff: '#10b981',  // emerald-500
   unable: '#334155',  // slate-700
   forcedRest: '#0891b2', // cyan-600
@@ -104,7 +113,10 @@ export const SHIFT_CODE_BUTTON_CLASSES: Record<ShiftCodeCategory, string> = {
   A: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400',
   B: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400',
   C: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-900 text-purple-600 dark:text-purple-400',
-  combo: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400',
+  AB: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400',
+  AC: 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-900 text-orange-600 dark:text-orange-400',
+  BC: 'bg-pink-50 dark:bg-pink-950/40 border-pink-200 dark:border-pink-900 text-pink-600 dark:text-pink-400',
+  ABC: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900 text-red-600 dark:text-red-400',
   dayoff: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400',
   unable: 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300',
   forcedRest: 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-900 text-cyan-600 dark:text-cyan-400',
@@ -114,7 +126,10 @@ export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
   A: 'bg-blue-50 dark:bg-blue-950/30',
   B: 'bg-amber-50 dark:bg-amber-950/30',
   C: 'bg-purple-50 dark:bg-purple-950/30',
-  combo: 'bg-rose-50 dark:bg-rose-950/30',
+  AB: 'bg-rose-50 dark:bg-rose-950/30',
+  AC: 'bg-orange-50 dark:bg-orange-950/30',
+  BC: 'bg-pink-50 dark:bg-pink-950/30',
+  ABC: 'bg-red-50 dark:bg-red-950/30',
   dayoff: 'bg-emerald-50 dark:bg-emerald-950/30',
   unable: 'bg-slate-100 dark:bg-slate-800/60',
   forcedRest: 'bg-cyan-50 dark:bg-cyan-950/30',
@@ -203,7 +218,22 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     daysSinceWeights = getCalendarDaysDiff(wDateStr, todayStr);
   }
 
-  let simCursor = activeProgram ? activeProgram.cursor : 0;
+  const pool = new Set<string>(
+    activeProgram
+      ? activeProgram.slots
+          .filter(s => !activeProgram.completedSlotIdsThisLap.includes(s.id))
+          .map(s => s.id)
+      : []
+  );
+
+  function pickDefaultFromPool(): ProgramSlot | null {
+    if (!activeProgram) return null;
+    for (const s of activeProgram.slots) {
+      if (pool.has(s.id)) return s;
+    }
+    return null;
+  }
+
   const slots = activeProgram ? activeProgram.slots : [];
   const slotCategories = slots.map(s => classifySlotCategory(s, templatesById, exerciseMap));
   const allOther = slotCategories.every(cat => cat === 'other');
@@ -243,11 +273,31 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       trainedThisWeek += 1; // 不管過去或今天，有實際紀錄就算這週練過一次
     }
 
-    const upcomingCategory = slots.length > 0 ? slotCategories[simCursor % slots.length] : 'other';
-    const nextCategory = slots.length > 0 ? slotCategories[(simCursor + 1) % slots.length] : 'other';
+    const upcomingSlot = pickDefaultFromPool();
+    const upcomingCategory = upcomingSlot ? classifySlotCategory(upcomingSlot, templatesById, exerciseMap) : 'other';
+
+    // nextCategory（規則 a 用，「明天是不是腿日」）：模擬「今天消耗掉 upcomingSlot 後，剩下池子的下一個」
+    const dryRunPool = new Set<string>(pool);
+    if (upcomingSlot) {
+      dryRunPool.delete(upcomingSlot.id);
+      if (dryRunPool.size === 0 && activeProgram) {
+        for (const s of activeProgram.slots) dryRunPool.add(s.id);
+      }
+    }
+    const pickNextFromDryRunPool = (): ProgramSlot | null => {
+      if (!activeProgram) return null;
+      for (const s of activeProgram.slots) {
+        if (dryRunPool.has(s.id)) return s;
+      }
+      return null;
+    };
+    const nextSlot = pickNextFromDryRunPool();
+    const nextCategory = nextSlot ? classifySlotCategory(nextSlot, templatesById, exerciseMap) : 'other';
 
     let suggestion: DayPlanSuggestion;
     let suggestedSlot: ProgramSlot | null = null;
+    let pinConflict = false;
+    let pinConflictReason: 'consumed' | 'consecutiveLimit' | 'removed' | undefined;
 
     if (isPast) {
       suggestion = 'past';
@@ -266,6 +316,22 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     } else {
       const hasExplicitShift = !!override && !override.isDayOff && !!override.shiftLetters && override.shiftLetters.length > 0;
       let wantsTrain: boolean;
+      let resolvedPinSlot: ProgramSlot | null = null;
+
+      if (override?.pinnedSlotId && activeProgram) {
+        const candidate = activeProgram.slots.find(s => s.id === override.pinnedSlotId);
+        if (candidate) {
+          if (pool.has(candidate.id)) {
+            resolvedPinSlot = candidate;
+          } else {
+            pinConflict = true;
+            pinConflictReason = 'consumed';
+          }
+        } else {
+          pinConflict = true;
+          pinConflictReason = 'removed';
+        }
+      }
 
       const [y, m, d] = dateStr.split('-').map(Number);
       const dow = new Date(y, m - 1, d).getDay();
@@ -273,7 +339,9 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       const remainingQuota = effectiveWeeklyTarget - trainedThisWeek;
       const urgent = remainingQuota >= daysLeftInWeek; // 剩下的天數已經不夠湊到目標，沒有選擇餘地
 
-      if (hasExplicitShift) {
+      if (resolvedPinSlot) {
+        wantsTrain = true;
+      } else if (hasExplicitShift) {
         const key = [...override!.shiftLetters!].sort().join('');
         let policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
         if (policy === 'restOrCardio' && daysSinceWeights >= restOverrideDays) policy = 'train';
@@ -293,16 +361,27 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
         }
       }
 
-      // 規則 b：連續訓練天數硬上限，優先度最高，連明確排班都能推翻
+      // 規則 b：連續訓練天數硬上限，優先度最高，連明確排班都能推翻，也連「指定部位」都推翻
       if (wantsTrain && consecutiveTrainDays >= MAX_CONSECUTIVE_TRAIN_DAYS) {
         wantsTrain = false;
+        if (resolvedPinSlot) {
+          pinConflict = true;
+          pinConflictReason = 'consecutiveLimit';
+        }
       }
 
       if (wantsTrain && slots.length > 0) {
         suggestion = 'train';
-        suggestedSlot = slots[simCursor % slots.length];
-        yesterdayWasLegsTrain = upcomingCategory === 'legs';
-        simCursor += 1;
+        suggestedSlot = resolvedPinSlot ?? pickDefaultFromPool();
+        if (suggestedSlot) {
+          pool.delete(suggestedSlot.id);
+          if (pool.size === 0) {
+            // 模擬「這一輪跑滿了」：補滿下一輪的池子。純模擬用，不影響真正的 activeProgram.cycleCount
+            for (const s of activeProgram!.slots) pool.add(s.id);
+          }
+        }
+        const suggestedCategory = suggestedSlot ? classifySlotCategory(suggestedSlot, templatesById, exerciseMap) : 'other';
+        yesterdayWasLegsTrain = suggestedCategory === 'legs';
         daysSinceWeights = 0;
         consecutiveTrainDays += 1;
         if (!actualWorkout) trainedThisWeek += 1;
@@ -326,6 +405,8 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       actualWorkout,
       suggestion,
       suggestedSlot,
+      pinConflict,
+      pinConflictReason,
     });
   }
 

@@ -11,10 +11,10 @@ const SHIFT_LABELS: Record<string, string> = {
   'A': '單班 A (早班)',
   'B': '單班 B (中班)',
   'C': '單班 C (晚班)',
-  'AB': '組合班 AB',
-  'AC': '組合班 AC',
-  'BC': '組合班 BC',
-  'ABC': '組合班 ABC',
+  'AB': '組合班 AB（僅晚上有空）',
+  'AC': '組合班 AC（僅下午有空）',
+  'BC': '組合班 BC（僅早上有空）',
+  'ABC': '組合班 ABC（整天沒空）',
 };
 
 export default function SettingsPage() {

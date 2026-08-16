@@ -178,11 +178,11 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       };
       await saveActiveWorkout(finished);
 
-      // 如果有計畫，推進 cursor
-      if (activeWorkout.programId) {
-        const { activeProgram, advanceCursor } = useProgramStore.getState();
+      // 如果有計畫，標記這個 slot 完成
+      if (activeWorkout.programId && activeWorkout.programSlotId) {
+        const { activeProgram, completeSlot } = useProgramStore.getState();
         if (activeProgram && activeProgram.id === activeWorkout.programId) {
-          await advanceCursor();
+          await completeSlot(activeWorkout.programSlotId);
         }
       }
 
