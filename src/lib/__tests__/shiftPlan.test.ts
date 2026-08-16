@@ -574,9 +574,12 @@ describe('shiftPlan', () => {
       expect(result[5].suggestion).toBe('train');
     });
 
-    test('驗收 7：第 4 天明確排班仍會被規則 b 推翻', () => {
+    test('驗收 7：即使 urgent 每天都非練不可，第 4 天明確排班仍會被規則 b 推翻', () => {
+      // 週三~週六（8/19~8/22），週目標 4、剩餘天數也剛好 4 天，
+      // 每天 remainingQuota >= daysLeftInWeek 恆為 urgent，
+      // 用來驗證：就算沒有分散休息的餘裕、天天都非練不可，規則 b 的連續三天硬上限依然是最終防線。
       const dates = [
-        '2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19'
+        '2026-08-19', '2026-08-20', '2026-08-21', '2026-08-22'
       ];
       const overrides = new Map<string, DayOverride>();
       for (const d of dates) {
@@ -592,7 +595,7 @@ describe('shiftPlan', () => {
         policyOverrides: undefined,
         restOverrideDays: 7,
         exerciseMap: exMap,
-        today: new Date('2026-08-16').getTime(),
+        today: new Date('2026-08-19').getTime(),
         weeklyTargetSessions: 4,
         templatesById: templatesMap,
       });
@@ -659,12 +662,39 @@ describe('shiftPlan', () => {
       updatedAt: now,
     };
 
-    test('驗收 2：全新環境下 AC/BC 建議訓練，ABC 建議休息', () => {
-      const dates = ['2026-08-16', '2026-08-17', '2026-08-18'];
+    test('驗收 2：全新環境下 AC/BC 建議訓練，ABC 建議休息（各自獨立驗證，不牽扯連續天數分散邏輯）', () => {
+      const recentWeightWorkout: Workout = {
+        id: 'w-recent',
+        startedAt: new Date('2026-08-15T10:00:00').getTime(),
+        status: 'completed',
+        entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }],
+      };
+      const runSingleDay = (shiftLetters: ('A' | 'B' | 'C')[]) => generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        activeProgram: program,
+        // 昨天才練過，daysSinceWeights=1，避免「從沒練過→99999」的門檻逃逸讓 ABC 誤判成 train
+        completedWorkouts: [recentWeightWorkout],
+        activeWorkoutToday: null,
+        overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters, updatedAt: now }]]),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      })[0];
+
+      expect(runSingleDay(['A', 'C']).suggestion).toBe('train'); // AC -> train
+      expect(runSingleDay(['B', 'C']).suggestion).toBe('train'); // BC -> train
+      expect(runSingleDay(['A', 'B', 'C']).suggestion).toBe('restOrCardio'); // ABC -> restOrCardio
+    });
+
+    test('驗收 2-b：AB/AC/BC 連續好幾天都能練時，沒有 urgent 就隔天休息，訓練平均分散不擠成一坨', () => {
+      const dates = ['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20'];
       const overrides = new Map<string, DayOverride>();
-      overrides.set('2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'C'], updatedAt: now });
-      overrides.set('2026-08-17', { id: '2026-08-17', shiftLetters: ['B', 'C'], updatedAt: now });
-      overrides.set('2026-08-18', { id: '2026-08-18', shiftLetters: ['A', 'B', 'C'], updatedAt: now });
+      for (const d of dates) {
+        overrides.set(d, { id: d, shiftLetters: ['A', 'C'], updatedAt: now }); // 連續 5 天都是 AC 班
+      }
 
       const result = generateMonthPlan({
         dateStrings: dates,
@@ -675,14 +705,17 @@ describe('shiftPlan', () => {
         policyOverrides: undefined,
         restOverrideDays: 7,
         exerciseMap: exMap,
-        today: new Date('2026-08-16').getTime(),
+        today: new Date('2026-08-16').getTime(), // Sunday
         weeklyTargetSessions: 4,
         templatesById: templatesMap,
       });
 
-      expect(result[0].suggestion).toBe('train'); // AC -> train
-      expect(result[1].suggestion).toBe('train'); // BC -> train
-      expect(result[2].suggestion).toBe('restOrCardio'); // ABC -> restOrCardio
+      // 週目標 4、平日餘裕充足，應該隔天訓練：train, rest, train, rest, train
+      expect(result[0].suggestion).toBe('train');
+      expect(result[1].suggestion).not.toBe('train');
+      expect(result[2].suggestion).toBe('train');
+      expect(result[3].suggestion).not.toBe('train');
+      expect(result[4].suggestion).toBe('train');
     });
 
     test('驗收 3：指定部位且不衝突時，建議該部位且從池子中排除', () => {

@@ -99,9 +99,9 @@ export const SHIFT_CODE_HEX: Record<ShiftCodeCategory, string> = {
   A: '#3b82f6',      // blue-500
   B: '#f59e0b',      // amber-500
   C: '#a855f7',       // purple-500
-  AB: '#f43f5e',   // rose-500（剩晚上）
-  AC: '#f97316',   // orange-500（剩下午）
-  BC: '#ec4899',   // pink-500（剩早上）
+  AB: '#6366f1',   // indigo-500（剩晚上）
+  AC: '#22c55e',   // green-500（剩下午）
+  BC: '#eab308',   // yellow-500（剩早上）
   ABC: '#dc2626',  // red-600（整天沒空，用最強烈的顏色跟其他三個區分）
   dayoff: '#10b981',  // emerald-500
   unable: '#334155',  // slate-700
@@ -113,9 +113,9 @@ export const SHIFT_CODE_BUTTON_CLASSES: Record<ShiftCodeCategory, string> = {
   A: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400',
   B: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400',
   C: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-900 text-purple-600 dark:text-purple-400',
-  AB: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400',
-  AC: 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-900 text-orange-600 dark:text-orange-400',
-  BC: 'bg-pink-50 dark:bg-pink-950/40 border-pink-200 dark:border-pink-900 text-pink-600 dark:text-pink-400',
+  AB: 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400',
+  AC: 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-900 text-green-600 dark:text-green-400',
+  BC: 'bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-900 text-yellow-600 dark:text-yellow-400',
   ABC: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900 text-red-600 dark:text-red-400',
   dayoff: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400',
   unable: 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300',
@@ -126,10 +126,10 @@ export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
   A: 'bg-blue-50 dark:bg-blue-950/30',
   B: 'bg-amber-50 dark:bg-amber-950/30',
   C: 'bg-purple-50 dark:bg-purple-950/30',
-  AB: 'bg-rose-50 dark:bg-rose-950/30',
-  AC: 'bg-orange-50 dark:bg-orange-950/30',
-  BC: 'bg-pink-50 dark:bg-pink-950/30',
-  ABC: 'bg-red-50 dark:bg-red-950/30',
+  AB: 'bg-indigo-100 dark:bg-indigo-950/40',
+  AC: 'bg-green-100 dark:bg-green-950/40',
+  BC: 'bg-yellow-100 dark:bg-yellow-950/40',
+  ABC: 'bg-red-100 dark:bg-red-950/40',
   dayoff: 'bg-emerald-50 dark:bg-emerald-950/30',
   unable: 'bg-slate-100 dark:bg-slate-800/60',
   forcedRest: 'bg-cyan-50 dark:bg-cyan-950/30',
@@ -346,7 +346,16 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
         const key = [...override!.shiftLetters!].sort().join('');
         let policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
         if (policy === 'restOrCardio' && daysSinceWeights >= restOverrideDays) policy = 'train';
-        wantsTrain = policy === 'train';
+        if (policy !== 'train') {
+          wantsTrain = false;
+        } else if (remainingQuota <= 0) {
+          wantsTrain = false; // 這週目標已達成，班別允許練不代表要練，讓訓練自然分散
+        } else if (urgent) {
+          wantsTrain = true; // 剩餘天數已經不夠湊到目標，沒有選擇餘地
+        } else {
+          // 有餘裕時偏好隔一天再練，避免班別連續好幾天都能練，把訓練擠成一坨
+          wantsTrain = consecutiveTrainDays === 0;
+        }
       } else if (remainingQuota <= 0) {
         wantsTrain = false;
       } else if (urgent) {
