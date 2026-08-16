@@ -5,6 +5,8 @@ import { useSettingsStore } from '../store/settings';
 import { formatWeight } from '../lib/units';
 import { calculateTrendPoints, type TrendMetric } from '../lib/trends';
 import ExerciseList from '../components/ExerciseList';
+import { getMuscleIcon } from '../data/muscle-icons';
+import { getLocationColor } from '../lib/locationStyle';
 import {
   ResponsiveContainer,
   LineChart,
@@ -219,8 +221,19 @@ export default function Progress() {
             </div>
           ) : chartData.length >= 2 ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors duration-200">
-              <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                {metricLabel} 趨勢圖 ({metricUnit})
+              <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                {selectedExercise && (() => {
+                  const markup = getMuscleIcon(selectedExercise.muscleGroup);
+                  return markup ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400"
+                      dangerouslySetInnerHTML={{ __html: markup }}
+                    />
+                  ) : null;
+                })()}
+                <span>{metricLabel} 趨勢圖 ({metricUnit})</span>
               </div>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -258,7 +271,22 @@ export default function Progress() {
                       dataKey="displayValue"
                       stroke="#4f46e5"
                       strokeWidth={3}
-                      dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                      dot={(props: { cx?: number; cy?: number; payload?: { location?: string; date?: number } }) => {
+                        const { cx, cy, payload } = props;
+                        if (cx === undefined || cy === undefined) return null;
+                        const color = getLocationColor(payload?.location);
+                        return (
+                          <circle
+                            key={`dot-${payload?.date}`}
+                            cx={cx}
+                            cy={cy}
+                            r={4}
+                            strokeWidth={2}
+                            stroke="#fff"
+                            fill={color}
+                          />
+                        );
+                      }}
                       activeDot={{ r: 6, strokeWidth: 0 }}
                     />
                   </LineChart>
@@ -304,7 +332,7 @@ export default function Progress() {
                 <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">歷史最大重量</div>
                 {prs.bestMaxWeight ? (
                   <div className="mt-2">
-                    <div className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                    <div className="text-lg font-black text-amber-600 dark:text-amber-400">
                       {formatWeight(prs.bestMaxWeight.value, currentUnit)} <span className="text-[10px] font-semibold text-slate-500">{currentUnit}</span>
                     </div>
                     <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">

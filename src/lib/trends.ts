@@ -6,6 +6,7 @@ export type TrendMetric = 'e1rm' | 'maxWeight' | 'volume' | 'cardioMinutes';
 export interface TrendPoint {
   date: number; // startedAt
   value: number;
+  location?: string;
 }
 
 export function calculateTrendPoints(
@@ -30,7 +31,7 @@ export function calculateTrendPoints(
     if (metric === 'cardioMinutes') {
       const totalSeconds = completedSets.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
       if (totalSeconds <= 0) continue;
-      points.push({ date: workout.startedAt, value: Math.round(totalSeconds / 60) });
+      points.push({ date: workout.startedAt, value: Math.round(totalSeconds / 60), location: workout.location });
       continue;
     }
 
@@ -47,7 +48,7 @@ export function calculateTrendPoints(
       value = validSets.reduce((sum, s) => sum + s.weight * s.reps, 0);
     }
 
-    points.push({ date: workout.startedAt, value });
+    points.push({ date: workout.startedAt, value, location: workout.location });
   }
 
   return points;

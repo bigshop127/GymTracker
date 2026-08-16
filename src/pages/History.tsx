@@ -329,6 +329,9 @@ export default function History() {
             <div className="space-y-3">
               {filteredStatsList.map(({ id, workout, totalSetsCount, displayVolume }) => {
                 const duration = getDurationMinutes(workout);
+                const summary = getDaySummary([workout], exMap);
+                const color = getLocationColor(summary.location);
+                const markup = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
                 return (
                   <div
                     key={id}
@@ -337,13 +340,32 @@ export default function History() {
                   >
                     {/* 卡片標題區 */}
                     <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
-                          {workout.title || '健身訓練'}
-                        </h3>
-                        <span className="text-[10px] text-slate-400 font-semibold">
-                          {formatDateTime(workout.startedAt)}
-                        </span>
+                      <div className="flex items-center gap-2.5">
+                        {markup && (
+                          <div
+                            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border"
+                            style={{
+                              backgroundColor: `${color}15`,
+                              color: color,
+                              borderColor: `${color}30`,
+                            }}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="w-4 h-4"
+                              dangerouslySetInnerHTML={{ __html: markup }}
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                            {workout.title || '健身訓練'}
+                          </h3>
+                          <span className="text-[10px] text-slate-400 font-semibold">
+                            {formatDateTime(workout.startedAt)}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col items-end">

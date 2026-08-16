@@ -8,6 +8,7 @@ describe('Trends Calculation', () => {
     startedAt: 1000000,
     endedAt: 2000000,
     status: 'completed',
+    location: '中壢建工',
     entries: [
       {
         id: 'e1_1',
@@ -22,12 +23,13 @@ describe('Trends Calculation', () => {
       }
     ]
   };
-
+ 
   const dummyWorkout2: Workout = {
     id: 'w2',
     startedAt: 3000000,
     endedAt: 4000000,
     status: 'completed',
+    location: '楊梅WG',
     entries: [
       {
         id: 'e2_1',
@@ -74,8 +76,10 @@ describe('Trends Calculation', () => {
     expect(points).toHaveLength(2);
     expect(points[0].date).toBe(1000000);
     expect(points[0].value).toBeCloseTo(122.5, 3);
+    expect(points[0].location).toBe('中壢建工');
     expect(points[1].date).toBe(3000000);
     expect(points[1].value).toBeCloseTo(121, 3);
+    expect(points[1].location).toBe('楊梅WG');
   });
 
   test('calculates maxWeight trend points correctly', () => {
