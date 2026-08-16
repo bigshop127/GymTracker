@@ -212,9 +212,10 @@ GymTracker/
 | Phase 20（v1.14） | 全站「前一步／下一步」 | Header 左上加上一頁／下一頁按鈕，放在 `Layout` 故每一頁都有（PWA 獨立視窗沒有瀏覽器工具列，原本回不去）。瀏覽器不提供「還能不能上一頁」，故自記一份 `location.key` 堆疊：純函式 `src/lib/historyStack.ts` + zustand `src/store/historyNav.ts`（外部系統，避免 setState-in-effect），不能按時按鈕變灰。全屏 Sheet 會蓋掉 header，故另抽 `src/components/SheetHeader.tsx`（上一步＋標題＋✕）給五張全屏頁共用。無 schema／Firestore 規則變更。 |
 | Phase 21（v1.15） | 班表感知的月訓練計畫自動生成 | 月計畫純函式即時計算＋`dayOverrides` 表（記錄班別代碼與手動暫停）＋設定頁自訂對照表與門檻＋課表頁頂部月曆與編輯日期彈出面版；schema version(11) 儲存與 Firestore 同步。 |
 | Phase 22（v1.16） | 月曆長按拖曳批次編輯班表 | 月曆格子改用 pointer 事件判定長按與拖曳範圍＋高亮反白視覺＋批次編輯 Sheet 套用同一組設定至多日。 |
+| Phase 23（v1.17） | 班表獨立分頁＋每週目標次數＋今日無法快速鍵 | 班表獨立為 /schedule 路由並有獨立 NavItem ＋ 新增 settings.weeklyTargetSessions 決定未登記/休假訓練頻率 ＋ 9 宮格面板一鍵單點即存 ＋ 今日無法（paused: true）直接跳過 ＋ 分類配色與 emoji。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-08-16）**：Phase 0–22 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.16（Phase 7–22）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-08-16）**：Phase 0–23 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.17（Phase 7–23）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案

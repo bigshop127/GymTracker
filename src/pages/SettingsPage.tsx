@@ -8,7 +8,6 @@ import NumberStepper from '../components/NumberStepper';
 import { DEFAULT_SHIFT_POLICIES } from '../lib/shiftPlan';
 
 const SHIFT_LABELS: Record<string, string> = {
-  'DAYOFF': '休假 / 未登記',
   'A': '單班 A (早班)',
   'B': '單班 B (中班)',
   'C': '單班 C (晚班)',
@@ -254,6 +253,21 @@ export default function SettingsPage() {
             <NumberStepper
               value={settings.restOverrideDays ?? 7}
               onChange={(val) => handleUpdate({ restOverrideDays: Math.max(1, val) })}
+              step={1}
+            />
+          </div>
+        </div>
+
+        {/* 每週目標訓練次數 */}
+        <div className="flex items-center justify-between gap-4 border-b border-slate-50 dark:border-slate-800/50 pb-4">
+          <div className="space-y-0.5">
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-200">每週目標訓練次數</span>
+            <p className="text-[10px] text-slate-400">當無排班或休假時，每週（週日起）目標訓練天數（天）</p>
+          </div>
+          <div className="w-32">
+            <NumberStepper
+              value={settings.weeklyTargetSessions ?? 4}
+              onChange={(val) => handleUpdate({ weeklyTargetSessions: Math.max(1, Math.min(7, val)) })}
               step={1}
             />
           </div>

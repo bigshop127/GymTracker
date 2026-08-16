@@ -12,7 +12,7 @@ function NavItem({ to, label, icon }: NavItemProps) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex flex-col items-center justify-center py-2 text-xs font-medium transition-colors duration-200 ${
+        `flex flex-col items-center justify-center py-2 text-xs font-medium transition-colors duration-200 shrink-0 min-w-[56px] ${
           isActive
             ? 'text-indigo-600 dark:text-indigo-400'
             : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
@@ -28,8 +28,8 @@ function NavItem({ to, label, icon }: NavItemProps) {
 export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] z-50">
-      <div className="px-4">
-        <div className="flex justify-between items-center h-16">
+      <div className="px-2">
+        <div className="flex overflow-x-auto scrollbar-none items-center h-16 gap-1">
           <NavItem
             to="/"
             label="訓練"
@@ -46,6 +46,15 @@ export default function BottomNav() {
             icon={
               <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-full h-full">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h8.25m-8.25 4.5h8.25m-8.25 4.5h8.25M3.75 7.5h.008v.008H3.75V7.5Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.008v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 4.5h.008v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+              </svg>
+            }
+          />
+          <NavItem
+            to="/schedule"
+            label="班表"
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-full h-full">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" />
               </svg>
             }
           />

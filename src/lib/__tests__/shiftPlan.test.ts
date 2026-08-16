@@ -4,6 +4,8 @@ import {
   generateMonthPlan,
   getCalendarDaysDiff,
   getValidDatesInRange,
+  getWeekStart,
+  classifyShiftCodeCategory,
 } from '../shiftPlan';
 import {
   type DayOverride,
@@ -312,6 +314,110 @@ describe('shiftPlan', () => {
       const result = getValidDatesInRange('2026-08-14', '2026-08-21', calendarDates, '2026-08-16');
       expect(result).not.toContain(null);
       expect(result).toEqual(['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21']);
+    });
+  });
+
+  describe('getWeekStart', () => {
+    test('正確回推到當週週日', () => {
+      expect(getWeekStart('2026-08-16')).toBe('2026-08-16'); // Sunday
+      expect(getWeekStart('2026-08-17')).toBe('2026-08-16'); // Monday
+      expect(getWeekStart('2026-08-22')).toBe('2026-08-16'); // Saturday
+    });
+  });
+
+  describe('classifyShiftCodeCategory', () => {
+    test('正確分類班別為類別', () => {
+      expect(classifyShiftCodeCategory('A')).toBe('A');
+      expect(classifyShiftCodeCategory('B')).toBe('B');
+      expect(classifyShiftCodeCategory('C')).toBe('C');
+      expect(classifyShiftCodeCategory('休假')).toBe('dayoff');
+      expect(classifyShiftCodeCategory('今日無法')).toBe('unable');
+      expect(classifyShiftCodeCategory('AB')).toBe('combo');
+      expect(classifyShiftCodeCategory('ABC')).toBe('combo');
+    });
+  });
+
+  describe('generateMonthPlan weeklyTargetSessions & cushion', () => {
+    const program: TrainingProgram = {
+      id: 'prog-1',
+      name: '測試計畫',
+      slots: [
+        { id: 'slot-胸', label: '胸' },
+        { id: 'slot-背', label: '背' },
+        { id: 'slot-腿', label: '腿' },
+        { id: 'slot-肩', label: '肩' },
+      ],
+      cursor: 0,
+      cycleCount: 0,
+      estimatedWeeks: { min: 4, max: 8 },
+      status: 'active',
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    test('無登記且無歷史記錄時，每週依目標次數排定訓練且週日起算', () => {
+      const dates = [
+        '2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19',
+        '2026-08-20', '2026-08-21', '2026-08-22'
+      ];
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      expect(result[0].suggestion).toBe('train');
+      expect(result[1].suggestion).toBe('train');
+      expect(result[2].suggestion).toBe('train');
+      expect(result[3].suggestion).toBe('train');
+      expect(result[4].suggestion).toBe('restOrCardio');
+      expect(result[5].suggestion).toBe('restOrCardio');
+      expect(result[6].suggestion).toBe('restOrCardio');
+    });
+
+    test('跨月月初墊底 cushion 邏輯：週日已練，新月週一起算應自動扣減', () => {
+      const lastWorkout: Workout = {
+        id: 'w-past',
+        startedAt: new Date('2026-08-30T10:00:00').getTime(), // Sunday
+        status: 'completed',
+        entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }],
+      };
+
+      const dates = [
+        '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'
+      ];
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [lastWorkout],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-09-01').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      expect(result[0].dateStr).toBe('2026-09-01');
+      expect(result[0].suggestion).toBe('train');
+      expect(result[1].dateStr).toBe('2026-09-02');
+      expect(result[1].suggestion).toBe('train');
+      expect(result[2].dateStr).toBe('2026-09-03');
+      expect(result[2].suggestion).toBe('train');
+      expect(result[3].dateStr).toBe('2026-09-04');
+      expect(result[3].suggestion).toBe('restOrCardio');
+      expect(result[4].dateStr).toBe('2026-09-05');
+      expect(result[4].suggestion).toBe('restOrCardio');
     });
   });
 });

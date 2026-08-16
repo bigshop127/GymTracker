@@ -104,6 +104,7 @@ export interface Settings {
   locations?: string[];     // 可選地點清單，例如 ['中壢建工', '楊梅WG']
   shiftPolicyOverrides?: Record<string, ShiftPolicy>;  // key 是正規化後的班別代碼，例如 'AB'、'ABC'、'DAYOFF'
   restOverrideDays?: number;    // 「太久沒重量訓練」的門檻天數，預設 7
+  weeklyTargetSessions?: number; // 每週目標訓練次數，預設 4
 }
 
 // ---- 訓練範本 (WorkoutTemplate) ----

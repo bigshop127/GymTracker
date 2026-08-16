@@ -60,6 +60,46 @@ function getLocalDateStr(timestamp: number): string {
   return `${y}-${m}-${d}`;
 }
 
+export function getWeekStart(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() - date.getDay()); // 回推到當週週日
+  return getLocalDateStr(date.getTime());
+}
+
+export type ShiftCodeCategory = 'A' | 'B' | 'C' | 'combo' | 'dayoff' | 'unable';
+
+export function classifyShiftCodeCategory(code: string): ShiftCodeCategory {
+  if (code === 'A' || code === 'B' || code === 'C') return code;
+  if (code === '休假') return 'dayoff';
+  if (code === '今日無法') return 'unable';
+  return 'combo'; // AB/AC/BC/ABC 一律歸這類
+}
+
+export const SHIFT_CODE_EMOJI: Record<ShiftCodeCategory, string> = {
+  A: '🌅', B: '☀️', C: '🌙', combo: '🔥', dayoff: '🏖️', unable: '🚫',
+};
+
+// 月曆角落徽章用：比照 locationStyle.ts 的 getLocationColor 寫法，回傳 hex 直接進 inline style。
+export const SHIFT_CODE_HEX: Record<ShiftCodeCategory, string> = {
+  A: '#3b82f6',      // blue-500
+  B: '#f59e0b',      // amber-500
+  C: '#a855f7',       // purple-500
+  combo: '#f43f5e',   // rose-500
+  dayoff: '#10b981',  // emerald-500
+  unable: '#334155',  // slate-700
+};
+
+// 九宮格按鈕用：完整 Tailwind class 字面值查表
+export const SHIFT_CODE_BUTTON_CLASSES: Record<ShiftCodeCategory, string> = {
+  A: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400',
+  B: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400',
+  C: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-900 text-purple-600 dark:text-purple-400',
+  combo: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400',
+  dayoff: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400',
+  unable: 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300',
+};
+
 export interface GenerateMonthPlanInput {
   dateStrings: string[];              // 要顯示的整個月曆範圍（含當月已過去的日期），由小到大排序
   activeProgram: TrainingProgram | null;
@@ -70,6 +110,7 @@ export interface GenerateMonthPlanInput {
   restOverrideDays: number;
   exerciseMap: Map<string, Exercise>; // 判斷「是不是純有氧」用，buildExerciseMap() 建
   today: number;                      // Date.now()，測試時可以注入固定時間
+  weeklyTargetSessions?: number;       // 新增：settings?.weeklyTargetSessions ?? 4
 }
 
 export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
@@ -83,6 +124,7 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     restOverrideDays,
     exerciseMap,
     today,
+    weeklyTargetSessions = 4,
   } = input;
 
   const todayStr = getLocalDateStr(today);
@@ -111,9 +153,7 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       return ex ? ex.muscleGroup !== '有氧' : false;
     });
     if (isWeight && w.startedAt > maxWeightStartedAt) {
-      if (w.startedAt > maxWeightStartedAt) {
-        maxWeightStartedAt = w.startedAt;
-      }
+      maxWeightStartedAt = w.startedAt;
     }
   }
 
@@ -128,37 +168,68 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
 
   const plannedDays: PlannedDay[] = [];
 
+  // 迴圈開始前：用 completedWorkouts 墊底「本月第一天所在那週、月初之前已經練過幾次」
+  let currentWeekStart = dateStrings.length > 0 ? getWeekStart(dateStrings[0]) : '';
+  let trainedThisWeek = 0;
+  if (currentWeekStart && dateStrings.length > 0) {
+    for (const w of completedWorkouts) {
+      const ds = getLocalDateStr(w.startedAt);
+      if (ds >= currentWeekStart && ds < dateStrings[0]) {
+        trainedThisWeek += 1;
+      }
+    }
+  }
+
   for (const dateStr of dateStrings) {
+    const weekStart = getWeekStart(dateStr);
+    if (weekStart !== currentWeekStart) {
+      currentWeekStart = weekStart;
+      trainedThisWeek = 0;
+    }
+
     const isPast = dateStr < todayStr;
     const isToday = dateStr === todayStr;
     const override = overridesByDate.get(dateStr) || null;
     const actualWorkout = completedByDate.get(dateStr) || (isToday ? activeToday : null);
+
+    if (actualWorkout) {
+      trainedThisWeek += 1; // 不管過去或今天，有實際紀錄就算這週練過一次
+    }
 
     let suggestion: DayPlanSuggestion;
     let suggestedSlot: ProgramSlot | null = null;
 
     if (isPast) {
       suggestion = 'past';
-      // past days: do not modify simCursor or daysSinceWeights
+    } else if (override?.paused) {
+      suggestion = 'paused';
+      daysSinceWeights += 1;
     } else {
-      if (override?.paused) {
-        suggestion = 'paused';
-        daysSinceWeights += 1;
-      } else {
-        let policy = classifyShiftCode(override, policyOverrides);
+      const hasExplicitShift = !!override && !override.isDayOff && !!override.shiftLetters && override.shiftLetters.length > 0;
+      let policy: ShiftPolicy;
+
+      if (hasExplicitShift) {
+        const key = [...override!.shiftLetters!].sort().join('');
+        policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
         if (policy === 'restOrCardio' && daysSinceWeights >= restOverrideDays) {
           policy = 'train';
         }
+      } else {
+        // 沒登記，或明確標「休假」：交給每週目標次數
+        policy = trainedThisWeek < weeklyTargetSessions ? 'train' : 'restOrCardio';
+      }
 
-        if (policy === 'train' && slots.length > 0) {
-          suggestion = 'train';
-          suggestedSlot = slots[simCursor % slots.length];
-          simCursor += 1;
-          daysSinceWeights = 0;
-        } else {
-          suggestion = activeProgram ? 'restOrCardio' : 'noProgram';
-          daysSinceWeights += 1;
+      if (policy === 'train' && slots.length > 0) {
+        suggestion = 'train';
+        suggestedSlot = slots[simCursor % slots.length];
+        simCursor += 1;
+        daysSinceWeights = 0;
+        if (!actualWorkout) {
+          trainedThisWeek += 1;
         }
+      } else {
+        suggestion = activeProgram ? 'restOrCardio' : 'noProgram';
+        daysSinceWeights += 1;
       }
     }
 
