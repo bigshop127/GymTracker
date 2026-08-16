@@ -205,3 +205,19 @@ export function buildCalendarGrid(currentMonth: Date): CalendarCell[] {
 
   return cells;
 }
+
+export function getValidDatesInRange(
+  startStr: string,
+  endStr: string,
+  allCalendarDates: (string | null)[],
+  todayDateStr: string
+): string[] {
+  const minDate = startStr < endStr ? startStr : endStr;
+  const maxDate = startStr < endStr ? endStr : startStr;
+
+  return allCalendarDates
+    .filter((d): d is string => {
+      if (!d) return false;
+      return d >= minDate && d <= maxDate && d >= todayDateStr;
+    });
+}

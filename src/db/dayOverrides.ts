@@ -35,3 +35,16 @@ export async function clearDayOverride(dateStr: string): Promise<void> {
     updatedAt: now,
   });
 }
+
+export async function bulkSaveDayOverride(
+  dateStrs: string[],
+  input: Omit<DayOverride, 'id' | 'updatedAt'>
+): Promise<void> {
+  const now = Date.now();
+  const records: DayOverride[] = dateStrs.map((id) => {
+    const record: DayOverride = { ...input, id, updatedAt: now };
+    delete record.deletedAt;
+    return record;
+  });
+  await db.dayOverrides.bulkPut(records);
+}

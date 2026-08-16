@@ -3,6 +3,7 @@ import {
   classifyShiftCode,
   generateMonthPlan,
   getCalendarDaysDiff,
+  getValidDatesInRange,
 } from '../shiftPlan';
 import {
   type DayOverride,
@@ -283,6 +284,34 @@ describe('shiftPlan', () => {
       });
 
       expect(result[0].suggestedSlot?.label).toBe('背');
+    });
+  });
+
+  describe('getValidDatesInRange', () => {
+    const calendarDates = [
+      null, '2026-08-14', '2026-08-15', '2026-08-16', '2026-08-17',
+      '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21', null
+    ];
+
+    test('正確處理順向拖曳並包含首尾', () => {
+      const result = getValidDatesInRange('2026-08-17', '2026-08-20', calendarDates, '2026-08-16');
+      expect(result).toEqual(['2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20']);
+    });
+
+    test('正確處理逆向拖曳並包含首尾', () => {
+      const result = getValidDatesInRange('2026-08-20', '2026-08-17', calendarDates, '2026-08-16');
+      expect(result).toEqual(['2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20']);
+    });
+
+    test('自動排除已過去的日期', () => {
+      const result = getValidDatesInRange('2026-08-14', '2026-08-18', calendarDates, '2026-08-16');
+      expect(result).toEqual(['2026-08-16', '2026-08-17', '2026-08-18']);
+    });
+
+    test('自動排除留白格（null）', () => {
+      const result = getValidDatesInRange('2026-08-14', '2026-08-21', calendarDates, '2026-08-16');
+      expect(result).not.toContain(null);
+      expect(result).toEqual(['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21']);
     });
   });
 });

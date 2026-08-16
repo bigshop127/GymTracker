@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProgramStore } from '../store/program';
 import { isZongYuanProgramImported, importZongYuanProgram } from '../lib/importZongYuanProgram';
@@ -14,6 +14,7 @@ import {
   listDayOverridesInRange,
   saveDayOverride,
   clearDayOverride,
+  bulkSaveDayOverride,
 } from '../db/dayOverrides';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
@@ -21,6 +22,7 @@ import {
   generateMonthPlan,
   buildCalendarGrid,
   type PlannedDay,
+  getValidDatesInRange,
 } from '../lib/shiftPlan';
 import { type DayOverride, type ShiftLetter, type Workout, type Exercise } from '../db/schema';
 import { getDaySummary } from '../lib/workoutSummary';
@@ -62,6 +64,16 @@ export default function ProgramGuide() {
   const [editShiftLetters, setEditShiftLetters] = useState<ShiftLetter[]>([]);
   const [editIsDayOff, setEditIsDayOff] = useState(false);
   const [editPaused, setEditPaused] = useState(false);
+
+  // 批次編輯狀態
+  const [dragStartDateStr, setDragStartDateStr] = useState<string | null>(null);
+  const [dragEndDateStr, setDragEndDateStr] = useState<string | null>(null);
+  const [isRangeSelecting, setIsRangeSelecting] = useState(false);
+  const [rangeEditDates, setRangeEditDates] = useState<string[] | null>(null); // 開批次 sheet 用
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -146,6 +158,126 @@ export default function ProgramGuide() {
     return map;
   }, [plannedDays]);
 
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, dateStr: string) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    const pointerId = e.pointerId;
+    const target = e.currentTarget;
+
+    touchStartPosRef.current = { x: clientX, y: clientY };
+    activePointerIdRef.current = pointerId;
+
+    longPressTimerRef.current = setTimeout(() => {
+      setIsRangeSelecting(true);
+      setDragStartDateStr(dateStr);
+      setDragEndDateStr(dateStr);
+      try {
+        target.setPointerCapture(pointerId);
+      } catch (err) {
+        console.error('Failed to set pointer capture', err);
+      }
+    }, 400);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!isRangeSelecting) {
+      if (touchStartPosRef.current) {
+        const dx = e.clientX - touchStartPosRef.current.x;
+        const dy = e.clientY - touchStartPosRef.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 10) {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          touchStartPosRef.current = null;
+          activePointerIdRef.current = null;
+        }
+      }
+      return;
+    }
+
+    const element = document.elementFromPoint(e.clientX, e.clientY);
+    if (!element) return;
+
+    const cellElement = element.closest('[data-date]');
+    if (cellElement) {
+      const dateStr = cellElement.getAttribute('data-date');
+      const isCellPast = cellElement.getAttribute('data-past') === 'true';
+      if (dateStr && !isCellPast) {
+        setDragEndDateStr(dateStr);
+      }
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>, dateStr: string) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
+    const wasSelecting = isRangeSelecting;
+    const startStr = dragStartDateStr;
+    const endStr = dragEndDateStr;
+
+    if (activePointerIdRef.current !== null) {
+      try {
+        e.currentTarget.releasePointerCapture(activePointerIdRef.current);
+      } catch {
+        // ignore
+      }
+    }
+
+    setIsRangeSelecting(false);
+    setDragStartDateStr(null);
+    setDragEndDateStr(null);
+    touchStartPosRef.current = null;
+    activePointerIdRef.current = null;
+
+    if (wasSelecting && startStr && endStr) {
+      const dates = getValidDatesInRange(
+        startStr,
+        endStr,
+        calendarGrid.map((cell) => cell.dateStr),
+        todayDateStr
+      );
+
+      if (dates.length > 0) {
+        setRangeEditDates(dates);
+        setEditShiftLetters([]);
+        setEditIsDayOff(false);
+        setEditPaused(false);
+      }
+    } else {
+      const existing = overridesByDate.get(dateStr);
+      setEditShiftLetters(existing?.shiftLetters || []);
+      setEditIsDayOff(existing?.isDayOff || false);
+      setEditPaused(existing?.paused || false);
+      setSelectedDateStr(dateStr);
+    }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (activePointerIdRef.current !== null) {
+      try {
+        e.currentTarget.releasePointerCapture(activePointerIdRef.current);
+      } catch {
+        // ignore
+      }
+    }
+    setIsRangeSelecting(false);
+    setDragStartDateStr(null);
+    setDragEndDateStr(null);
+    touchStartPosRef.current = null;
+    activePointerIdRef.current = null;
+  };
+
   useEffect(() => {
     initProgram();
     isZongYuanProgramImported().then(setIsImported);
@@ -175,6 +307,9 @@ export default function ProgramGuide() {
       setIsImporting(false);
     }
   };
+
+  const rangeMinDate = dragStartDateStr && dragEndDateStr ? (dragStartDateStr < dragEndDateStr ? dragStartDateStr : dragEndDateStr) : null;
+  const rangeMaxDate = dragStartDateStr && dragEndDateStr ? (dragStartDateStr < dragEndDateStr ? dragEndDateStr : dragStartDateStr) : null;
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-6 pb-10">
@@ -217,7 +352,10 @@ export default function ProgramGuide() {
           </div>
 
           {/* 網格 */}
-          <div className="grid grid-cols-7 gap-1 text-center">
+          <div
+            className="grid grid-cols-7 gap-1 text-center"
+            style={{ touchAction: isRangeSelecting ? 'none' : 'auto' }}
+          >
             {calendarGrid.map((cell, idx) => {
               if (!cell.dateStr) {
                 return <div key={`empty-${idx}`} className="h-12" />;
@@ -267,19 +405,23 @@ export default function ProgramGuide() {
                 <button
                   key={cell.dateStr}
                   disabled={isPast}
-                  onClick={() => {
-                    if (cell.dateStr) {
-                      const existing = overridesByDate.get(cell.dateStr);
-                      setEditShiftLetters(existing?.shiftLetters || []);
-                      setEditIsDayOff(existing?.isDayOff || false);
-                      setEditPaused(existing?.paused || false);
-                      setSelectedDateStr(cell.dateStr);
-                    }
+                  data-date={cell.dateStr}
+                  data-past={isPast ? 'true' : 'false'}
+                  onPointerDown={(e) => cell.dateStr && handlePointerDown(e, cell.dateStr)}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={(e) => cell.dateStr && handlePointerUp(e, cell.dateStr)}
+                  onPointerCancel={handlePointerCancel}
+                  style={{
+                    touchAction: isRangeSelecting ? 'none' : 'auto',
+                    WebkitTouchCallout: 'none',
+                    userSelect: 'none',
                   }}
                   className={`h-12 rounded-xl relative flex flex-col items-center justify-between py-1 transition ${
                     isPast ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800'
                   } ${
-                    isToday
+                    isRangeSelecting && cell.dateStr && rangeMinDate && rangeMaxDate && cell.dateStr >= rangeMinDate && cell.dateStr <= rangeMaxDate
+                      ? 'bg-indigo-100/50 dark:bg-indigo-900/30 ring-2 ring-indigo-400 dark:ring-indigo-500 z-10'
+                      : isToday
                       ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800'
                       : 'bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
@@ -567,6 +709,139 @@ export default function ProgramGuide() {
                       });
                       setReloadTrigger((t) => t + 1);
                       setSelectedDateStr(null);
+                    }
+                  }}
+                  className="flex-1 py-2.5 text-center font-bold text-xs rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm transition"
+                >
+                  儲存
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 批次編輯日期 Sheet */}
+      {rangeEditDates && rangeEditDates.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 dark:bg-slate-950/60 backdrop-blur-sm z-50 flex items-end justify-center">
+          <div className="fixed inset-0" onClick={() => setRangeEditDates(null)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up transition-colors duration-200">
+            {/* 標頭 */}
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                編輯 {rangeEditDates[0]} ~ {rangeEditDates[rangeEditDates.length - 1]}（{rangeEditDates.length} 天）登記與暫停
+              </h3>
+              <button
+                onClick={() => setRangeEditDates(null)}
+                className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                關閉
+              </button>
+            </div>
+
+            {/* 內容 */}
+            <div className="space-y-4 pt-2">
+              {/* 班別選擇 */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  今日班別 (可複選)
+                </label>
+                <div className="flex gap-2">
+                  {(['A', 'B', 'C'] as ShiftLetter[]).map((letter) => {
+                    const isSelected = editShiftLetters.includes(letter);
+                    return (
+                      <button
+                        key={letter}
+                        type="button"
+                        onClick={() => {
+                          setEditIsDayOff(false); // Mutually exclusive with isDayOff
+                          if (isSelected) {
+                            setEditShiftLetters(editShiftLetters.filter((l) => l !== letter));
+                          } else {
+                            setEditShiftLetters([...editShiftLetters, letter]);
+                          }
+                        }}
+                        className={`flex-1 py-2 text-center font-bold text-xs rounded-xl transition border ${
+                          isSelected
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-950/40 dark:border-indigo-900 dark:text-indigo-400'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {letter} 班
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 休假設定 */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  休假標記 (與班別互斥)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditIsDayOff(!editIsDayOff);
+                    setEditShiftLetters([]); // Mutually exclusive with ABC
+                  }}
+                  className={`w-full py-2.5 text-center font-bold text-xs rounded-xl transition border ${
+                    editIsDayOff
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-950/40 dark:border-indigo-900 dark:text-indigo-400'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  🏖️ 休假
+                </button>
+              </div>
+
+              {/* 暫停訓練 */}
+              <div className="flex items-center gap-2.5 py-2 border-t border-slate-50 dark:border-slate-800/60 pt-4">
+                <input
+                  type="checkbox"
+                  id="rangeEditPausedCheckbox"
+                  checked={editPaused}
+                  onChange={(e) => setEditPaused(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor="rangeEditPausedCheckbox" className="text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                  暫停建議（今天有急事 / 下雨）
+                </label>
+              </div>
+
+              {/* 功能按鈕 */}
+              <div className="flex gap-3 pt-4 border-t border-slate-50 dark:border-slate-800/60">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (rangeEditDates) {
+                      await Promise.all(rangeEditDates.map((d) => clearDayOverride(d)));
+                      setReloadTrigger((t) => t + 1);
+                      setRangeEditDates(null);
+                    }
+                  }}
+                  className="flex-1 py-2.5 text-center font-bold text-xs rounded-xl transition bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300"
+                >
+                  清除登記
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (rangeEditDates) {
+                      const rawLabel = editIsDayOff
+                        ? '休假'
+                        : editShiftLetters.length > 0
+                        ? editShiftLetters.sort().join('')
+                        : undefined;
+
+                      await bulkSaveDayOverride(rangeEditDates, {
+                        shiftLetters: editShiftLetters.length > 0 ? editShiftLetters : undefined,
+                        isDayOff: editIsDayOff || undefined,
+                        paused: editPaused || undefined,
+                        rawLabel,
+                      });
+                      setReloadTrigger((t) => t + 1);
+                      setRangeEditDates(null);
                     }
                   }}
                   className="flex-1 py-2.5 text-center font-bold text-xs rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm transition"
