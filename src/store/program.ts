@@ -23,7 +23,12 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
   initProgram: async () => {
     set({ isLoading: true });
     try {
-      const active = await getActiveProgram();
+      let active = await getActiveProgram();
+      // 自我修復：舊資料（尚未跑過 v12 遷移、或被雲端同步的舊格式覆蓋）可能沒有 completedSlotIdsThisLap
+      if (active && !Array.isArray(active.completedSlotIdsThisLap)) {
+        active = { ...active, completedSlotIdsThisLap: [] };
+        await saveProgram(active);
+      }
       set({ activeProgram: active, isLoading: false });
     } catch (error) {
       console.error('Failed to initialize active program:', error);

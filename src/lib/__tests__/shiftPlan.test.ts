@@ -295,6 +295,26 @@ describe('shiftPlan', () => {
 
       expect(result[0].suggestedSlot?.label).toBe('背');
     });
+
+    test('completedSlotIdsThisLap 缺失（舊資料未遷移或被雲端同步覆蓋）不應該炸掉，視同本輪全新', () => {
+      const programMissingField = {
+        ...program,
+        completedSlotIdsThisLap: undefined,
+      } as unknown as TrainingProgram;
+
+      expect(() => generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        activeProgram: programMissingField,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: new Map(),
+      })).not.toThrow();
+    });
   });
 
   describe('getValidDatesInRange', () => {

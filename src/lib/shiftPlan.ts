@@ -218,10 +218,11 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     daysSinceWeights = getCalendarDaysDiff(wDateStr, todayStr);
   }
 
+  const completedSlotIdsThisLap = activeProgram?.completedSlotIdsThisLap ?? [];
   const pool = new Set<string>(
     activeProgram
       ? activeProgram.slots
-          .filter(s => !activeProgram.completedSlotIdsThisLap.includes(s.id))
+          .filter(s => !completedSlotIdsThisLap.includes(s.id))
           .map(s => s.id)
       : []
   );
