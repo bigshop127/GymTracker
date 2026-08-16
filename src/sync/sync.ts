@@ -12,7 +12,7 @@ import { db } from '../db/schema';
 import { repairExerciseIds } from '../db/repairExerciseIds';
 import { stripUndefined } from '../lib/stripUndefined';
 
-type SyncTable = 'exercises' | 'workouts' | 'templates' | 'bodyMetrics' | 'programs' | 'idAliases';
+type SyncTable = 'exercises' | 'workouts' | 'templates' | 'bodyMetrics' | 'programs' | 'idAliases' | 'dayOverrides';
 
 interface SyncRecord {
   id: string;
@@ -60,7 +60,8 @@ type AnyDexieTable =
   | typeof db.templates
   | typeof db.bodyMetrics
   | typeof db.programs
-  | typeof db.idAliases;
+  | typeof db.idAliases
+  | typeof db.dayOverrides;
 
 // ── LWW merge：較新的 updatedAt 勝出 ──────────────────────────────
 async function mergeRecords(dexieTable: AnyDexieTable, cloudRecords: SyncRecord[]): Promise<void> {
@@ -101,13 +102,14 @@ async function pushBatches(uid: string, batches: [SyncTable, SyncRecord[]][]): P
 
 // ── 將本機更新的增量推送到雲端 ─────────────────────────────────────
 async function pushChangedSince(uid: string, since: number): Promise<void> {
-  const [exercises, workouts, templates, metrics, programs, aliases] = await Promise.all([
+  const [exercises, workouts, templates, metrics, programs, aliases, overrides] = await Promise.all([
     db.exercises.where('updatedAt').above(since).toArray(),
     db.workouts.where('updatedAt').above(since).toArray(),
     db.templates.where('updatedAt').above(since).toArray(),
     db.bodyMetrics.where('updatedAt').above(since).toArray(),
     db.programs.where('updatedAt').above(since).toArray(),
     db.idAliases.where('updatedAt').above(since).toArray(),
+    db.dayOverrides.where('updatedAt').above(since).toArray(),
   ]);
 
   await pushBatches(uid, [
@@ -117,18 +119,20 @@ async function pushChangedSince(uid: string, since: number): Promise<void> {
     ['bodyMetrics', metrics],
     ['programs', programs],
     ['idAliases', aliases],
+    ['dayOverrides', overrides],
   ]);
 }
 
 // ── 將本機全部資料推送到雲端 ─────────────────────────────────────
 async function pushAllToCloud(uid: string): Promise<void> {
-  const [exercises, workouts, templates, metrics, programs, aliases] = await Promise.all([
+  const [exercises, workouts, templates, metrics, programs, aliases, overrides] = await Promise.all([
     db.exercises.toArray(),
     db.workouts.toArray(),
     db.templates.toArray(),
     db.bodyMetrics.toArray(),
     db.programs.toArray(),
     db.idAliases.toArray(),
+    db.dayOverrides.toArray(),
   ]);
 
   await pushBatches(uid, [
@@ -138,19 +142,21 @@ async function pushAllToCloud(uid: string): Promise<void> {
     ['bodyMetrics', metrics],
     ['programs', programs],
     ['idAliases', aliases],
+    ['dayOverrides', overrides],
   ]);
 }
 
 // ── Full sync（登入後執行）────────────────────────────────────────
 // 回傳被修好的舊動作 id 筆數，讓呼叫端決定要不要重新載入畫面上的訓練
 export async function fullSync(uid: string): Promise<number> {
-  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms, cloudAliases] = await Promise.all([
+  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms, cloudAliases, cloudOverrides] = await Promise.all([
     pullAll(uid, 'exercises'),
     pullAll(uid, 'workouts'),
     pullAll(uid, 'templates'),
     pullAll(uid, 'bodyMetrics'),
     pullAll(uid, 'programs'),
     pullAll(uid, 'idAliases'),
+    pullAll(uid, 'dayOverrides'),
   ]);
 
   await Promise.all([
@@ -160,6 +166,7 @@ export async function fullSync(uid: string): Promise<number> {
     mergeRecords(db.bodyMetrics, cloudMetrics),
     mergeRecords(db.programs, cloudPrograms),
     mergeRecords(db.idAliases, cloudAliases),
+    mergeRecords(db.dayOverrides, cloudOverrides),
   ]);
 
   // 先用（含對方裝置的）對照表修好舊動作 id，修好的版本才能在這一輪就推上去
@@ -171,13 +178,14 @@ export async function fullSync(uid: string): Promise<number> {
 
 // ── Delta sync（前景化時執行）────────────────────────────────────
 export async function deltaSync(uid: string, since: number): Promise<number> {
-  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms, cloudAliases] = await Promise.all([
+  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms, cloudAliases, cloudOverrides] = await Promise.all([
     pullSince(uid, 'exercises', since),
     pullSince(uid, 'workouts', since),
     pullSince(uid, 'templates', since),
     pullSince(uid, 'bodyMetrics', since),
     pullSince(uid, 'programs', since),
     pullSince(uid, 'idAliases', since),
+    pullSince(uid, 'dayOverrides', since),
   ]);
 
   await Promise.all([
@@ -187,6 +195,7 @@ export async function deltaSync(uid: string, since: number): Promise<number> {
     mergeRecords(db.bodyMetrics, cloudMetrics),
     mergeRecords(db.programs, cloudPrograms),
     mergeRecords(db.idAliases, cloudAliases),
+    mergeRecords(db.dayOverrides, cloudOverrides),
   ]);
 
   const repaired = await repairExerciseIds();

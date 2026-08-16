@@ -210,9 +210,10 @@ GymTracker/
 | Phase 18（v1.12） | 孤兒動作參照三層修復 | 修掉「讀取中...」永久卡死：內建改名表改寫在程式碼裡（`SEED_RENAMES`，不再只靠 Dexie upgrade 產的 idAliases）＋宗諺課表按「範本名＋順序」反推救回名稱已失傳的孤兒 id（救到的對照寫回 idAliases 同步出去）＋UI 改顯示「⚠ 未知動作」並可一鍵重新指定（`replaceEntryExercise`）。無 schema 版本變更。 |
 | Phase 19（v1.13） | 有氧快捷鈕 + 開訓前「沿用最近三次」 | 計畫卡片加「🏃 有氧」鈕（只列全有氧範本，開訓不帶 programId 故不推進 cursor）＋「開始今天訓練」改先跳選單挑最近 3 次同 slot 紀錄沿用重量（`startWorkoutFromPastWorkout`，帶回計畫資訊；無紀錄則直接開訓）。＋「開始新訓練」改兩步：先選部位（7 個肌群，顯示上次練是幾天前）再挑最近 3 次同部位紀錄沿用（比對看實際做過的動作而非標題）。純函式 `src/lib/cardioTemplates.ts`、`src/lib/recentSessions.ts`，無 schema／Firestore 規則變更。 |
 | Phase 20（v1.14） | 全站「前一步／下一步」 | Header 左上加上一頁／下一頁按鈕，放在 `Layout` 故每一頁都有（PWA 獨立視窗沒有瀏覽器工具列，原本回不去）。瀏覽器不提供「還能不能上一頁」，故自記一份 `location.key` 堆疊：純函式 `src/lib/historyStack.ts` + zustand `src/store/historyNav.ts`（外部系統，避免 setState-in-effect），不能按時按鈕變灰。全屏 Sheet 會蓋掉 header，故另抽 `src/components/SheetHeader.tsx`（上一步＋標題＋✕）給五張全屏頁共用。無 schema／Firestore 規則變更。 |
+| Phase 21（v1.15） | 班表感知的月訓練計畫自動生成 | 月計畫純函式即時計算＋`dayOverrides` 表（記錄班別代碼與手動暫停）＋設定頁自訂對照表與門檻＋課表頁頂部月曆與編輯日期彈出面版；schema version(11) 儲存與 Firestore 同步。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-08-03）**：Phase 0–20 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.10（Phase 7–16）+ v1.11（Phase 17：動作庫整理+輔助重量+手臂細分）+ v1.12（Phase 18：孤兒動作參照修復）+ v1.13（Phase 19：有氧快捷鈕＋沿用最近三次）+ v1.14（Phase 20：全站前一步／下一步）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> **進度（2026-08-16）**：Phase 0–21 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.14（Phase 7–20）+ v1.15（Phase 21：班表感知的月訓練計畫自動生成）。各階段完成紀錄見 Obsidian `健身APP開發/`。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案

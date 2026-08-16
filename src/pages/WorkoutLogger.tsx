@@ -22,6 +22,9 @@ import { useProgramStore } from '../store/program';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
 import { RPE_OPTIONS } from '../lib/rpe';
 import { formatWeight, toKgFromDisplay, weightStep } from '../lib/units';
+import { generateMonthPlan } from '../lib/shiftPlan';
+import { getDayOverride, saveDayOverride } from '../db/dayOverrides';
+import { type DayOverride } from '../db/schema';
 
 export default function WorkoutLogger() {
   const {
@@ -114,6 +117,72 @@ export default function WorkoutLogger() {
   }, [completedWorkouts, activeProgram, now]);
 
   const exerciseMap = useMemo(() => buildExerciseMap(allExercises), [allExercises]);
+
+  // 班表感知的今日建議狀態
+  const [todayOverride, setTodayOverride] = useState<DayOverride | null>(null);
+
+  const todayStr = useMemo(() => {
+    const d = new Date(now);
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }, [now]);
+
+  const loadTodayOverride = async () => {
+    try {
+      const override = await getDayOverride(todayStr);
+      setTodayOverride(override || null);
+    } catch (err) {
+      console.error('Failed to load today override:', err);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    getDayOverride(todayStr).then((override) => {
+      if (active) {
+        setTodayOverride(override || null);
+      }
+    }).catch(err => {
+      console.error('Failed to load today override:', err);
+    });
+    return () => {
+      active = false;
+    };
+  }, [todayStr, activeWorkout?.id, activeWorkout?.status]);
+
+  const todayPlan = useMemo(() => {
+    if (!activeProgram) return null;
+    const overridesMap = new Map<string, DayOverride>();
+    if (todayOverride) {
+      overridesMap.set(todayStr, todayOverride);
+    }
+    const plans = generateMonthPlan({
+      dateStrings: [todayStr],
+      activeProgram,
+      completedWorkouts,
+      activeWorkoutToday: activeWorkout,
+      overridesByDate: overridesMap,
+      policyOverrides: settings?.shiftPolicyOverrides,
+      restOverrideDays: settings?.restOverrideDays ?? 7,
+      exerciseMap,
+      today: now,
+    });
+    return plans[0] || null;
+  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, exerciseMap, now]);
+
+  const handleCancelPause = async () => {
+    if (!todayOverride) return;
+    try {
+      const updated = { ...todayOverride, paused: false };
+      await saveDayOverride(updated);
+      await loadTodayOverride();
+    } catch (err) {
+      console.error(err);
+      alert('取消暫停失敗');
+    }
+  };
 
   // 有氧範本：所有動作都是有氧的範本才進這份清單
   const cardioTemplates = useMemo(
@@ -654,31 +723,96 @@ export default function WorkoutLogger() {
               )}
 
               {/* 今日該練區塊 */}
-              <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/50 dark:border-indigo-900/40 rounded-xl p-3 flex justify-between items-center">
-                <div>
-                  <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block mb-0.5">
-                    今天該練
-                  </span>
-                  <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">
-                    {activeProgram.slots[activeProgram.cursor]?.label || '未設定'}
-                  </span>
-                </div>
-                <button
-                  onClick={handleStartTodayWorkout}
-                  className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm shadow-indigo-100 dark:shadow-none"
-                >
-                  開始今天訓練
-                </button>
-              </div>
+              {(() => {
+                const showSuggestion = todayPlan && !todayPlan.actualWorkout;
+                
+                if (showSuggestion && todayPlan.suggestion === 'paused') {
+                  return (
+                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 py-6 w-full">
+                      <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                        訓練狀態
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+                        今天已標記暫停訓練
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCancelPause}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 font-bold underline hover:text-indigo-700 transition cursor-pointer"
+                      >
+                        取消暫停
+                      </button>
+                    </div>
+                  );
+                }
 
-              {/* 有氧快捷：不屬於計畫的任何一天，開訓不帶 programId，完成後不推進 cursor */}
-              <button
-                type="button"
-                onClick={() => setIsCardioSheetOpen(true)}
-                className="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-xs transition cursor-pointer"
-              >
-                🏃 有氧
-              </button>
+                if (showSuggestion && todayPlan.suggestion === 'restOrCardio') {
+                  return (
+                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 w-full">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                          訓練建議
+                        </span>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                          今天班表較累，建議休息或有氧
+                        </p>
+                      </div>
+                      
+                      {/* 放大版有氧按鈕 */}
+                      <button
+                        type="button"
+                        onClick={() => setIsCardioSheetOpen(true)}
+                        className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-sm transition cursor-pointer shadow-sm"
+                      >
+                        🏃 開始有氧訓練
+                      </button>
+
+                      {/* 次要連結還是想練 */}
+                      {currentSlot && (
+                        <div className="text-center pt-1">
+                          <button
+                            type="button"
+                            onClick={handleStartTodayWorkout}
+                            className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold underline transition cursor-pointer"
+                          >
+                            還是想練 {currentSlot.label}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // 預設 train / noProgram / 已有訓練 顯示
+                return (
+                  <>
+                    <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/50 dark:border-indigo-900/40 rounded-xl p-3 flex justify-between items-center w-full">
+                      <div>
+                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block mb-0.5">
+                          今天該練
+                        </span>
+                        <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">
+                          {activeProgram.slots[activeProgram.cursor]?.label || '未設定'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={handleStartTodayWorkout}
+                        className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm shadow-indigo-100 dark:shadow-none"
+                      >
+                        開始今天訓練
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsCardioSheetOpen(true)}
+                      className="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-xs transition cursor-pointer"
+                    >
+                      🏃 有氧
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           )}
 

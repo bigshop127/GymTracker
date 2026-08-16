@@ -1,4 +1,4 @@
-import { db, type Workout, type Exercise, type BodyMetric, type Settings, type WorkoutTemplate, type TrainingProgram } from '../db/schema';
+import { db, type Workout, type Exercise, type BodyMetric, type Settings, type WorkoutTemplate, type TrainingProgram, type DayOverride } from '../db/schema';
 
 export interface BackupData {
   version: number;
@@ -8,6 +8,7 @@ export interface BackupData {
   settings: Settings[];
   templates?: WorkoutTemplate[];
   programs?: TrainingProgram[];
+  dayOverrides?: DayOverride[];
   exportedAt: number;
 }
 
@@ -21,6 +22,7 @@ export async function exportBackupData(): Promise<string> {
   const settings = await db.settings.toArray();
   const templates = await db.templates.toArray();
   const programs = await db.programs.toArray();
+  const dayOverrides = await db.dayOverrides.toArray();
 
   const data: BackupData = {
     version: 1,
@@ -30,6 +32,7 @@ export async function exportBackupData(): Promise<string> {
     settings,
     templates,
     programs,
+    dayOverrides,
     exportedAt: Date.now(),
   };
 
@@ -47,7 +50,7 @@ export async function importBackupData(jsonString: string): Promise<void> {
     throw new Error('不支援的備份格式版本');
   }
 
-  await db.transaction('rw', [db.workouts, db.exercises, db.bodyMetrics, db.settings, db.templates, db.programs], async () => {
+  await db.transaction('rw', [db.workouts, db.exercises, db.bodyMetrics, db.settings, db.templates, db.programs, db.dayOverrides], async () => {
     if (Array.isArray(data.workouts)) {
       await db.workouts.clear();
       await db.workouts.bulkPut(data.workouts);
@@ -71,6 +74,10 @@ export async function importBackupData(jsonString: string): Promise<void> {
     if (Array.isArray(data.programs)) {
       await db.programs.clear();
       await db.programs.bulkPut(data.programs);
+    }
+    if (Array.isArray(data.dayOverrides)) {
+      await db.dayOverrides.clear();
+      await db.dayOverrides.bulkPut(data.dayOverrides);
     }
   });
 }

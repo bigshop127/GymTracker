@@ -13,6 +13,7 @@ import { buildExerciseMap, getDaySummary } from '../lib/workoutSummary';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
 import { rpeToShortLabel } from '../lib/rpe';
+import { buildCalendarGrid } from '../lib/shiftPlan';
 
 export default function History() {
   const navigate = useNavigate();
@@ -100,28 +101,7 @@ export default function History() {
 
   // 7B: 產生當月月曆網格
   const calendarGrid = useMemo(() => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-
-    const firstDayIndex = new Date(year, month, 1).getDay(); // 0 是週日
-    const totalDays = new Date(year, month + 1, 0).getDate();
-
-    const cells: { dateStr: string | null; dayNum: number | null }[] = [];
-
-    // 前月空格填充
-    for (let i = 0; i < firstDayIndex; i++) {
-      cells.push({ dateStr: null, dayNum: null });
-    }
-
-    // 當月日期
-    for (let day = 1; day <= totalDays; day++) {
-      const mStr = (month + 1).toString().padStart(2, '0');
-      const dStr = day.toString().padStart(2, '0');
-      const dateStr = `${year}-${mStr}-${dStr}`;
-      cells.push({ dateStr, dayNum: day });
-    }
-
-    return cells;
+    return buildCalendarGrid(currentMonth);
   }, [currentMonth]);
 
   // 刪除歷史記錄

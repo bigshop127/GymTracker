@@ -79,6 +79,20 @@ export interface BodyMetric {
 }
 
 // ---- 全域設定 (Settings) ----
+export type ShiftLetter = 'A' | 'B' | 'C';
+
+export interface DayOverride {
+  id: string;                     // 'YYYY-MM-DD'（本地時區日期字串，直接當主鍵，比照 History.tsx 既有的 dateStr 慣例）
+  shiftLetters?: ShiftLetter[];   // 當天有上的班，例如 ['A','B']；沒填/空陣列＝沒登記
+  isDayOff?: boolean;             // 明確標記「休假」（截圖那個图示），與 shiftLetters 二選一，UI 互斥
+  rawLabel?: string;              // 選填，原始顯示文字例如 'AC早'——只用來顯示，不參與判斷邏輯
+  paused?: boolean;               // 手動暫停訓練建議（急事/下雨），跟班別無關，任何一天都能單獨勾
+  updatedAt: number;
+  deletedAt?: number;             // 沿用既有軟刪除慣例
+}
+
+export type ShiftPolicy = 'train' | 'restOrCardio';
+
 export interface Settings {
   id: 'global';           // 固定為 'global' 單一紀錄
   unit: Unit;
@@ -88,6 +102,8 @@ export interface Settings {
   soundOnRestEnd: boolean;
   vibrateOnRestEnd: boolean;
   locations?: string[];     // 可選地點清單，例如 ['中壢建工', '楊梅WG']
+  shiftPolicyOverrides?: Record<string, ShiftPolicy>;  // key 是正規化後的班別代碼，例如 'AB'、'ABC'、'DAYOFF'
+  restOverrideDays?: number;    // 「太久沒重量訓練」的門檻天數，預設 7
 }
 
 // ---- 訓練範本 (WorkoutTemplate) ----
@@ -144,6 +160,7 @@ class GymTrackerDatabase extends Dexie {
   templates!: Table<WorkoutTemplate, string>;
   programs!: Table<TrainingProgram, string>;
   idAliases!: Table<IdAlias, string>;
+  dayOverrides!: Table<DayOverride, string>;
 
 
   constructor() {
@@ -354,6 +371,11 @@ class GymTrackerDatabase extends Dexie {
             if (stripEntries(w)) w.updatedAt = now;
           });
       }
+    });
+
+    // version(11): 班表感知的月訓練計畫自動生成
+    this.version(11).stores({
+      dayOverrides: 'id, updatedAt',
     });
   }
 }

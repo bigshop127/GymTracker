@@ -5,6 +5,18 @@ import { useSyncStore } from '../store/sync';
 import { playRestEndSound } from '../store/restTimer';
 import { exportBackupData, importBackupData } from '../lib/backup';
 import NumberStepper from '../components/NumberStepper';
+import { DEFAULT_SHIFT_POLICIES } from '../lib/shiftPlan';
+
+const SHIFT_LABELS: Record<string, string> = {
+  'DAYOFF': '休假 / 未登記',
+  'A': '單班 A (早班)',
+  'B': '單班 B (中班)',
+  'C': '單班 C (晚班)',
+  'AB': '組合班 AB',
+  'AC': '組合班 AC',
+  'BC': '組合班 BC',
+  'ABC': '組合班 ABC',
+};
 
 export default function SettingsPage() {
   const { settings, updateSettings, initSettings } = useSettingsStore();
@@ -220,6 +232,86 @@ export default function SettingsPage() {
             onChange={(e) => handleUpdate({ vibrateOnRestEnd: e.target.checked })}
             className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
           />
+        </div>
+      </div>
+
+      {/* 班表與訓練建議設定區塊 */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-4 transition-colors duration-200">
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+            班表與訓練建議設定
+          </label>
+          <p className="text-[10px] text-slate-400">自訂不同班別的預設訓練建議，以及重訓頻率限制。</p>
+        </div>
+
+        {/* 太久沒重訓門檻 */}
+        <div className="flex items-center justify-between gap-4 border-b border-slate-50 dark:border-slate-800/50 pb-4">
+          <div className="space-y-0.5">
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-200">太久沒重量訓練門檻</span>
+            <p className="text-[10px] text-slate-400">當連續沒做重訓達此天數時，將強制排入訓練（天）</p>
+          </div>
+          <div className="w-32">
+            <NumberStepper
+              value={settings.restOverrideDays ?? 7}
+              onChange={(val) => handleUpdate({ restOverrideDays: Math.max(1, val) })}
+              step={1}
+            />
+          </div>
+        </div>
+
+        {/* 班別對照表 */}
+        <div className="space-y-2">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">班別建議對照表</span>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+            {Object.entries(SHIFT_LABELS).map(([key, label]) => {
+              const currentPolicy = settings.shiftPolicyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
+              return (
+                <div key={key} className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-800/30 last:border-0">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{label}</span>
+                  <div className="bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg flex gap-0.5 text-[10px] font-semibold w-40">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentOverrides = settings.shiftPolicyOverrides || {};
+                        handleUpdate({
+                          shiftPolicyOverrides: {
+                            ...currentOverrides,
+                            [key]: 'train',
+                          }
+                        });
+                      }}
+                      className={`flex-1 py-1 text-center rounded transition duration-200 ${
+                        currentPolicy === 'train'
+                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      建議訓練
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentOverrides = settings.shiftPolicyOverrides || {};
+                        handleUpdate({
+                          shiftPolicyOverrides: {
+                            ...currentOverrides,
+                            [key]: 'restOrCardio',
+                          }
+                        });
+                      }}
+                      className={`flex-1 py-1 text-center rounded transition duration-200 ${
+                        currentPolicy === 'restOrCardio'
+                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      有氧/休息
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
