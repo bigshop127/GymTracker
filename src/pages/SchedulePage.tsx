@@ -484,7 +484,10 @@ export default function SchedulePage() {
                 onPointerUp={(e) => cell.dateStr && handlePointerUp(e, cell.dateStr)}
                 onPointerCancel={handlePointerCancel}
                 style={{
-                  touchAction: isRangeSelecting ? 'none' : 'auto',
+                  // 手機上若讓瀏覽器自己判斷「這是點擊還是要滾動」，
+                  // 手指的自然微小晃動常常被誤判成滑動而觸發 pointercancel，
+                  // 導致長按/單點都偵測不到——固定為 none 讓長按計時器自己判斷手勢。
+                  touchAction: 'none',
                   WebkitTouchCallout: 'none',
                   userSelect: 'none',
                 }}
