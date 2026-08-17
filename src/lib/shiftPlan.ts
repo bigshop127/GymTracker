@@ -122,17 +122,22 @@ export const SHIFT_CODE_BUTTON_CLASSES: Record<ShiftCodeCategory, string> = {
   forcedRest: 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-900 text-cyan-600 dark:text-cyan-400',
 };
 
+// 深色模式的卡片底色是 slate-900（藍灰色）。冷色系（藍/紫/靛/綠/青/翠綠）跟
+// 這個底色本來就同一個色相家族，用 -950 這種極暗色階疊低透明度時，跟底色幾乎
+// 混在一起看不出來（暖色系如黃/橘/紅因為色相差異大，低透明度也能一眼看出來，
+// 不受影響）。冷色系一律改用較亮的 -700／-800 色階＋提高透明度，確保跟底色有
+// 足夠的亮度落差；暖色系維持原本已經夠清楚的組合。
 export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
-  A: 'bg-blue-50 dark:bg-blue-950/30',
+  A: 'bg-blue-50 dark:bg-blue-800/50',
   B: 'bg-amber-50 dark:bg-amber-950/30',
-  C: 'bg-purple-50 dark:bg-purple-950/30',
-  AB: 'bg-indigo-100 dark:bg-indigo-950/40',
-  AC: 'bg-green-100 dark:bg-green-950/40',
+  C: 'bg-purple-50 dark:bg-purple-800/50',
+  AB: 'bg-indigo-100 dark:bg-indigo-700/55',
+  AC: 'bg-green-100 dark:bg-green-700/50',
   BC: 'bg-yellow-100 dark:bg-yellow-950/40',
   ABC: 'bg-red-100 dark:bg-red-950/40',
-  dayoff: 'bg-emerald-50 dark:bg-emerald-950/30',
-  unable: 'bg-slate-100 dark:bg-slate-800/60',
-  forcedRest: 'bg-cyan-50 dark:bg-cyan-950/30',
+  dayoff: 'bg-emerald-50 dark:bg-emerald-800/45',
+  unable: 'bg-slate-100 dark:bg-slate-700/60',
+  forcedRest: 'bg-cyan-50 dark:bg-cyan-800/50',
 };
 
 export function classifySlotCategory(

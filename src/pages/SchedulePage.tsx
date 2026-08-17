@@ -483,6 +483,11 @@ export default function SchedulePage() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => cell.dateStr && handlePointerUp(e, cell.dateStr)}
                 onPointerCancel={handlePointerCancel}
+                // Android 長按預設會跳系統的 contextmenu（選取/分享選單），時間點跟我們
+                // 自己的長按計時器很接近，會把正在進行中的拖曳手勢打斷——長按批次選取
+                // 才會一直卡在「摸了但選不到範圍」。擋掉瀏覽器預設行為，手勢完全交給
+                // 上面 pointerdown/move/up 自己判斷。
+                onContextMenu={(e) => e.preventDefault()}
                 style={{
                   // 手機上若讓瀏覽器自己判斷「這是點擊還是要滾動」，
                   // 手指的自然微小晃動常常被誤判成滑動而觸發 pointercancel，
