@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { isConfigured } from '../lib/firebase';
-import { signInWithGoogle, signOut, onAuthChange, completeRedirectSignIn, type User } from '../sync/auth';
+import { signInWithGoogle, signOut, onAuthChange, type User } from '../sync/auth';
 import { fullSync, deltaSync } from '../sync/sync';
 import { useActiveWorkoutStore } from './activeWorkout';
 
@@ -15,6 +15,7 @@ interface SyncState {
 
   initAuth: () => () => void;
   signIn: () => Promise<void>;
+  reportAuthError: (error: Error) => void;
   signOut: () => Promise<void>;
   sync: () => Promise<void>;
 }
@@ -28,14 +29,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   initAuth: () => {
     if (!isConfigured()) return () => {};
-
-    // 從 signInWithRedirect 導回時，把待處理的登入結果／錯誤取出來。
-    // 成功的話 onAuthChange 一樣會收到新的 user 並觸發 sync；
-    // 這裡主要是為了在失敗時能顯示錯誤，而不是讓使用者看到「按了沒反應」。
-    completeRedirectSignIn().catch((err) => {
-      console.error('Redirect sign-in failed:', err);
-      set({ syncStatus: 'error', errorMessage: err instanceof Error ? err.message : '登入失敗' });
-    });
 
     const unsub = onAuthChange(async (user) => {
       set({ user });
@@ -71,6 +64,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     } catch (err) {
       set({ syncStatus: 'error', errorMessage: err instanceof Error ? err.message : '登入失敗' });
     }
+  },
+
+  reportAuthError: (error: Error) => {
+    set({ syncStatus: 'error', errorMessage: error.message });
   },
 
   signOut: async () => {

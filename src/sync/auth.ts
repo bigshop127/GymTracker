@@ -1,8 +1,7 @@
 import {
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithCredential,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   type User,
@@ -11,11 +10,14 @@ import { getFirebaseAuth } from '../lib/firebase';
 
 export type { User };
 
-// signInWithPopup 在手機瀏覽器、以及安裝成 PWA 後的 standalone 模式下，
-// 跨視窗的 OAuth 交握常常無法完成（彈窗被擋、或 standalone 模式根本沒有
-// 「回得去的視窗」）——會卡住或靜默失敗，登入永遠不會成功。
-// 行動裝置/已安裝的 PWA 一律改走整頁導向的 signInWithRedirect。
-function shouldUseRedirect(): boolean {
+// signInWithPopup／signInWithRedirect 都要靠 Firebase 的 authDomain
+//（預設是 <project>.firebaseapp.com）跟本站網域之間的第三方儲存空間才能完成登入。
+// GitHub Pages 沒有自訂網域可以讓 authDomain 跟本站同網域，手機版 Chrome 又
+// 越來越常封鎖這種跨網域儲存存取：整個流程表面上會跑完（跳轉、選帳號、跳回來），
+// 但 SDK 讀不到結果，靜靜停在未登入、不會報錯。
+// 行動裝置/已安裝的 PWA 改用 Google Identity Services 直接換 ID Token，
+// 完全繞開 authDomain 這個轉導機制。
+export function shouldUseGis(): boolean {
   if (typeof window === 'undefined') return false;
   const isStandalone =
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -24,23 +26,88 @@ function shouldUseRedirect(): boolean {
   return isStandalone || isMobileUA;
 }
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+          }) => void;
+          renderButton: (
+            container: HTMLElement,
+            options: { type: string; theme: string; size: string; text: string; width: number }
+          ) => void;
+        };
+      };
+    };
+  }
+}
+
+const GIS_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined;
+
+let gisScriptPromise: Promise<void> | null = null;
+
+function loadGisScript(): Promise<void> {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (!gisScriptPromise) {
+    gisScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Google 登入元件載入失敗，請檢查網路連線'));
+      document.head.appendChild(script);
+    });
+  }
+  return gisScriptPromise;
+}
+
+// 把 Google 官方的登入按鈕渲染進指定容器；使用者按下後由 GIS 的 callback
+// 直接換到 ID Token，再用 signInWithCredential 完成 Firebase 登入。
+// 登入成功會讓 onAuthStateChanged 自然觸發，這裡只需要把失敗回報出去。
+export async function renderGoogleSignInButton(
+  container: HTMLElement,
+  onError: (error: Error) => void
+): Promise<void> {
+  if (!GIS_CLIENT_ID) {
+    onError(new Error('缺少 Google 登入設定 (VITE_GOOGLE_OAUTH_CLIENT_ID)'));
+    return;
+  }
+  try {
+    await loadGisScript();
+  } catch (err) {
+    onError(err instanceof Error ? err : new Error('Google 登入元件載入失敗'));
+    return;
+  }
+  const auth = getFirebaseAuth();
+  window.google!.accounts.id.initialize({
+    client_id: GIS_CLIENT_ID,
+    callback: async (response) => {
+      try {
+        const credential = GoogleAuthProvider.credential(response.credential);
+        await signInWithCredential(auth, credential);
+      } catch (err) {
+        onError(err instanceof Error ? err : new Error('登入失敗'));
+      }
+    },
+  });
+  window.google!.accounts.id.renderButton(container, {
+    type: 'standard',
+    theme: 'outline',
+    size: 'large',
+    text: 'signin_with',
+    width: 320,
+  });
+}
+
 export async function signInWithGoogle(): Promise<User | null> {
   const auth = getFirebaseAuth();
   const provider = new GoogleAuthProvider();
-  if (shouldUseRedirect()) {
-    await signInWithRedirect(auth, provider);
-    return null; // 整頁導向 Google，這次呼叫不會有回傳值，登入結果要靠 completeRedirectSignIn 取得
-  }
   const result = await signInWithPopup(auth, provider);
   return result.user;
-}
-
-// 從 Google 導回後呼叫一次，取出 signInWithRedirect 的結果／錯誤。
-// 沒有待處理的導回時回傳 null，不會拋錯。
-export async function completeRedirectSignIn(): Promise<User | null> {
-  const auth = getFirebaseAuth();
-  const result = await getRedirectResult(auth);
-  return result?.user ?? null;
 }
 
 export async function signOut(): Promise<void> {
