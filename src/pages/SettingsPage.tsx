@@ -21,7 +21,7 @@ const SHIFT_LABELS: Record<string, string> = {
 export default function SettingsPage() {
   const { settings, updateSettings, initSettings } = useSettingsStore();
   const { initActiveWorkout } = useActiveWorkoutStore();
-  const { user, syncStatus, lastSyncAt, errorMessage, isFirebaseConfigured, signIn, reportAuthError, signOut, sync } = useSyncStore();
+  const { user, syncStatus, lastUploadAt, lastDownloadAt, errorMessage, isFirebaseConfigured, signIn, reportAuthError, signOut, upload, download } = useSyncStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gisButtonRef = useRef<HTMLDivElement>(null);
   const useGis = shouldUseGis();
@@ -433,7 +433,7 @@ export default function SettingsPage() {
           {!user ? (
             <div className="space-y-3">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                使用 Google 帳號登入，即可在多台裝置間自動同步訓練資料。
+                使用 Google 帳號登入後，可以手動上傳／下載訓練資料到雲端，在多台裝置間交換。
               </p>
               {useGis ? (
                 <div ref={gisButtonRef} className="flex justify-center" />
@@ -470,31 +470,45 @@ export default function SettingsPage() {
               </div>
 
               {/* 同步狀態 */}
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 dark:text-slate-400">
+              <div className="space-y-2 text-xs">
+                <p className="text-slate-500 dark:text-slate-400">
                   {syncStatus === 'syncing' ? (
                     <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 bg-amber-400 rounded-full animate-ping" />
-                      同步中...
+                      處理中...
                     </span>
                   ) : syncStatus === 'error' ? (
                     <span className="text-rose-500">{errorMessage}</span>
-                  ) : lastSyncAt ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full" />
-                      上次同步：{new Date(lastSyncAt).toLocaleTimeString()}
-                    </span>
                   ) : (
-                    '尚未同步'
+                    <span className="space-y-0.5 block">
+                      <span className="block">
+                        {lastUploadAt ? `上次上傳：${new Date(lastUploadAt).toLocaleString()}` : '尚未上傳過'}
+                      </span>
+                      <span className="block">
+                        {lastDownloadAt ? `上次下載：${new Date(lastDownloadAt).toLocaleString()}` : '尚未下載過'}
+                      </span>
+                    </span>
                   )}
-                </span>
-                <button
-                  onClick={sync}
-                  disabled={syncStatus === 'syncing'}
-                  className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
-                >
-                  立即同步
-                </button>
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  同步不會自動觸發，切換裝置前記得手動下載，改完資料記得手動上傳。
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={download}
+                    disabled={syncStatus === 'syncing'}
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
+                  >
+                    ↓ 下載
+                  </button>
+                  <button
+                    onClick={upload}
+                    disabled={syncStatus === 'syncing'}
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
+                  >
+                    ↑ 上傳
+                  </button>
+                </div>
               </div>
 
               <button

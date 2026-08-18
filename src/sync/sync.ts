@@ -4,8 +4,6 @@ import {
   doc,
   getDocs,
   setDoc,
-  query,
-  where,
 } from 'firebase/firestore';
 import { getFirebaseFirestore } from '../lib/firebase';
 import { db } from '../db/schema';
@@ -18,6 +16,11 @@ interface SyncRecord {
   id: string;
   updatedAt?: number;
   deletedAt?: number;
+}
+
+export interface UploadResult {
+  pushed: number;
+  skipped: number;
 }
 
 // ── 單筆推送到 Firestore ──────────────────────────────────────────
@@ -41,15 +44,6 @@ async function pullAll(uid: string, table: SyncTable): Promise<SyncRecord[]> {
   const fs = getFirebaseFirestore();
   const col = collection(fs, 'users', uid, table);
   const snap = await getDocs(col);
-  return snap.docs.map(d => d.data() as SyncRecord);
-}
-
-// ── 從 Firestore 拉取自上次同步後更新的資料 ───────────────────────
-async function pullSince(uid: string, table: SyncTable, since: number): Promise<SyncRecord[]> {
-  const fs = getFirebaseFirestore();
-  const col = collection(fs, 'users', uid, table);
-  const q = query(col, where('updatedAt', '>', since));
-  const snap = await getDocs(q);
   return snap.docs.map(d => d.data() as SyncRecord);
 }
 
@@ -100,55 +94,21 @@ async function pushBatches(uid: string, batches: [SyncTable, SyncRecord[]][]): P
   }
 }
 
-// ── 將本機更新的增量推送到雲端 ─────────────────────────────────────
-async function pushChangedSince(uid: string, since: number): Promise<void> {
-  const [exercises, workouts, templates, metrics, programs, aliases, overrides] = await Promise.all([
-    db.exercises.where('updatedAt').above(since).toArray(),
-    db.workouts.where('updatedAt').above(since).toArray(),
-    db.templates.where('updatedAt').above(since).toArray(),
-    db.bodyMetrics.where('updatedAt').above(since).toArray(),
-    db.programs.where('updatedAt').above(since).toArray(),
-    db.idAliases.where('updatedAt').above(since).toArray(),
-    db.dayOverrides.where('updatedAt').above(since).toArray(),
-  ]);
-
-  await pushBatches(uid, [
-    ['exercises', exercises.filter(e => e.isCustom)],
-    ['workouts', workouts.filter(w => w.status === 'completed' || w.deletedAt !== undefined)],
-    ['templates', templates],
-    ['bodyMetrics', metrics],
-    ['programs', programs],
-    ['idAliases', aliases],
-    ['dayOverrides', overrides],
-  ]);
+function localTables(): [SyncTable, () => Promise<SyncRecord[]>][] {
+  return [
+    ['exercises', async () => (await db.exercises.toArray()).filter(e => e.isCustom)],
+    ['workouts', async () => (await db.workouts.toArray()).filter(w => w.status === 'completed' || w.deletedAt !== undefined)],
+    ['templates', () => db.templates.toArray()],
+    ['bodyMetrics', () => db.bodyMetrics.toArray()],
+    ['programs', () => db.programs.toArray()],
+    ['idAliases', () => db.idAliases.toArray()],
+    ['dayOverrides', () => db.dayOverrides.toArray()],
+  ];
 }
 
-// ── 將本機全部資料推送到雲端 ─────────────────────────────────────
-async function pushAllToCloud(uid: string): Promise<void> {
-  const [exercises, workouts, templates, metrics, programs, aliases, overrides] = await Promise.all([
-    db.exercises.toArray(),
-    db.workouts.toArray(),
-    db.templates.toArray(),
-    db.bodyMetrics.toArray(),
-    db.programs.toArray(),
-    db.idAliases.toArray(),
-    db.dayOverrides.toArray(),
-  ]);
-
-  await pushBatches(uid, [
-    ['exercises', exercises.filter(e => e.isCustom)],
-    ['workouts', workouts.filter(w => w.status === 'completed' || w.deletedAt !== undefined)],
-    ['templates', templates],
-    ['bodyMetrics', metrics],
-    ['programs', programs],
-    ['idAliases', aliases],
-    ['dayOverrides', overrides],
-  ]);
-}
-
-// ── Full sync（登入後執行）────────────────────────────────────────
+// ── 下載：把雲端七張表全部拉回本機、用 LWW merge（雲端較新才覆蓋本機）──
 // 回傳被修好的舊動作 id 筆數，讓呼叫端決定要不要重新載入畫面上的訓練
-export async function fullSync(uid: string): Promise<number> {
+export async function downloadAll(uid: string): Promise<number> {
   const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms, cloudAliases, cloudOverrides] = await Promise.all([
     pullAll(uid, 'exercises'),
     pullAll(uid, 'workouts'),
@@ -169,37 +129,31 @@ export async function fullSync(uid: string): Promise<number> {
     mergeRecords(db.dayOverrides, cloudOverrides),
   ]);
 
-  // 先用（含對方裝置的）對照表修好舊動作 id，修好的版本才能在這一輪就推上去
-  const repaired = await repairExerciseIds();
-
-  await pushAllToCloud(uid);
-  return repaired;
+  return repairExerciseIds();
 }
 
-// ── Delta sync（前景化時執行）────────────────────────────────────
-export async function deltaSync(uid: string, since: number): Promise<number> {
-  const [cloudExercises, cloudWorkouts, cloudTemplates, cloudMetrics, cloudPrograms, cloudAliases, cloudOverrides] = await Promise.all([
-    pullSince(uid, 'exercises', since),
-    pullSince(uid, 'workouts', since),
-    pullSince(uid, 'templates', since),
-    pullSince(uid, 'bodyMetrics', since),
-    pullSince(uid, 'programs', since),
-    pullSince(uid, 'idAliases', since),
-    pullSince(uid, 'dayOverrides', since),
+// ── 上傳：把本機七張表全部推上雲端，推送前逐筆比對雲端現有的 updatedAt ──
+// 雲端比較新的那筆跳過、不覆蓋，避免用本機舊資料蓋掉別台裝置剛推上去的更新
+export async function uploadAll(uid: string): Promise<UploadResult> {
+  const tables = localTables();
+  const [localRecords, cloudRecords] = await Promise.all([
+    Promise.all(tables.map(([, load]) => load())),
+    Promise.all(tables.map(([table]) => pullAll(uid, table))),
   ]);
 
-  await Promise.all([
-    mergeRecords(db.exercises, cloudExercises),
-    mergeRecords(db.workouts, cloudWorkouts),
-    mergeRecords(db.templates, cloudTemplates),
-    mergeRecords(db.bodyMetrics, cloudMetrics),
-    mergeRecords(db.programs, cloudPrograms),
-    mergeRecords(db.idAliases, cloudAliases),
-    mergeRecords(db.dayOverrides, cloudOverrides),
-  ]);
+  let pushed = 0;
+  let skipped = 0;
+  const batches: [SyncTable, SyncRecord[]][] = tables.map(([table], i) => {
+    const cloudUpdatedAtById = new Map(cloudRecords[i].map(r => [r.id, r.updatedAt ?? 0]));
+    const toPush = localRecords[i].filter(r => {
+      const cloudUpdatedAt = cloudUpdatedAtById.get(r.id);
+      return cloudUpdatedAt === undefined || (r.updatedAt ?? 0) > cloudUpdatedAt;
+    });
+    pushed += toPush.length;
+    skipped += localRecords[i].length - toPush.length;
+    return [table, toPush];
+  });
 
-  const repaired = await repairExerciseIds();
-
-  await pushChangedSince(uid, since);
-  return repaired;
+  await pushBatches(uid, batches);
+  return { pushed, skipped };
 }

@@ -11,7 +11,6 @@ import {
 } from '../db/dayOverrides';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
-import { useSyncStore } from '../store/sync';
 import {
   generateMonthPlan,
   buildCalendarGrid,
@@ -294,13 +293,6 @@ export default function SchedulePage() {
   const rangeMinDate = dragStartDateStr && dragEndDateStr ? (dragStartDateStr < dragEndDateStr ? dragStartDateStr : dragEndDateStr) : null;
   const rangeMaxDate = dragStartDateStr && dragEndDateStr ? (dragStartDateStr < dragEndDateStr ? dragEndDateStr : dragStartDateStr) : null;
 
-  // 班表寫入只落地在本機 Dexie，雲端同步平常只在登入時／分頁從背景切回前景時才會跑，
-  // 一次坐下輸入一整個月班表、中途沒切過分頁的話，這筆資料永遠不會被推上雲端，
-  // 別的裝置自然同步不到。寫入後主動催一次同步（背景執行、不擋 UI，也不強制等待）。
-  const triggerCloudSync = () => {
-    useSyncStore.getState().sync().catch(console.error);
-  };
-
   const handleSingleSave = async (config: typeof BUTTON_CONFIGS[number]) => {
     if (selectedDateStr) {
       const existing = overridesByDate.get(selectedDateStr);
@@ -316,7 +308,6 @@ export default function SchedulePage() {
       });
       setReloadTrigger((t) => t + 1);
       setSelectedDateStr(null);
-      triggerCloudSync();
     }
   };
 
@@ -337,7 +328,6 @@ export default function SchedulePage() {
       }));
       setReloadTrigger((t) => t + 1);
       setRangeEditDates(null);
-      triggerCloudSync();
     }
   };
 
@@ -355,7 +345,6 @@ export default function SchedulePage() {
       pinnedOutcome: next && 'outcome' in next ? next.outcome : undefined,
     });
     setReloadTrigger((t) => t + 1);
-    triggerCloudSync();
   };
 
   if (!activeProgram) {
@@ -580,7 +569,6 @@ export default function SchedulePage() {
                     await clearDayOverride(selectedDateStr);
                     setReloadTrigger((t) => t + 1);
                     setSelectedDateStr(null);
-                    triggerCloudSync();
                   }}
                   className="text-xs font-bold text-red-500 hover:text-red-700"
                 >
@@ -716,7 +704,6 @@ export default function SchedulePage() {
                     await Promise.all(rangeEditDates.map((d) => clearDayOverride(d)));
                     setReloadTrigger((t) => t + 1);
                     setRangeEditDates(null);
-                    triggerCloudSync();
                   }}
                   className="text-xs font-bold text-red-500 hover:text-red-700"
                 >

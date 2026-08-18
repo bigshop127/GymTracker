@@ -14,8 +14,8 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const { settings } = useSettingsStore();
   const theme = settings?.theme || 'system';
-  const { user, syncStatus, lastSyncAt, errorMessage, isFirebaseConfigured, sync } = useSyncStore();
-  const [showSyncedFeedback, setShowSyncedFeedback] = useState(false);
+  const { user, syncStatus, lastUploadAt, lastDownloadAt, errorMessage, isFirebaseConfigured, upload, download } = useSyncStore();
+  const [feedback, setFeedback] = useState<'上傳完成' | '下載完成' | null>(null);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -45,20 +45,29 @@ export default function Layout({ children }: LayoutProps) {
     }
   }, [theme]);
 
-  const handleSyncClick = async (e: React.MouseEvent) => {
+  const handleUploadClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) {
       navigate('/settings');
       return;
     }
-    try {
-      await sync();
-      if (useSyncStore.getState().syncStatus === 'idle') {
-        setShowSyncedFeedback(true);
-        setTimeout(() => setShowSyncedFeedback(false), 2000);
-      }
-    } catch (err) {
-      console.error(err);
+    await upload();
+    if (useSyncStore.getState().syncStatus === 'idle') {
+      setFeedback('上傳完成');
+      setTimeout(() => setFeedback(null), 2000);
+    }
+  };
+
+  const handleDownloadClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user) {
+      navigate('/settings');
+      return;
+    }
+    await download();
+    if (useSyncStore.getState().syncStatus === 'idle') {
+      setFeedback('下載完成');
+      setTimeout(() => setFeedback(null), 2000);
     }
   };
 
@@ -77,16 +86,16 @@ export default function Layout({ children }: LayoutProps) {
             </span>
           </div>
 
-          {/* Sync Button */}
+          {/* Upload / Download Buttons */}
           {isFirebaseConfigured && (
             <div className="flex items-center gap-2">
-              {showSyncedFeedback && (
+              {feedback && (
                 <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 transition-all duration-200">
-                  已同步
+                  {feedback}
                 </span>
               )}
               <button
-                onClick={handleSyncClick}
+                onClick={handleDownloadClick}
                 disabled={syncStatus === 'syncing'}
                 className="relative p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors duration-200"
                 title={
@@ -94,9 +103,9 @@ export default function Layout({ children }: LayoutProps) {
                     ? '登入以啟用雲端同步'
                     : syncStatus === 'error'
                     ? `同步出錯: ${errorMessage}`
-                    : lastSyncAt
-                    ? `上次同步時間：${new Date(lastSyncAt).toLocaleTimeString()}`
-                    : '尚未同步，點擊開始同步'
+                    : lastDownloadAt
+                    ? `上次下載時間：${new Date(lastDownloadAt).toLocaleTimeString()}`
+                    : '尚未下載過，點擊從雲端下載'
                 }
               >
                 <svg
@@ -105,12 +114,12 @@ export default function Layout({ children }: LayoutProps) {
                   viewBox="0 0 24 24"
                   strokeWidth="2"
                   stroke="currentColor"
-                  className={`w-5 h-5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}
+                  className={`w-5 h-5 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`}
                 >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"
+                    d="M12 9.75v6.75m0 0-3.75-3.75M12 16.5l3.75-3.75M3 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 3 15Z"
                   />
                 </svg>
 
@@ -126,7 +135,56 @@ export default function Layout({ children }: LayoutProps) {
                           ? 'bg-amber-500'
                           : syncStatus === 'error'
                           ? 'bg-rose-500'
-                          : lastSyncAt
+                          : lastDownloadAt
+                          ? 'bg-emerald-500'
+                          : 'bg-slate-400'
+                      }`}
+                    ></span>
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={handleUploadClick}
+                disabled={syncStatus === 'syncing'}
+                className="relative p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors duration-200"
+                title={
+                  !user
+                    ? '登入以啟用雲端同步'
+                    : syncStatus === 'error'
+                    ? `同步出錯: ${errorMessage}`
+                    : lastUploadAt
+                    ? `上次上傳時間：${new Date(lastUploadAt).toLocaleTimeString()}`
+                    : '尚未上傳過，點擊上傳到雲端'
+                }
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                  stroke="currentColor"
+                  className={`w-5 h-5 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 16.5V9.75m0 0-3.75 3.75M12 9.75l3.75 3.75M3 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 3 15Z"
+                  />
+                </svg>
+
+                {/* Status Dot */}
+                {user && (
+                  <span className="absolute top-1 right-1 flex h-2 w-2">
+                    {syncStatus === 'syncing' && (
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    )}
+                    <span
+                      className={`relative inline-flex rounded-full h-2 w-2 ${
+                        syncStatus === 'syncing'
+                          ? 'bg-amber-500'
+                          : syncStatus === 'error'
+                          ? 'bg-rose-500'
+                          : lastUploadAt
                           ? 'bg-emerald-500'
                           : 'bg-slate-400'
                       }`}
