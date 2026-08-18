@@ -28,6 +28,65 @@ export interface PlannedDay {
   pinConflictReason?: 'consumed' | 'consecutiveLimit' | 'removed'; // 衝突原因描述
 }
 
+export interface PlannedDayWithBaseline extends PlannedDay {
+  baselineSuggestion: DayPlanSuggestion;
+  baselineSuggestedSlot: ProgramSlot | null;
+  diverged: boolean; // 原定 ≠ 實際，且不是過去日期，才算「有落差」
+}
+
+const DECISION_OVERRIDE_KEYS = ['paused', 'forcedRest', 'pinnedSlotId', 'pinnedOutcome'] as const;
+
+// 「原定計畫」用：忽略使用者對訓練建議的主觀覆寫，只保留客觀的班別/休假事實
+export function stripDecisionOverride(override: DayOverride): DayOverride {
+  const next = { ...override };
+  for (const key of DECISION_OVERRIDE_KEYS) {
+    delete next[key];
+  }
+  return next;
+}
+
+export function buildBaselineOverridesByDate(
+  overridesByDate: Map<string, DayOverride>
+): Map<string, DayOverride> {
+  const result = new Map<string, DayOverride>();
+  for (const [dateStr, override] of overridesByDate) {
+    result.set(dateStr, stripDecisionOverride(override));
+  }
+  return result;
+}
+
+export function describeSuggestionLabel(
+  suggestion: DayPlanSuggestion,
+  slot: ProgramSlot | null
+): string {
+  switch (suggestion) {
+    case 'train': return slot ? slot.label : '訓練';
+    case 'restOrCardio': return '休息/有氧';
+    case 'cardio': return '建議有氧';
+    case 'paused': return '今日無法';
+    case 'forcedRest': return '強制休息';
+    case 'noProgram': return '尚未設定課表';
+    case 'past': return '—';
+  }
+}
+
+export function mergeBaselinePlan(
+  actual: PlannedDay[],
+  baseline: PlannedDay[]
+): PlannedDayWithBaseline[] {
+  const baselineByDate = new Map(baseline.map((d) => [d.dateStr, d]));
+  return actual.map((day) => {
+    const b = baselineByDate.get(day.dateStr);
+    const baselineSuggestion = b?.suggestion ?? day.suggestion;
+    const baselineSuggestedSlot = b?.suggestedSlot ?? day.suggestedSlot;
+    const diverged =
+      !day.isPast &&
+      (baselineSuggestion !== day.suggestion ||
+        baselineSuggestedSlot?.id !== day.suggestedSlot?.id);
+    return { ...day, baselineSuggestion, baselineSuggestedSlot, diverged };
+  });
+}
+
 export const DEFAULT_SHIFT_POLICIES: Record<string, ShiftPolicy> = {
   'DAYOFF': 'train',
   'A': 'train',

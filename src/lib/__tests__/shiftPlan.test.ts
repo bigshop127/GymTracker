@@ -6,6 +6,10 @@ import {
   getValidDatesInRange,
   getWeekStart,
   classifyShiftCodeCategory,
+  stripDecisionOverride,
+  buildBaselineOverridesByDate,
+  mergeBaselinePlan,
+  describeSuggestionLabel,
 } from '../shiftPlan';
 import {
   type DayOverride,
@@ -836,6 +840,167 @@ describe('shiftPlan', () => {
       expect(result[2].suggestion).toBe('train');
       expect(result[3].suggestion).not.toBe('train'); // blocked by rule b
       expect(result[3].pinConflict).toBe(true);
+    });
+  });
+
+  describe('Phase 27 原定計畫 vs 實際計畫', () => {
+    const workoutTemplates = [
+      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-legs', name: '腿 (Legs)', entries: [{ id: 'e3', exerciseId: 'squat', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-arms', name: '手 (Arms)', entries: [{ id: 'e4', exerciseId: 'run', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+    ];
+    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
+
+    const program: TrainingProgram = {
+      id: 'prog-27',
+      name: '測試計畫27',
+      slots: [
+        { id: 'slot-pull', label: '拉', templateId: 'temp-pull' }, // chestBack
+        { id: 'slot-push', label: '推', templateId: 'temp-push' }, // chestBack
+        { id: 'slot-arms', label: '手', templateId: 'temp-arms' }, // other
+        { id: 'slot-legs', label: '腿', templateId: 'temp-legs' }, // legs
+      ],
+      completedSlotIdsThisLap: [],
+      cycleCount: 0,
+      estimatedWeeks: { min: 4, max: 8 },
+      status: 'active',
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    test('1. stripDecisionOverride / buildBaselineOverridesByDate：同時有 shiftLetters 跟 pinnedOutcome/paused 的 DayOverride，驗證決策覆寫欄位被清空但客觀事實保留', () => {
+      const o: DayOverride = {
+        id: '2026-08-20',
+        shiftLetters: ['A'],
+        isDayOff: false,
+        paused: true,
+        forcedRest: true,
+        pinnedSlotId: 'slot-pull',
+        pinnedOutcome: 'rest',
+        updatedAt: now
+      };
+      
+      const stripped = stripDecisionOverride(o);
+      expect(stripped.shiftLetters).toEqual(['A']);
+      expect(stripped.isDayOff).toBe(false);
+      expect(stripped.paused).toBeUndefined();
+      expect(stripped.forcedRest).toBeUndefined();
+      expect(stripped.pinnedSlotId).toBeUndefined();
+      expect(stripped.pinnedOutcome).toBeUndefined();
+
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-20', o);
+      const baselineOverrides = buildBaselineOverridesByDate(overrides);
+      const bO = baselineOverrides.get('2026-08-20')!;
+      expect(bO.shiftLetters).toEqual(['A']);
+      expect(bO.paused).toBeUndefined();
+    });
+
+    test('2. mergeBaselinePlan / 重新生成計畫：驗證 diverged 為 true，且當天之後因節奏不同指向不同 Slot', () => {
+      const dates = ['2026-08-20', '2026-08-21', '2026-08-22'];
+      const overrides = new Map<string, DayOverride>();
+      // 8/20 原定應該是拉（因為池子裡第一個是拉，且是 chestBack 又是工作日），但實際被蓋成 rest
+      overrides.set('2026-08-20', { id: '2026-08-20', pinnedOutcome: 'rest', updatedAt: now });
+
+      const actualPlan = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-20').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      });
+
+      const baselineOverrides = buildBaselineOverridesByDate(overrides);
+      const baselinePlan = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: baselineOverrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-20').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      });
+
+      const merged = mergeBaselinePlan(actualPlan, baselinePlan);
+      expect(merged).toHaveLength(3);
+
+      // 8/20: 實際建議為 restOrCardio，原定建議為 train (pull)
+      expect(merged[0].dateStr).toBe('2026-08-20');
+      expect(merged[0].diverged).toBe(true);
+      expect(merged[0].suggestion).toBe('restOrCardio');
+      expect(merged[0].baselineSuggestion).toBe('train');
+      expect(merged[0].baselineSuggestedSlot?.id).toBe('slot-pull');
+
+      // 8/21: 原定因為 8/20 練了 pull，所以 8/21 應該會是推/休息/有氧等等（根據演算法節奏）；實際因為 8/20 沒練，所以會往後遞延在 8/21 建議練 pull
+      // 實際 8/21 應該練 pull
+      expect(merged[1].dateStr).toBe('2026-08-21');
+      expect(merged[1].suggestedSlot?.id).toBe('slot-pull');
+      // 原定 8/21 應該建議練 push（因為 pull 在 8/20 被消耗了）
+      expect(merged[1].baselineSuggestedSlot?.id).toBe('slot-push');
+      expect(merged[1].diverged).toBe(true);
+    });
+
+    test('3. 過去日期：驗證 diverged 為 false 即使有 override', () => {
+      const dates = ['2026-08-19']; // today is 2026-08-20
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-19', { id: '2026-08-19', pinnedOutcome: 'rest', updatedAt: now });
+
+      const actualPlan = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-20').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      });
+
+      const baselineOverrides = buildBaselineOverridesByDate(overrides);
+      const baselinePlan = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: baselineOverrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-20').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      });
+
+      const merged = mergeBaselinePlan(actualPlan, baselinePlan);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].diverged).toBe(false);
+    });
+
+    test('4. describeSuggestionLabel 中文文案斷言', () => {
+      const mockSlot = { id: 'slot-1', label: '自訂胸' };
+      expect(describeSuggestionLabel('train', mockSlot)).toBe('自訂胸');
+      expect(describeSuggestionLabel('train', null)).toBe('訓練');
+      expect(describeSuggestionLabel('restOrCardio', null)).toBe('休息/有氧');
+      expect(describeSuggestionLabel('cardio', null)).toBe('建議有氧');
+      expect(describeSuggestionLabel('paused', null)).toBe('今日無法');
+      expect(describeSuggestionLabel('forcedRest', null)).toBe('強制休息');
+      expect(describeSuggestionLabel('noProgram', null)).toBe('尚未設定課表');
+      expect(describeSuggestionLabel('past', null)).toBe('—');
     });
   });
 });

@@ -14,13 +14,16 @@ import { useSettingsStore } from '../store/settings';
 import {
   generateMonthPlan,
   buildCalendarGrid,
-  type PlannedDay,
+  type PlannedDayWithBaseline,
   getValidDatesInRange,
   type ShiftCodeCategory,
   classifyShiftCodeCategory,
   SHIFT_CODE_HEX,
   SHIFT_CODE_BUTTON_CLASSES,
   SHIFT_CODE_CELL_BG_CLASSES,
+  buildBaselineOverridesByDate,
+  mergeBaselinePlan,
+  describeSuggestionLabel,
 } from '../lib/shiftPlan';
 import { type DayOverride, type ShiftLetter, type Workout, type Exercise, type WorkoutTemplate } from '../db/schema';
 import { getDaySummary } from '../lib/workoutSummary';
@@ -169,13 +172,42 @@ export default function SchedulePage() {
     });
   }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, exerciseMap, now, templatesById]);
 
+  const baselineOverridesByDate = useMemo(
+    () => buildBaselineOverridesByDate(overridesByDate),
+    [overridesByDate]
+  );
+
+  const baselinePlannedDays = useMemo(() => {
+    if (dateStrings.length === 0) return [];
+    return generateMonthPlan({
+      dateStrings,
+      activeProgram,
+      completedWorkouts,
+      activeWorkoutToday: activeWorkout,
+      overridesByDate: baselineOverridesByDate,
+      policyOverrides: settings?.shiftPolicyOverrides,
+      restOverrideDays: settings?.restOverrideDays ?? 7,
+      exerciseMap,
+      today: now,
+      weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
+      templatesById,
+    });
+  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, baselineOverridesByDate, settings, exerciseMap, now, templatesById]);
+
+  const plannedDaysWithBaseline = useMemo(
+    () => mergeBaselinePlan(plannedDays, baselinePlannedDays),
+    [plannedDays, baselinePlannedDays]
+  );
+
   const plannedDayMap = useMemo(() => {
-    const map = new Map<string, PlannedDay>();
-    for (const day of plannedDays) {
+    const map = new Map<string, PlannedDayWithBaseline>();
+    for (const day of plannedDaysWithBaseline) {
       map.set(day.dateStr, day);
     }
     return map;
-  }, [plannedDays]);
+  }, [plannedDaysWithBaseline]);
+
+  const selectedPlannedDay = selectedDateStr ? plannedDayMap.get(selectedDateStr) : undefined;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, dateStr: string) => {
     if (longPressTimerRef.current) {
@@ -539,6 +571,14 @@ export default function SchedulePage() {
                     {override.pinnedOutcome === 'cardio' ? '🏃' : '😴'}
                   </span>
                 )}
+                {plannedDay.diverged && (
+                  <span
+                    className="absolute bottom-0.5 right-1 text-[7px] font-extrabold px-1 py-0.2 rounded leading-none bg-orange-500 text-white"
+                    title={`原定：${describeSuggestionLabel(plannedDay.baselineSuggestion, plannedDay.baselineSuggestedSlot)}`}
+                  >
+                    改
+                  </span>
+                )}
                 <div className="h-4 flex items-center justify-center">
                   {iconHtml ? (
                     <svg viewBox="0 0 24 24" fill="currentColor" style={{ color: iconColor }}
@@ -582,6 +622,23 @@ export default function SchedulePage() {
                 </button>
               </div>
             </div>
+
+            {selectedPlannedDay && !selectedPlannedDay.isPast && (
+              <div className="text-xs bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-slate-400">原定建議</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {describeSuggestionLabel(selectedPlannedDay.baselineSuggestion, selectedPlannedDay.baselineSuggestedSlot)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-slate-400">實際安排</span>
+                  <span className={`font-semibold ${selectedPlannedDay.diverged ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {describeSuggestionLabel(selectedPlannedDay.suggestion, selectedPlannedDay.suggestedSlot)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* 內容：分區 */}
             <div className="space-y-4 pt-2">
