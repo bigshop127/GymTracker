@@ -5,6 +5,7 @@ import HistoryNavButtons from './HistoryNavButtons';
 import RestTimer from './RestTimer';
 import { useSettingsStore } from '../store/settings';
 import { useSyncStore } from '../store/sync';
+import { APP_VERSION } from '../version';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -80,6 +81,9 @@ export default function Layout({ children }: LayoutProps) {
             <HistoryNavButtons />
             <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400 bg-clip-text text-transparent">
               GymTracker
+            </span>
+            <span className="text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+              v{APP_VERSION}
             </span>
             <span className="text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 px-1.5 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-900/40">
               MVP
