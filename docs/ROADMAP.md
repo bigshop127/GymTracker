@@ -217,6 +217,7 @@ GymTracker/
 | Phase 25（v1.19） | 班別狀態擴充＋月曆滿版配色＋智慧排課規則 | 新增 forcedRest 狀態（z-index 修正/10顆按鈕分區/扣抵週目標） + 月曆格滿版配色 + 智慧排課腿日前後/避免連練/胸背優先（只看當天要不要練，不碰 slot 順序與 cursor/cycleCount）。 |
 | Phase 26（v1.20） | 班別配色分色＋預設政策校正＋指定訓練部位 | `ShiftCodeCategory` 拆分＋預設 policies 修正 ＋ `DayOverride.pinnedSlotId` ＋ `completedSlotIdsThisLap` 取代 `cursor` (含 Dexie version 12) ＋ 月曆指定提示與 conflict 標記 ＋ `WorkoutLogger` 循序列表連動修復。 |
 | Phase 26.1（v1.21） | 訓練排程隔天分散＋AB/AC/BC 底色改色＋指定休息／有氧 | `generateMonthPlan` 明確排班分支追加「週目標已達成不硬練」＋「沒有 urgent 壓力偏好隔天訓練」，避免連續訓練天數擠成一坨 ＋ AB/AC/BC 底色改用 indigo/green/yellow（原本 rose/orange/pink 色相太集中） ＋ 新增 `DayOverride.pinnedOutcome`（'rest' \| 'cardio'），「指定訓練部位」面板擴充成「指定當天安排」可直接指定休息或有氧。 |
+| Phase 28（v1.22） | 訓練計畫生命週期：重新開始／暫停／終止／封存清單 | `TrainingProgram.status` 擴成 `active/paused/completed/abandoned`＋新增 `pausedAt/accumulatedPausedMs/runNumber/restartedFromProgramId`；純函式層 `src/lib/programLifecycle.ts`；store 拆 `currentProgram`/`activeProgram` 兩欄位讓暫停自動生效（既有讀 `activeProgram` 的程式碼不用改）；新頁 `/programs` 管理目前計畫（暫停/繼續/重新開始/終止）與封存清單（重新啟用/永久刪除）；`shiftPlan.ts` 新增 `programPaused` 建議；`SchedulePage` 移除 early-return 改顯示提示橫幅；表單抽成共用 `ProgramFormSheet`。無 Dexie version bump（純新增選填欄位）。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
 > **進度（2026-08-17）**：Phase 0–26.1 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.21（Phase 7–26.1）。各階段完成紀錄見 Obsidian `健身APP開發/`。

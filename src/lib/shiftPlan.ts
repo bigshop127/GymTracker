@@ -10,7 +10,8 @@ import {
 } from '../db/schema';
 
 export type DayPlanSuggestion =
-  | 'train' | 'restOrCardio' | 'cardio' | 'paused' | 'forcedRest' | 'noProgram' | 'past';
+  | 'train' | 'restOrCardio' | 'cardio' | 'paused' | 'forcedRest'
+  | 'programPaused' | 'noProgram' | 'past';
 
 export type SlotCategory = 'legs' | 'chestBack' | 'other';
 
@@ -65,6 +66,7 @@ export function describeSuggestionLabel(
     case 'cardio': return '建議有氧';
     case 'paused': return '今日無法';
     case 'forcedRest': return '強制休息';
+    case 'programPaused': return '計畫暫停中';
     case 'noProgram': return '尚未設定課表';
     case 'past': return '—';
   }
@@ -229,6 +231,7 @@ export interface GenerateMonthPlanInput {
   today: number;                      // Date.now()，測試時可以注入固定時間
   weeklyTargetSessions?: number;       // 新增：settings?.weeklyTargetSessions ?? 4
   templatesById: Map<string, WorkoutTemplate>;  // 新增：listTemplates() 建的 id→WorkoutTemplate 表
+  programPaused?: boolean;            // 整份計畫是否暫停中（跟單日 override?.paused 是不同維度）
 }
 
 export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
@@ -244,6 +247,7 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     today,
     weeklyTargetSessions = 4,
     templatesById,
+    programPaused = false,
   } = input;
 
   const todayStr = getLocalDateStr(today);
@@ -366,6 +370,13 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
 
     if (isPast) {
       suggestion = 'past';
+    } else if (programPaused) {
+      suggestion = 'programPaused';
+      daysSinceWeights += 1;
+      consecutiveTrainDays = 0;
+      yesterdayWasLegsTrain = false;
+      // 刻意不動 trainedThisWeek 與 effectiveWeeklyTarget：暫停期間沒有週目標可言，
+      // 不必像 forcedRest 那樣扣抵配額。
     } else if (override?.paused) {
       suggestion = 'paused';
       daysSinceWeights += 1;

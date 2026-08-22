@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSettingsStore } from '../store/settings';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSyncStore } from '../store/sync';
@@ -19,6 +20,7 @@ const SHIFT_LABELS: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const { settings, updateSettings, initSettings } = useSettingsStore();
   const { initActiveWorkout } = useActiveWorkoutStore();
   const { user, syncStatus, lastUploadAt, lastDownloadAt, errorMessage, isFirebaseConfigured, signIn, reportAuthError, signOut, upload, download } = useSyncStore();
@@ -104,6 +106,18 @@ export default function SettingsPage() {
           調整量測單位、組間休息、外觀主題與資料備份。
         </p>
       </div>
+
+      {/* 訓練計畫管理入口 */}
+      <button
+        type="button"
+        onClick={() => navigate('/programs')}
+        className="w-full flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors duration-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+      >
+        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">訓練計畫管理</span>
+        <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-slate-400">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+      </button>
 
       {/* 偏好設定區塊 */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-5 transition-colors duration-200">

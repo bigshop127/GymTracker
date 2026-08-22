@@ -45,7 +45,7 @@ const BUTTON_CONFIGS = [
 
 export default function SchedulePage() {
   const navigate = useNavigate();
-  const { activeProgram, initProgram } = useProgramStore();
+  const { currentProgram, activeProgram, initProgram, resume } = useProgramStore();
 
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
   const [now, setNow] = useState(() => Date.now());
@@ -169,8 +169,9 @@ export default function SchedulePage() {
       today: now,
       weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
       templatesById,
+      programPaused: currentProgram?.status === 'paused',
     });
-  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, exerciseMap, now, templatesById]);
+  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, exerciseMap, now, templatesById, currentProgram]);
 
   const baselineOverridesByDate = useMemo(
     () => buildBaselineOverridesByDate(overridesByDate),
@@ -191,8 +192,9 @@ export default function SchedulePage() {
       today: now,
       weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
       templatesById,
+      programPaused: currentProgram?.status === 'paused',
     });
-  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, baselineOverridesByDate, settings, exerciseMap, now, templatesById]);
+  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, baselineOverridesByDate, settings, exerciseMap, now, templatesById, currentProgram]);
 
   const plannedDaysWithBaseline = useMemo(
     () => mergeBaselinePlan(plannedDays, baselinePlannedDays),
@@ -379,26 +381,35 @@ export default function SchedulePage() {
     setReloadTrigger((t) => t + 1);
   };
 
-  if (!activeProgram) {
-    return (
-      <div className="p-4 max-w-md mx-auto space-y-6">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm text-center space-y-4">
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-            還沒有啟用中的訓練計畫
+  return (
+    <div className="p-4 max-w-md mx-auto space-y-6 pb-20">
+      {/* 計畫狀態提示橫幅：暫停中或沒有目前計畫時顯示，active 時不顯示 */}
+      {currentProgram?.status === 'paused' ? (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 shadow-sm flex items-center justify-between gap-3">
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
+            ⏸ 計畫暫停中，暫不安排課表
+          </p>
+          <button
+            onClick={() => resume()}
+            className="shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+          >
+            繼續計畫
+          </button>
+        </div>
+      ) : !currentProgram ? (
+        <div className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between gap-3">
+          <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
+            尚未設定訓練計畫，目前只顯示班別與訓練紀錄
           </p>
           <button
             onClick={() => navigate('/plan')}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-bold rounded-xl shadow transition cursor-pointer"
+            className="shrink-0 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-lg transition cursor-pointer"
           >
             前往課表匯入
           </button>
         </div>
-      </div>
-    );
-  }
+      ) : null}
 
-  return (
-    <div className="p-4 max-w-md mx-auto space-y-6 pb-20">
       {/* 班表與本月訓練日程 */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-4 transition-colors duration-200">
         <div className="flex justify-between items-center pb-2 border-b border-slate-50 dark:border-slate-800/50">

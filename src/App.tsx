@@ -15,6 +15,7 @@ const ProgramGuide = lazy(() => import('./pages/ProgramGuide'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const ExerciseTracker = lazy(() => import('./pages/ExerciseTracker'));
 const RmCalculator = lazy(() => import('./pages/RmCalculator'));
+const ProgramsPage = lazy(() => import('./pages/ProgramsPage'));
 
 function App() {
   const initSettings = useSettingsStore((state) => state.initSettings);
@@ -88,6 +89,11 @@ function App() {
           <Route path="/calculator" element={
             <Suspense fallback={<div className="p-4 text-center text-slate-400 text-xs font-semibold animate-pulse">載入計算機中...</div>}>
               <RmCalculator />
+            </Suspense>
+          } />
+          <Route path="/programs" element={
+            <Suspense fallback={<div className="p-4 text-center text-slate-400 text-xs font-semibold animate-pulse">載入訓練計畫中...</div>}>
+              <ProgramsPage />
             </Suspense>
           } />
         </Routes>

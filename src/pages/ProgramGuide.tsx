@@ -11,7 +11,7 @@ import {
 
 export default function ProgramGuide() {
   const navigate = useNavigate();
-  const { activeProgram, initProgram } = useProgramStore();
+  const { currentProgram, initProgram } = useProgramStore();
   const [isImported, setIsImported] = useState<boolean | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   // null = 尚未手動選過週次，跟著目前計畫進度自動顯示
@@ -22,14 +22,15 @@ export default function ProgramGuide() {
     isZongYuanProgramImported().then(setIsImported);
   }, [initProgram]);
 
-  const isActiveHere = activeProgram?.name === ZONGYUAN_PROGRAM_NAME;
-  const autoWeek = isActiveHere ? Math.min(8, Math.max(1, activeProgram.cycleCount + 1)) : 1;
+  const isActiveHere = currentProgram?.name === ZONGYUAN_PROGRAM_NAME;
+  const autoWeek = isActiveHere ? Math.min(8, Math.max(1, currentProgram.cycleCount + 1)) : 1;
   const selectedWeek = manualWeek ?? autoWeek;
 
   const handleImport = async () => {
-    if (activeProgram && activeProgram.name !== ZONGYUAN_PROGRAM_NAME) {
+    if (currentProgram && currentProgram.name !== ZONGYUAN_PROGRAM_NAME) {
+      const statusLabel = currentProgram.status === 'paused' ? '暫停中' : '進行中';
       const confirmEnd = window.confirm(
-        `目前已有進行中的計畫「${activeProgram.name}」，匯入這份課表將會結束它，確定嗎？`
+        `目前已有${statusLabel}的計畫「${currentProgram.name}」，匯入這份課表將會結束它，確定嗎？`
       );
       if (!confirmEnd) return;
     }
@@ -67,7 +68,8 @@ export default function ProgramGuide() {
             </p>
             {isActiveHere && (
               <p className="text-[11px] text-slate-400 font-semibold">
-                目前第 {activeProgram.cycleCount + 1} 輪（約第 {Math.min(8, activeProgram.cycleCount + 1)} 週）
+                目前第 {currentProgram.cycleCount + 1} 輪（約第 {Math.min(8, currentProgram.cycleCount + 1)} 週）
+                {currentProgram.status === 'paused' && '（已暫停）'}
               </p>
             )}
             <button

@@ -129,6 +129,8 @@ export interface ProgramSlot {
 }
 
 // ---- 訓練計畫 (TrainingProgram) ----
+export type ProgramStatus = 'active' | 'paused' | 'completed' | 'abandoned';
+
 export interface TrainingProgram {
   id: string;
   name: string;                      // 例：'五分化 8-12週'
@@ -136,12 +138,18 @@ export interface TrainingProgram {
   completedSlotIdsThisLap: string[];   // 取代 cursor：這一輪（尚未跑滿一圈）已消耗的 slot id
   cycleCount: number;                 // 已完整跑完幾輪，從 0 起算
   estimatedWeeks: { min: number; max: number };  // 參考值，例：{min:8, max:12}，可隨時編輯
-  status: 'active' | 'completed';     // 同時只能有一個 'active'
+  status: ProgramStatus;              // 同時最多只能有一個「目前計畫」(active 或 paused)
   startedAt: number;
-  completedAt?: number;
+  completedAt?: number;               // 結束時間（completed 或 abandoned 皆填）
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;                 // 雲端同步用：軟刪除
+
+  // ---- Phase 28 新增（全部選填，舊資料相容）----
+  pausedAt?: number;                  // 目前這段暫停的起點；status === 'paused' 時必有，繼續時清成 undefined
+  accumulatedPausedMs?: number;       // 歷來暫停累計毫秒；繼續時 += (now - pausedAt)。缺省視為 0
+  runNumber?: number;                 // 這份課表跑第幾次，從 1 起算。缺省視為 1
+  restartedFromProgramId?: string;    // 「重新開始」時，被封存的那份的 id
 }
 
 // ---- 動作 id 對照 (IdAlias) ----

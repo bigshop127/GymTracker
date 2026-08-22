@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
 import { useRestTimerStore } from '../store/restTimer';
@@ -18,7 +19,9 @@ import { MUSCLE_ORDER } from '../lib/exerciseOrder';
 import NumberStepper from '../components/NumberStepper';
 import ExerciseList from '../components/ExerciseList';
 import SheetHeader from '../components/SheetHeader';
+import ProgramFormSheet from '../components/ProgramFormSheet';
 import { useProgramStore } from '../store/program';
+import { getElapsedWeeks, getPausedDays } from '../lib/programLifecycle';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
 import { RPE_OPTIONS } from '../lib/rpe';
 import { formatWeight, toKgFromDisplay, weightStep } from '../lib/units';
@@ -53,13 +56,13 @@ export default function WorkoutLogger() {
 
   const { settings } = useSettingsStore();
   const { startTimer } = useRestTimerStore();
+  const navigate = useNavigate();
 
   const {
+    currentProgram,
     activeProgram,
     initProgram,
-    createProgram,
-    updateProgram,
-    endProgram,
+    resume,
   } = useProgramStore();
 
   const [now, setNow] = useState(() => Date.now());
@@ -168,9 +171,10 @@ export default function WorkoutLogger() {
       exerciseMap,
       today: now,
       templatesById,
+      programPaused: currentProgram?.status === 'paused',
     });
     return plans[0] || null;
-  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, exerciseMap, now, templatesById]);
+  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, exerciseMap, now, templatesById, currentProgram]);
 
   const handleCancelPause = async () => {
     if (!todayOverride) return;
@@ -244,13 +248,8 @@ export default function WorkoutLogger() {
     [completedWorkouts, exerciseMap]
   );
 
-  // Program Form state
+  // Program Form state（只有「＋ 建立訓練計畫」的 create 流程留在這裡；編輯／生命週期操作移到 /programs）
   const [isProgramFormOpen, setIsProgramFormOpen] = useState(false);
-  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
-  const [programName, setProgramName] = useState('');
-  const [programSlots, setProgramSlots] = useState<{ id: string; label: string; templateId?: string }[]>([]);
-  const [estWeeksMin, setEstWeeksMin] = useState(8);
-  const [estWeeksMax, setEstWeeksMax] = useState(12);
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [altTargetEntryId, setAltTargetEntryId] = useState<string | null>(null);
@@ -268,99 +267,6 @@ export default function WorkoutLogger() {
     }
     return activeWorkout.entries[0].id;
   }, [activeWorkout, selectedEntryId]);
-
-  const handleOpenCreateProgram = () => {
-    setEditingProgramId(null);
-    setProgramName('我的三個月訓練計畫');
-    setProgramSlots([
-      { id: crypto.randomUUID(), label: '胸日' },
-      { id: crypto.randomUUID(), label: '背日' },
-      { id: crypto.randomUUID(), label: '腿臀日' },
-      { id: crypto.randomUUID(), label: '肩日' },
-      { id: crypto.randomUUID(), label: '手臂日' },
-    ]);
-    setEstWeeksMin(8);
-    setEstWeeksMax(12);
-    setIsProgramFormOpen(true);
-  };
-
-  const handleOpenEditProgram = () => {
-    if (!activeProgram) return;
-    setEditingProgramId(activeProgram.id);
-    setProgramName(activeProgram.name);
-    setProgramSlots(activeProgram.slots.map(s => ({ ...s })));
-    setEstWeeksMin(activeProgram.estimatedWeeks.min);
-    setEstWeeksMax(activeProgram.estimatedWeeks.max);
-    setIsProgramFormOpen(true);
-  };
-
-  const handleAddSlot = () => {
-    setProgramSlots([...programSlots, { id: crypto.randomUUID(), label: `訓練日 ${programSlots.length + 1}` }]);
-  };
-
-  const handleRemoveSlot = (id: string) => {
-    setProgramSlots(programSlots.filter(s => s.id !== id));
-  };
-
-  const handleUpdateSlotLabel = (id: string, label: string) => {
-    setProgramSlots(programSlots.map(s => s.id === id ? { ...s, label } : s));
-  };
-
-  const handleUpdateSlotTemplate = (id: string, templateId: string | undefined) => {
-    setProgramSlots(programSlots.map(s => s.id === id ? { ...s, templateId } : s));
-  };
-
-  const handleMoveSlot = (index: number, direction: 'up' | 'down') => {
-    const newSlots = [...programSlots];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= newSlots.length) return;
-    const temp = newSlots[index];
-    newSlots[index] = newSlots[targetIndex];
-    newSlots[targetIndex] = temp;
-    setProgramSlots(newSlots);
-  };
-
-  const handleSaveProgram = async () => {
-    if (!programName.trim()) {
-      alert('請輸入計畫名稱');
-      return;
-    }
-    if (programSlots.length === 0) {
-      alert('計畫至少需要一個訓練日/循環項目');
-      return;
-    }
-
-    try {
-      if (editingProgramId) {
-        await updateProgram({
-          name: programName.trim(),
-          slots: programSlots,
-          estimatedWeeks: { min: estWeeksMin, max: estWeeksMax },
-        });
-      } else {
-        if (activeProgram) {
-          const confirmEnd = window.confirm(`目前已有進行中的計畫「${activeProgram.name}」，建立新計畫將會結束它，確定嗎？`);
-          if (!confirmEnd) return;
-        }
-        await createProgram(
-          programName.trim(),
-          programSlots.map(s => ({ label: s.label, templateId: s.templateId })),
-          { min: estWeeksMin, max: estWeeksMax }
-        );
-      }
-      setIsProgramFormOpen(false);
-    } catch (err) {
-      console.error(err);
-      alert('儲存計畫失敗');
-    }
-  };
-
-  const handleEndProgram = async () => {
-    if (window.confirm('確定要結束此計畫嗎？這將會把計畫狀態標記為已完成。')) {
-      await endProgram();
-      setIsProgramFormOpen(false);
-    }
-  };
 
   // 取得動作庫以供顯示對應動作資訊 (僅在動作個數改變時更新，以避免每次鍵盤輸入重複讀取 DB)
   useEffect(() => {
@@ -666,14 +572,42 @@ export default function WorkoutLogger() {
             開始新訓練
           </button>
 
-          {/* 訓練計畫卡片/建立入口 */}
-          {!activeProgram ? (
+          {/* 訓練計畫卡片/建立入口：三態 — 沒有計畫／暫停中／進行中 */}
+          {!currentProgram ? (
             <button
-              onClick={handleOpenCreateProgram}
+              onClick={() => setIsProgramFormOpen(true)}
               className="w-full py-3.5 px-6 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl border border-slate-200 dark:border-slate-800 transition cursor-pointer text-sm"
             >
               ＋ 建立訓練計畫
             </button>
+          ) : !activeProgram ? (
+            <div className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm text-left space-y-4">
+              <div className="space-y-1">
+                <h4 className="font-bold text-slate-800 dark:text-slate-200 text-base leading-tight">
+                  ⏸ 計畫暫停中
+                </h4>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {currentProgram.name}
+                </p>
+                <p className="text-[11px] text-slate-400 font-bold tracking-wide">
+                  已暫停 {getPausedDays(currentProgram, now)} 天
+                </p>
+              </div>
+              <div className="flex gap-2.5">
+                <button
+                  onClick={() => resume()}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm"
+                >
+                  繼續計畫
+                </button>
+                <button
+                  onClick={() => navigate('/programs')}
+                  className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl text-xs border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                >
+                  管理
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm text-left space-y-4">
               <div className="flex justify-between items-start">
@@ -682,11 +616,11 @@ export default function WorkoutLogger() {
                     {activeProgram.name}
                   </h4>
                   <p className="text-[11px] text-slate-400 font-bold tracking-wide">
-                    第 {activeProgram.cycleCount + 1} 輪 • 已進行 {((now - activeProgram.startedAt) / 604800000).toFixed(1)} 週 (預估 {activeProgram.estimatedWeeks.min}-{activeProgram.estimatedWeeks.max} 週)
+                    第 {activeProgram.cycleCount + 1} 輪 • 已進行 {getElapsedWeeks(activeProgram, now).toFixed(1)} 週 (預估 {activeProgram.estimatedWeeks.min}-{activeProgram.estimatedWeeks.max} 週)
                   </p>
                 </div>
                 <button
-                  onClick={handleOpenEditProgram}
+                  onClick={() => navigate('/programs')}
                   className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 transition cursor-pointer"
                 >
                   管理
@@ -1645,181 +1579,14 @@ export default function WorkoutLogger() {
         </div>
       )}
 
-      {/* 建立/編輯計畫 (全屏 Sheet) */}
-      {isProgramFormOpen && (
-        <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col">
-          <div className="bg-white dark:bg-slate-900 shrink-0">
-            <SheetHeader
-              title={editingProgramId ? '編輯訓練計畫' : '建立訓練計畫'}
-              onBack={() => setIsProgramFormOpen(false)}
-            />
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
-            <div className="max-w-md mx-auto space-y-6">
-              {/* 計畫名稱 */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                  計畫名稱
-                </label>
-                <input
-                  type="text"
-                  value={programName}
-                  onChange={(e) => setProgramName(e.target.value)}
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 focus:outline-none text-slate-800 dark:text-slate-100 font-semibold shadow-sm transition"
-                  placeholder="例如：五分化 8-12週"
-                />
-              </div>
-
-              {/* 預估週數 */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                  預估進行週數 (參考值)
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 block">最少週數</span>
-                    <NumberStepper
-                      value={estWeeksMin}
-                      onChange={(val) => setEstWeeksMin(val)}
-                      step={1}
-                      min={1}
-                      max={52}
-                      decimals={0}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 block">最多週數</span>
-                    <NumberStepper
-                      value={estWeeksMax}
-                      onChange={(val) => setEstWeeksMax(val)}
-                      step={1}
-                      min={1}
-                      max={52}
-                      decimals={0}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Slots 清單 */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    循環項目 / 訓練日 (依序進行)
-                  </label>
-                  <span className="text-[10px] font-bold text-slate-400">
-                    共 {programSlots.length} 天
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  {programSlots.map((slot, index) => (
-                    <div
-                      key={slot.id}
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm space-y-3 relative"
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* 排序按鈕 */}
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => handleMoveSlot(index, 'up')}
-                            disabled={index === 0}
-                            className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 disabled:opacity-30 rounded cursor-pointer"
-                          >
-                            <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveSlot(index, 'down')}
-                            disabled={index === programSlots.length - 1}
-                            className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 disabled:opacity-30 rounded cursor-pointer"
-                          >
-                            <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                            </svg>
-                          </button>
-                        </div>
-
-                        {/* Label 輸入 */}
-                        <input
-                          type="text"
-                          value={slot.label}
-                          onChange={(e) => handleUpdateSlotLabel(slot.id, e.target.value)}
-                          className="flex-1 min-w-0 bg-transparent border-b border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:outline-none py-0.5 text-sm font-bold text-slate-800 dark:text-slate-200 transition"
-                          placeholder="例如：胸日"
-                        />
-
-                        {/* 刪除鈕 */}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSlot(slot.id)}
-                          className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition cursor-pointer"
-                        >
-                          <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* 綁定範本 */}
-                      <div className="flex items-center gap-2 pl-6">
-                        <span className="text-[10px] font-bold text-slate-400 shrink-0">連結範本</span>
-                        <select
-                          value={slot.templateId || ''}
-                          onChange={(e) => handleUpdateSlotTemplate(slot.id, e.target.value || undefined)}
-                          className="flex-1 text-xs border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 bg-slate-50 dark:bg-slate-900 font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-indigo-500 h-8 cursor-pointer"
-                        >
-                          <option value="">(無範本，以空白訓練開始)</option>
-                          {templates.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleAddSlot}
-                  className="w-full py-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-xl border border-dashed border-slate-300 dark:border-slate-800 flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
-                >
-                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />
-                  </svg>
-                  ＋ 新增循環項目
-                </button>
-              </div>
-
-              {/* 控制按鈕 */}
-              <div className="flex flex-col gap-3 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={handleSaveProgram}
-                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-100 dark:shadow-none transition cursor-pointer"
-                >
-                  儲存計畫
-                </button>
-                {editingProgramId && (
-                  <button
-                    type="button"
-                    onClick={handleEndProgram}
-                    className="w-full py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl text-sm transition cursor-pointer"
-                  >
-                    結束此計畫 (封存)
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 建立訓練計畫 (全屏 Sheet，共用元件；編輯/生命週期操作在 /programs) */}
+      <ProgramFormSheet
+        open={isProgramFormOpen}
+        mode="create"
+        initial={null}
+        templates={templates}
+        onClose={() => setIsProgramFormOpen(false)}
+      />
     </div>
   );
 }

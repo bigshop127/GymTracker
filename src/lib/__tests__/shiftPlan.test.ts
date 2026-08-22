@@ -999,8 +999,149 @@ describe('shiftPlan', () => {
       expect(describeSuggestionLabel('cardio', null)).toBe('建議有氧');
       expect(describeSuggestionLabel('paused', null)).toBe('今日無法');
       expect(describeSuggestionLabel('forcedRest', null)).toBe('強制休息');
+      expect(describeSuggestionLabel('programPaused', null)).toBe('計畫暫停中');
       expect(describeSuggestionLabel('noProgram', null)).toBe('尚未設定課表');
       expect(describeSuggestionLabel('past', null)).toBe('—');
+    });
+  });
+
+  describe('Phase 28 programPaused：整份計畫暫停', () => {
+    const workoutTemplates = [
+      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
+    ];
+    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
+
+    const program: TrainingProgram = {
+      id: 'prog-28',
+      name: '測試計畫28',
+      slots: [
+        { id: 'slot-pull', label: '拉', templateId: 'temp-pull' },
+        { id: 'slot-push', label: '推', templateId: 'temp-push' },
+      ],
+      completedSlotIdsThisLap: [],
+      cycleCount: 0,
+      estimatedWeeks: { min: 4, max: 8 },
+      status: 'paused',
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    test('programPaused: true → 未來日期全部 programPaused，過去日期仍是 past', () => {
+      const dates = ['2026-08-15', '2026-08-16', '2026-08-17', '2026-08-18'];
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: null, // 暫停時 store 的 activeProgram 是 null
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: templatesMap,
+        programPaused: true,
+      });
+
+      expect(result[0].dateStr).toBe('2026-08-15');
+      expect(result[0].suggestion).toBe('past');
+      expect(result[1].suggestion).toBe('programPaused');
+      expect(result[2].suggestion).toBe('programPaused');
+      expect(result[3].suggestion).toBe('programPaused');
+    });
+
+    test('programPaused: true 時，帶 pinnedSlotId 的那天不會產生 pinConflict（根本沒進排課分支）', () => {
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-16', { id: '2026-08-16', pinnedSlotId: 'slot-pull', updatedAt: now });
+
+      const result = generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        activeProgram: null,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: templatesMap,
+        programPaused: true,
+      });
+
+      expect(result[0].suggestion).toBe('programPaused');
+      expect(result[0].pinConflict).toBe(false);
+      expect(result[0].suggestedSlot).toBeNull();
+    });
+
+    test('「原定 vs 實際」兩邊都 paused → diverged 全為 false', () => {
+      const dates = ['2026-08-16', '2026-08-17'];
+      const overrides = new Map<string, DayOverride>();
+      overrides.set('2026-08-16', { id: '2026-08-16', pinnedSlotId: 'slot-pull', updatedAt: now });
+
+      const actualPlan = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: null,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: templatesMap,
+        programPaused: true,
+      });
+
+      const baselineOverrides = buildBaselineOverridesByDate(overrides);
+      const baselinePlan = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: null,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: baselineOverrides,
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: templatesMap,
+        programPaused: true,
+      });
+
+      const merged = mergeBaselinePlan(actualPlan, baselinePlan);
+      expect(merged.every((d) => d.diverged === false)).toBe(true);
+    });
+
+    test('programPaused: false（或不傳）→ 既有測試結果一字不變（回歸保護）', () => {
+      const activeProgram: TrainingProgram = { ...program, status: 'active' };
+      const withFalse = generateMonthPlan({
+        dateStrings: ['2026-08-16', '2026-08-17'],
+        activeProgram,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: templatesMap,
+        programPaused: false,
+      });
+      const withoutField = generateMonthPlan({
+        dateStrings: ['2026-08-16', '2026-08-17'],
+        activeProgram,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: templatesMap,
+      });
+
+      expect(withFalse.map(d => d.suggestion)).toEqual(withoutField.map(d => d.suggestion));
+      expect(withFalse[0].suggestion).toBe('train');
     });
   });
 });
