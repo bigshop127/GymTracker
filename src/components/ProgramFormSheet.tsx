@@ -121,7 +121,7 @@ export default function ProgramFormSheet({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col">
+    <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-[60] flex flex-col">
       <div className="bg-white dark:bg-slate-900 shrink-0">
         <SheetHeader
           title={mode === 'edit' ? '編輯訓練計畫' : '建立訓練計畫'}
