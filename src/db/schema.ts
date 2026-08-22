@@ -110,12 +110,16 @@ export interface Settings {
   weeklyTargetSessions?: number; // 每週目標訓練次數，預設 4
 }
 
+// ---- 訓練範本分類（拉/推/腿/手 沿用 splitRotation.ts 的 SplitCategory，另加「自訂」接住判不出來的） ----
+export type TemplateCategory = '拉' | '推' | '腿' | '手' | '自訂';
+
 // ---- 訓練範本 (WorkoutTemplate) ----
 export interface WorkoutTemplate {
   id: string;
   name: string;             // 範本名稱，例如 '胸 + 三頭'
   location?: string;
   entries: WorkoutEntry[];  // 保留 weight/reps/isWarmup；completed 一律 false
+  category?: TemplateCategory;   // 使用者手動指定過才有值；沒有就即時用名稱推斷
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;

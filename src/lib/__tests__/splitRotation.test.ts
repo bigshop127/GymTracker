@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
-import { normalizeSplit, getSplitRotationStatus } from '../splitRotation';
-import { type Workout, type TrainingProgram } from '../../db/schema';
+import { normalizeSplit, getSplitRotationStatus, getTemplateCategory, groupTemplatesByCategory } from '../splitRotation';
+import { type Workout, type TrainingProgram, type WorkoutTemplate } from '../../db/schema';
 
 describe('Split Rotation Library', () => {
   describe('normalizeSplit', () => {
@@ -157,6 +157,66 @@ describe('Split Rotation Library', () => {
       const status = getSplitRotationStatus(workouts, mockProgram, now);
       const pullStatus = status.find(s => s.category === '拉');
       expect(pullStatus?.daysAgo).toBe(1); // 1 calendar day ago, not 0
+    });
+  });
+
+  describe('getTemplateCategory (Phase 29)', () => {
+    function makeTemplate(overrides: Partial<WorkoutTemplate> = {}): WorkoutTemplate {
+      return {
+        id: 't1',
+        name: '訓練',
+        entries: [],
+        createdAt: 1000,
+        updatedAt: 1000,
+        ...overrides,
+      };
+    }
+
+    test('明確設定 category 時，即使 name 含其他分類關鍵字，仍以 category 為準', () => {
+      const t = makeTemplate({ name: '推 (Push)', category: '自訂' });
+      expect(getTemplateCategory(t)).toBe('自訂');
+    });
+
+    test('沒有 category 時退回 normalizeSplit(name)', () => {
+      expect(getTemplateCategory(makeTemplate({ name: '背部訓練' }))).toBe('拉');
+      expect(getTemplateCategory(makeTemplate({ name: '胸 + 三頭' }))).toBe('推');
+    });
+
+    test('name 判不出來且沒有 category → 回傳自訂', () => {
+      expect(getTemplateCategory(makeTemplate({ name: '核心強化' }))).toBe('自訂');
+      expect(getTemplateCategory(makeTemplate({ name: '8/15 核心' }))).toBe('自訂');
+    });
+  });
+
+  describe('groupTemplatesByCategory (Phase 29)', () => {
+    function makeTemplate(id: string, overrides: Partial<WorkoutTemplate> = {}): WorkoutTemplate {
+      return {
+        id,
+        name: '訓練',
+        entries: [],
+        createdAt: 1000,
+        updatedAt: 1000,
+        ...overrides,
+      };
+    }
+
+    test('5 個 key 一律存在，沒有範本的分類回傳空陣列（不是 undefined）', () => {
+      const grouped = groupTemplatesByCategory([]);
+      expect(Object.keys(grouped).sort()).toEqual(['手', '推', '拉', '腿', '自訂'].sort());
+      for (const cat of ['拉', '推', '腿', '手', '自訂'] as const) {
+        expect(grouped[cat]).toEqual([]);
+      }
+    });
+
+    test('保留傳入陣列的原始相對順序，不做二次排序', () => {
+      const templates = [
+        makeTemplate('a', { name: '拉 (Pull) 舊', createdAt: 3000 }),
+        makeTemplate('b', { name: '推 (Push)', createdAt: 2000 }),
+        makeTemplate('c', { name: '拉 (Pull) 新', createdAt: 1000 }),
+      ];
+      const grouped = groupTemplatesByCategory(templates);
+      expect(grouped['拉'].map(t => t.id)).toEqual(['a', 'c']);
+      expect(grouped['推'].map(t => t.id)).toEqual(['b']);
     });
   });
 });

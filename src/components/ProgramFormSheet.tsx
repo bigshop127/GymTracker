@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { type TrainingProgram, type WorkoutTemplate } from '../db/schema';
 import { useProgramStore } from '../store/program';
+import { TEMPLATE_CATEGORIES, groupTemplatesByCategory } from '../lib/splitRotation';
 import NumberStepper from './NumberStepper';
 import SheetHeader from './SheetHeader';
 
@@ -49,6 +50,8 @@ export default function ProgramFormSheet({
       }
     }
   }
+
+  const groupedTemplates = useMemo(() => groupTemplatesByCategory(templates), [templates]);
 
   if (!open) return null;
 
@@ -245,10 +248,16 @@ export default function ProgramFormSheet({
                       className="flex-1 text-xs border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 bg-slate-50 dark:bg-slate-900 font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-indigo-500 h-8 cursor-pointer"
                     >
                       <option value="">(無範本，以空白訓練開始)</option>
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
+                      {TEMPLATE_CATEGORIES.map((cat) => (
+                        groupedTemplates[cat].length > 0 && (
+                          <optgroup key={cat} label={cat}>
+                            {groupedTemplates[cat].map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )
                       ))}
                     </select>
                   </div>

@@ -218,6 +218,7 @@ GymTracker/
 | Phase 26（v1.20） | 班別配色分色＋預設政策校正＋指定訓練部位 | `ShiftCodeCategory` 拆分＋預設 policies 修正 ＋ `DayOverride.pinnedSlotId` ＋ `completedSlotIdsThisLap` 取代 `cursor` (含 Dexie version 12) ＋ 月曆指定提示與 conflict 標記 ＋ `WorkoutLogger` 循序列表連動修復。 |
 | Phase 26.1（v1.21） | 訓練排程隔天分散＋AB/AC/BC 底色改色＋指定休息／有氧 | `generateMonthPlan` 明確排班分支追加「週目標已達成不硬練」＋「沒有 urgent 壓力偏好隔天訓練」，避免連續訓練天數擠成一坨 ＋ AB/AC/BC 底色改用 indigo/green/yellow（原本 rose/orange/pink 色相太集中） ＋ 新增 `DayOverride.pinnedOutcome`（'rest' \| 'cardio'），「指定訓練部位」面板擴充成「指定當天安排」可直接指定休息或有氧。 |
 | Phase 28（v1.22） | 訓練計畫生命週期：重新開始／暫停／終止／封存清單 | `TrainingProgram.status` 擴成 `active/paused/completed/abandoned`＋新增 `pausedAt/accumulatedPausedMs/runNumber/restartedFromProgramId`；純函式層 `src/lib/programLifecycle.ts`；store 拆 `currentProgram`/`activeProgram` 兩欄位讓暫停自動生效（既有讀 `activeProgram` 的程式碼不用改）；新頁 `/programs` 管理目前計畫（暫停/繼續/重新開始/終止）與封存清單（重新啟用/永久刪除）；`shiftPlan.ts` 新增 `programPaused` 建議；`SchedulePage` 移除 early-return 改顯示提示橫幅；表單抽成共用 `ProgramFormSheet`。無 Dexie version bump（純新增選填欄位）。 |
+| Phase 29（v1.23） | 範本分類整理：拉／推／腿／手／自訂 五分類＋兩段式選擇 | 重用既有 `splitRotation.ts` 的 `normalizeSplit` 判斷邏輯（運算單一來源），新增 `TemplateCategory`（`WorkoutTemplate.category?`，選填、手動指定優先）與 `getTemplateCategory`/`groupTemplatesByCategory`；首頁「我的範本」改成 5 顆分類藥丸＋點進去才看全螢幕清單（新到舊排序），有氧範本整批排除在外；清單內每筆範本新增「分類」按鈕；完成訓練另存範本時新增分類選擇（有預選猜測值）；計畫表單的綁定範本下拉選單改用 `<optgroup>` 依分類分組。無 Dexie version bump（純新增選填欄位）。 |
 
 > 一次做一個階段，做完讓 Claude review，過了再進下一階段。
 > **進度（2026-08-17）**：Phase 0–26.1 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.21（Phase 7–26.1）。各階段完成紀錄見 Obsidian `健身APP開發/`。

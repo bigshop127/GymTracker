@@ -1,4 +1,4 @@
-import { type Workout, type TrainingProgram } from '../db/schema';
+import { type Workout, type TrainingProgram, type WorkoutTemplate, type TemplateCategory } from '../db/schema';
 
 export type SplitCategory = '拉' | '推' | '腿' | '手';
 export const SPLIT_CATEGORIES: SplitCategory[] = ['拉', '推', '腿', '手'];
@@ -105,4 +105,34 @@ export function getSplitRotationStatus(
   }
 
   return SPLIT_CATEGORIES.map(cat => statuses[cat]);
+}
+
+// ---- 訓練範本五分類（Phase 29）：拉/推/腿/手 沿用 SplitCategory，另加「自訂」接住判不出來的 ----
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = [...SPLIT_CATEGORIES, '自訂'];
+
+/** 範本的「有效分類」：手動指定優先，沒指定才用名稱推斷，判不出來落在自訂 */
+export function getTemplateCategory(
+  template: Pick<WorkoutTemplate, 'name' | 'category'>
+): TemplateCategory {
+  return template.category ?? normalizeSplit(template.name) ?? '自訂';
+}
+
+/**
+ * 依有效分類分組，5 個 key 一律都存在（沒有該分類就是空陣列，不是 undefined）。
+ * 維持傳入陣列的原始順序（呼叫端負責先排好序、先濾掉有氧），這裡不重新排序。
+ */
+export function groupTemplatesByCategory(
+  templates: WorkoutTemplate[]
+): Record<TemplateCategory, WorkoutTemplate[]> {
+  const grouped: Record<TemplateCategory, WorkoutTemplate[]> = {
+    '拉': [],
+    '推': [],
+    '腿': [],
+    '手': [],
+    '自訂': [],
+  };
+  for (const template of templates) {
+    grouped[getTemplateCategory(template)].push(template);
+  }
+  return grouped;
 }

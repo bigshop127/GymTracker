@@ -5,11 +5,18 @@ import { useSettingsStore } from '../store/settings';
 import { useRestTimerStore } from '../store/restTimer';
 import { listExercises } from '../db/exercises';
 import { ASSISTED_EXERCISE_NAMES } from '../data/seed-exercises';
-import { type Exercise, type WorkoutTemplate, type Workout, type MuscleGroup } from '../db/schema';
+import { type Exercise, type WorkoutTemplate, type Workout, type MuscleGroup, type TemplateCategory } from '../db/schema';
 import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
 import { listCompletedWorkouts } from '../db/workouts';
-import { getSplitRotationStatus, getCalendarDaysAgo } from '../lib/splitRotation';
-import { filterCardioTemplates, getTemplateTotalMinutes } from '../lib/cardioTemplates';
+import {
+  getSplitRotationStatus,
+  getCalendarDaysAgo,
+  normalizeSplit,
+  getTemplateCategory,
+  groupTemplatesByCategory,
+  TEMPLATE_CATEGORIES,
+} from '../lib/splitRotation';
+import { filterCardioTemplates, getTemplateTotalMinutes, isCardioTemplate } from '../lib/cardioTemplates';
 import {
   getRecentWorkoutsForSlot,
   getRecentWorkoutsForMuscleGroup,
@@ -93,6 +100,8 @@ export default function WorkoutLogger() {
   // 「開始新訓練」的兩步流程：先選部位，再選要沿用哪一次
   const [isNewWorkoutSheetOpen, setIsNewWorkoutSheetOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<MuscleGroup | null>(null);
+  // 「我的範本」五分類：首頁只放分類藥丸，點進去才看清單
+  const [selectedTemplateCategory, setSelectedTemplateCategory] = useState<TemplateCategory | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -228,6 +237,16 @@ export default function WorkoutLogger() {
   const cardioTemplates = useMemo(
     () => filterCardioTemplates(templates, exerciseMap),
     [templates, exerciseMap]
+  );
+
+  // 「我的範本」五分類：有氧範本整批排除在外（已有專屬的「🏃 有氧」入口）
+  const nonCardioTemplates = useMemo(
+    () => templates.filter((t) => !isCardioTemplate(t, exerciseMap)),
+    [templates, exerciseMap]
+  );
+  const groupedTemplates = useMemo(
+    () => groupTemplatesByCategory(nonCardioTemplates),
+    [nonCardioTemplates]
   );
 
   // 今天該練的那一格，以及它最近三次的訓練紀錄
@@ -507,6 +526,27 @@ export default function WorkoutLogger() {
         console.error(err);
         alert('刪除範本失敗');
       }
+    }
+  };
+
+  const handleChangeTemplateCategory = async (template: WorkoutTemplate) => {
+    const current = getTemplateCategory(template);
+    const input = window.prompt(
+      `分類（輸入 ${TEMPLATE_CATEGORIES.join('/')} 其中一個）：`,
+      current
+    );
+    if (input === null) return;
+    const picked = TEMPLATE_CATEGORIES.find((c) => c === input.trim());
+    if (!picked) {
+      alert(`請輸入 ${TEMPLATE_CATEGORIES.join('/')} 其中一個`);
+      return;
+    }
+    try {
+      await saveTemplate({ ...template, category: picked, updatedAt: Date.now() });
+      await loadTemplates();
+    } catch (err) {
+      console.error(err);
+      alert('修改分類失敗');
     }
   };
 
@@ -834,14 +874,44 @@ export default function WorkoutLogger() {
             </div>
           )}
 
-          {/* 我的範本區塊 */}
-          {templates.length > 0 && (
+          {/* 我的範本區塊：5 顆分類藥丸，點進去才看該分類的清單 */}
+          {nonCardioTemplates.length > 0 && (
             <div className="w-full text-left space-y-3 pt-6 border-t border-slate-100 dark:border-slate-800">
               <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 我的範本 (保留重量)
               </h3>
-              <div className="space-y-2.5 max-h-[35vh] overflow-y-auto pr-1">
-                {templates.map((t) => (
+              <div className="flex flex-wrap gap-2">
+                {TEMPLATE_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedTemplateCategory(cat)}
+                    className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full text-xs font-bold text-slate-700 dark:text-slate-300 hover:border-indigo-300 transition cursor-pointer"
+                  >
+                    {cat} ({groupedTemplates[cat].length})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 分類範本清單 (全屏) */}
+      {selectedTemplateCategory && (
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+          <SheetHeader
+            title={`${selectedTemplateCategory} 範本`}
+            onBack={() => setSelectedTemplateCategory(null)}
+          />
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
+              {groupedTemplates[selectedTemplateCategory].length === 0 ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-16 leading-relaxed px-6">
+                  這個分類還沒有範本。
+                </p>
+              ) : (
+                groupedTemplates[selectedTemplateCategory].map((t) => (
                   <div
                     key={t.id}
                     className="flex justify-between items-center bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-3 shadow-sm hover:shadow transition"
@@ -876,6 +946,13 @@ export default function WorkoutLogger() {
                         改名
                       </button>
                       <button
+                        onClick={() => handleChangeTemplateCategory(t)}
+                        className="px-2 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 rounded-lg shadow-sm border border-slate-100 dark:border-slate-700 transition cursor-pointer"
+                        title="分類"
+                      >
+                        分類
+                      </button>
+                      <button
                         onClick={() => handleDeleteTemplate(t.id, t.name)}
                         className="px-2 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/60 text-[10px] font-bold text-red-600 dark:text-red-400 rounded-lg transition cursor-pointer"
                         title="刪除"
@@ -884,10 +961,10 @@ export default function WorkoutLogger() {
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
+                ))
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -1392,8 +1469,14 @@ export default function WorkoutLogger() {
                   if (name !== null) {
                     const templateName = name.trim() || defaultName;
                     try {
+                      const guessedCategory = normalizeSplit(bodyPart) ?? normalizeSplit(templateName) ?? '自訂';
+                      const categoryInput = window.prompt(
+                        `分類（${TEMPLATE_CATEGORIES.join('/')}，直接 Enter 使用預設）：`,
+                        guessedCategory
+                      );
+                      const category = TEMPLATE_CATEGORIES.find((c) => c === categoryInput?.trim()) ?? guessedCategory;
                       const template = createTemplateFromWorkout(activeWorkout, templateName);
-                      await saveTemplate(template);
+                      await saveTemplate({ ...template, category });
 
                       // 13C 關鍵機制：完成訓練存範本時，如果 slot.templateId 為空，順便回填計畫 slot.templateId
                       if (activeWorkout.programId && activeWorkout.programSlotId) {
