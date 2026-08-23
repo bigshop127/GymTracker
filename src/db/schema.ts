@@ -65,6 +65,7 @@ export interface Workout {
   programId?: string;
   programSlotId?: string;
   programCycleNumber?: number;   // 這筆訓練發生在計畫的第幾輪（1-indexed，方便顯示「第3輪‧背日」）
+  sourceTemplateId?: string;     // 這筆訓練是套用哪個 WorkoutTemplate 開始的；完成後「另存為範本」可用來判斷該更新舊範本還是存新的
 }
 
 
@@ -86,8 +87,8 @@ export interface DayOverride {
   shiftLetters?: ShiftLetter[];   // 當天有上的班，例如 ['A','B']；沒填/空陣列＝沒登記
   isDayOff?: boolean;             // 明確標記「休假」（截圖那個图示），與 shiftLetters 二選一，UI 互斥
   rawLabel?: string;              // 選填，原始顯示文字例如 'AC早'——只用來顯示，不參與判斷邏輯
-  paused?: boolean;               // 手動暫停訓練建議（急事/下雨），跟班別無關，任何一天都能單獨勾
-  forcedRest?: boolean;           // 強制休息日：不上班也不健身，連有氧都沒有；跟 shiftLetters/isDayOff/paused 四選一互斥
+  paused?: boolean;               // 「今日無法」：手動暫停訓練建議，跟班別無關，任何一天都能單獨勾
+  forcedRest?: boolean;           // 已停用（原「強制休息」已併入 paused／今日無法，UI 不再寫入）；僅為相容舊資料保留讀取
   pinnedSlotId?: string;          // 指定當天要練哪個 ProgramSlot；跟 shiftLetters/isDayOff/paused/forcedRest 是獨立維度，可共存
   pinnedOutcome?: 'rest' | 'cardio'; // 指定當天就是休息或有氧（不指定訓練部位）；跟 pinnedSlotId 互斥，UI 上是同一組單選
   updatedAt: number;

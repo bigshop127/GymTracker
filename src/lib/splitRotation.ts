@@ -107,6 +107,24 @@ export function getSplitRotationStatus(
   return SPLIT_CATEGORIES.map(cat => statuses[cat]);
 }
 
+/** 統計某年某月（本地時區，month 為 1-12）各分類實際完成的訓練次數 */
+export function getMonthlySplitCounts(
+  workouts: Workout[],
+  program: TrainingProgram | null,
+  year: number,
+  month: number,
+): Record<SplitCategory, number> {
+  const counts: Record<SplitCategory, number> = { '拉': 0, '推': 0, '腿': 0, '手': 0 };
+  for (const workout of workouts) {
+    if (workout.deletedAt) continue;
+    const started = new Date(workout.startedAt);
+    if (started.getFullYear() !== year || started.getMonth() + 1 !== month) continue;
+    const category = getWorkoutSplitCategory(workout, program);
+    if (category) counts[category] += 1;
+  }
+  return counts;
+}
+
 // ---- 訓練範本五分類（Phase 29）：拉/推/腿/手 沿用 SplitCategory，另加「自訂」接住判不出來的 ----
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = [...SPLIT_CATEGORIES, '自訂'];
 

@@ -6,7 +6,7 @@ import { useRestTimerStore } from '../store/restTimer';
 import { listExercises } from '../db/exercises';
 import { ASSISTED_EXERCISE_NAMES } from '../data/seed-exercises';
 import { type Exercise, type WorkoutTemplate, type Workout, type MuscleGroup, type TemplateCategory } from '../db/schema';
-import { saveTemplate, createTemplateFromWorkout, listTemplates, deleteTemplate } from '../db/templates';
+import { saveTemplate, createTemplateFromWorkout, updateTemplateFromWorkout, listTemplates, deleteTemplate, getTemplate } from '../db/templates';
 import { listCompletedWorkouts } from '../db/workouts';
 import {
   getSplitRotationStatus,
@@ -102,6 +102,8 @@ export default function WorkoutLogger() {
   const [selectedGroup, setSelectedGroup] = useState<MuscleGroup | null>(null);
   // 「我的範本」五分類：首頁只放分類藥丸，點進去才看清單
   const [selectedTemplateCategory, setSelectedTemplateCategory] = useState<TemplateCategory | null>(null);
+  // 點範本先看細項（動作/組數/重量），不要一點就直接開訓
+  const [templateDetail, setTemplateDetail] = useState<WorkoutTemplate | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -191,27 +193,13 @@ export default function WorkoutLogger() {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { updatedAt, ...updated } = todayOverride;
       updated.paused = false;
-      await saveDayOverride(updated);
-      const latest = await getDayOverride(todayStr);
-      setTodayOverride(latest || null);
-    } catch (err) {
-      console.error(err);
-      alert('取消暫停失敗');
-    }
-  };
-
-  const handleCancelForcedRest = async () => {
-    if (!todayOverride) return;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { updatedAt, ...updated } = todayOverride;
       updated.forcedRest = false;
       await saveDayOverride(updated);
       const latest = await getDayOverride(todayStr);
       setTodayOverride(latest || null);
     } catch (err) {
       console.error(err);
-      alert('取消強制休息失敗');
+      alert('取消標記失敗');
     }
   };
 
@@ -507,6 +495,9 @@ export default function WorkoutLogger() {
     const newName = window.prompt('重新命名範本：', template.name);
     if (newName !== null && newName.trim() !== '') {
       try {
+        // react-hooks/purity 對這個大型元件的可達性分析有誤判：改動別處的 handler 接線會連帶誤標這行，
+        // 這裡其實是在 onClick 事件處理器內執行、不是渲染期間，Date.now() 呼叫是合法的。
+        // eslint-disable-next-line react-hooks/purity
         const updated = { ...template, name: newName.trim(), updatedAt: Date.now() };
         await saveTemplate(updated);
         await loadTemplates();
@@ -748,34 +739,14 @@ export default function WorkoutLogger() {
                         訓練狀態
                       </span>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">
-                        今天已標記暫停訓練
+                        今天已標記今日無法
                       </p>
                       <button
                         type="button"
                         onClick={handleCancelPause}
                         className="text-xs text-indigo-600 dark:text-indigo-400 font-bold underline hover:text-indigo-700 transition cursor-pointer"
                       >
-                        取消暫停
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (showSuggestion && todayPlan.suggestion === 'forcedRest') {
-                  return (
-                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 py-6 w-full">
-                      <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                        訓練狀態
-                      </span>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">
-                        今天已標記強制休息
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleCancelForcedRest}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 font-bold underline hover:text-indigo-700 transition cursor-pointer"
-                      >
-                        取消強制休息
+                        取消標記
                       </button>
                     </div>
                   );
@@ -916,9 +887,9 @@ export default function WorkoutLogger() {
                     key={t.id}
                     className="flex justify-between items-center bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-3 shadow-sm hover:shadow transition"
                   >
-                    {/* 左側資訊：點擊以範本開始訓練 */}
+                    {/* 左側資訊：點擊看細項（動作/組數/重量），開始訓練另外在細項面板按 */}
                     <div
-                      onClick={() => handleStartFromTemplate(t)}
+                      onClick={() => setTemplateDetail(t)}
                       className="flex-1 cursor-pointer space-y-1 pr-3"
                     >
                       <div className="flex items-center gap-2">
@@ -964,6 +935,96 @@ export default function WorkoutLogger() {
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 範本細項 (全屏)：點範本先看內容，開始訓練另外按下方按鈕 */}
+      {templateDetail && (
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+          <SheetHeader
+            title={templateDetail.name}
+            onBack={() => setTemplateDetail(null)}
+          />
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-md mx-auto w-full px-4 py-4 space-y-4">
+              {templateDetail.location && (
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold">
+                  📍 {templateDetail.location}
+                </p>
+              )}
+              <div className="space-y-3">
+                {templateDetail.entries.map((entry) => {
+                  const exercise = exerciseMap.get(entry.exerciseId);
+                  const isCardio = exercise?.muscleGroup === '有氧';
+                  return (
+                    <div
+                      key={entry.id}
+                      className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm"
+                    >
+                      <div className="bg-slate-50/70 dark:bg-slate-900 px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                          {exercise ? exercise.name : '（已刪除的動作）'}
+                        </h4>
+                        {exercise && (
+                          <span className="text-[9px] text-slate-400 font-bold">
+                            {exercise.muscleGroup} / {exercise.equipment}
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-3 space-y-1.5">
+                        {entry.sets.map((setLog, idx) => (
+                          <div
+                            key={setLog.id}
+                            className="flex items-center gap-2 text-xs p-1.5 rounded-lg text-slate-700 dark:text-slate-300 font-semibold"
+                          >
+                            <span className="w-5 text-center text-slate-400 font-bold text-[10px]">
+                              組 {idx + 1}
+                            </span>
+                            {isCardio ? (
+                              <span>
+                                {(() => {
+                                  const parts: string[] = [];
+                                  if (setLog.durationSeconds) {
+                                    const m = Math.floor(setLog.durationSeconds / 60);
+                                    const s = setLog.durationSeconds % 60;
+                                    parts.push(s > 0 ? `${m}分${s}秒` : `${m}分`);
+                                  }
+                                  if (setLog.distanceKm) parts.push(`${setLog.distanceKm.toFixed(1)} km`);
+                                  if (setLog.calories) parts.push(`${setLog.calories} kcal`);
+                                  return parts.length > 0 ? parts.join(' · ') : '—';
+                                })()}
+                              </span>
+                            ) : (
+                              <>
+                                <span>{formatWeight(setLog.weight, currentUnit, 1)} {currentUnit} × {setLog.reps} 下</span>
+                                {setLog.isWarmup && (
+                                  <span className="bg-amber-100 text-amber-700 font-extrabold px-1 py-0.5 rounded text-[8px] border border-amber-200">
+                                    暖身
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="max-w-md mx-auto w-full px-4 py-4 border-t border-slate-100 dark:border-slate-800">
+            <button
+              onClick={() => {
+                const t = templateDetail;
+                setTemplateDetail(null);
+                void handleStartFromTemplate(t);
+              }}
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow-md transition cursor-pointer"
+            >
+              ▶ 開始這份訓練
+            </button>
           </div>
         </div>
       )}
@@ -1455,6 +1516,29 @@ export default function WorkoutLogger() {
             <button
               onClick={async () => {
                 if (!activeWorkout) return;
+
+                // 這次訓練是套用既有範本開始的：先問要不要直接更新那份範本的重量/次數，
+                // 不要每次都無條件另存一份新的，避免同名範本一直重複累積。
+                if (activeWorkout.sourceTemplateId) {
+                  const sourceTemplate = await getTemplate(activeWorkout.sourceTemplateId);
+                  if (sourceTemplate) {
+                    const updateExisting = window.confirm(
+                      `這次訓練是從範本「${sourceTemplate.name}」開始的。\n\n按「確定」＝更新這份範本的重量/次數紀錄\n按「取消」＝改成另存一份新範本（或不存）`
+                    );
+                    if (updateExisting) {
+                      try {
+                        await saveTemplate(updateTemplateFromWorkout(sourceTemplate, activeWorkout));
+                        alert('範本已更新！');
+                      } catch (err) {
+                        console.error(err);
+                        alert('更新範本失敗');
+                      }
+                      await finishWorkout();
+                      return;
+                    }
+                  }
+                }
+
                 const shouldSaveTemplate = window.confirm('訓練即將完成！要將本次訓練另存為範本嗎？（下次可帶相同重量/次數直接開始）');
                 if (shouldSaveTemplate) {
                   const startDate = new Date(activeWorkout.startedAt);

@@ -493,6 +493,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       startedAt: Date.now(),
       status: 'active',
       location: template.location,
+      sourceTemplateId: template.id,
       entries: template.entries.map((entry) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
@@ -557,6 +558,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         programId,
         programSlotId: slotId,
         programCycleNumber: cycleNumber,
+        sourceTemplateId: template.id,
         entries: template.entries.map((entry) => ({
           id: crypto.randomUUID(),
           exerciseId: entry.exerciseId,

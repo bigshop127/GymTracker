@@ -29,6 +29,7 @@ import { type DayOverride, type ShiftLetter, type Workout, type Exercise, type W
 import { getDaySummary } from '../lib/workoutSummary';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
+import { getMonthlySplitCounts, SPLIT_CATEGORIES } from '../lib/splitRotation';
 
 const BUTTON_CONFIGS = [
   { label: 'A', value: { shiftLetters: ['A'] as ShiftLetter[], isDayOff: undefined, paused: undefined, forcedRest: undefined, rawLabel: 'A' }, category: 'A' as const, display: '🌅 A 班' },
@@ -38,9 +39,7 @@ const BUTTON_CONFIGS = [
   { label: 'AC', value: { shiftLetters: ['A', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'AC' }, category: 'AC' as const, display: '🔀 AC 班' },
   { label: 'BC', value: { shiftLetters: ['B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'BC' }, category: 'BC' as const, display: '🌄 BC 班' },
   { label: 'ABC', value: { shiftLetters: ['A', 'B', 'C'] as ShiftLetter[], isDayOff: undefined, forcedRest: undefined, rawLabel: 'ABC' }, category: 'ABC' as const, display: '🔥 ABC 班' },
-  { label: '休假', value: { shiftLetters: undefined, isDayOff: true, paused: undefined, forcedRest: undefined, rawLabel: '休假' }, category: 'dayoff' as const, display: '🏖️ 休假' },
   { label: '今日無法', value: { shiftLetters: undefined, isDayOff: undefined, paused: true, forcedRest: undefined, rawLabel: '今日無法' }, category: 'unable' as const, display: '🚫 今日無法' },
-  { label: '強制休息', value: { shiftLetters: undefined, isDayOff: undefined, paused: undefined, forcedRest: true, rawLabel: '強制休息' }, category: 'forcedRest' as const, display: '🛌 強制休息' },
 ];
 
 export default function SchedulePage() {
@@ -210,6 +209,12 @@ export default function SchedulePage() {
   }, [plannedDaysWithBaseline]);
 
   const selectedPlannedDay = selectedDateStr ? plannedDayMap.get(selectedDateStr) : undefined;
+
+  // 本月（依目前檢視的月份）推/拉/腿/手實際訓練次數統計
+  const monthlySplitCounts = useMemo(
+    () => getMonthlySplitCounts(completedWorkouts, activeProgram, currentMonth.getFullYear(), currentMonth.getMonth() + 1),
+    [completedWorkouts, activeProgram, currentMonth]
+  );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, dateStr: string) => {
     if (longPressTimerRef.current) {
@@ -480,12 +485,9 @@ export default function SchedulePage() {
               iconHtml = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
             } else if (isPast) {
               // past without workout: blank
-            } else if (override?.paused) {
+            } else if (override?.paused || override?.forcedRest) {
               labelText = '今日無法';
               labelColorClass = 'text-[8px] text-slate-400 dark:text-slate-500 opacity-60';
-            } else if (override?.forcedRest || suggestion === 'forcedRest') {
-              labelText = '強制休息';
-              labelColorClass = 'text-[8px] text-cyan-600 dark:text-cyan-400 font-semibold';
             } else if (suggestion === 'train' && suggestedSlot) {
               labelText = suggestedSlot.label;
               labelColorClass = 'text-[9px] font-bold text-indigo-600 dark:text-indigo-400';
@@ -499,12 +501,9 @@ export default function SchedulePage() {
 
             let badgeText = '';
             let badgeCategory: ShiftCodeCategory | null = null;
-            if (override?.paused) {
+            if (override?.paused || override?.forcedRest) {
               badgeText = '🚫';
               badgeCategory = 'unable';
-            } else if (override?.forcedRest) {
-              badgeText = '🛌';
-              badgeCategory = 'forcedRest';
             } else if (override?.isDayOff) {
               badgeText = '休';
               badgeCategory = 'dayoff';
@@ -582,14 +581,6 @@ export default function SchedulePage() {
                     {override.pinnedOutcome === 'cardio' ? '🏃' : '😴'}
                   </span>
                 )}
-                {plannedDay.diverged && (
-                  <span
-                    className="absolute bottom-0.5 right-1 text-[7px] font-extrabold px-1 py-0.2 rounded leading-none bg-orange-500 text-white"
-                    title={`原定：${describeSuggestionLabel(plannedDay.baselineSuggestion, plannedDay.baselineSuggestedSlot)}`}
-                  >
-                    改
-                  </span>
-                )}
                 <div className="h-4 flex items-center justify-center">
                   {iconHtml ? (
                     <svg viewBox="0 0 24 24" fill="currentColor" style={{ color: iconColor }}
@@ -601,6 +592,28 @@ export default function SchedulePage() {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* 本月訓練次數統計 */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors duration-200">
+        <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">
+          {currentMonth.getMonth() + 1} 月實際訓練次數
+        </h3>
+        <div className="grid grid-cols-4 gap-2">
+          {SPLIT_CATEGORIES.map((cat) => (
+            <div
+              key={cat}
+              className="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800/60 rounded-xl py-3"
+            >
+              <span className="text-lg font-extrabold text-indigo-600 dark:text-indigo-400">
+                {monthlySplitCounts[cat]}
+              </span>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                {cat}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -656,7 +669,7 @@ export default function SchedulePage() {
               <div>
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">班別登記</span>
                 <div className="grid grid-cols-3 gap-2">
-                  {BUTTON_CONFIGS.slice(0, 8).map((config) => (
+                  {BUTTON_CONFIGS.slice(0, 7).map((config) => (
                     <button
                       key={config.label}
                       type="button"
@@ -671,8 +684,8 @@ export default function SchedulePage() {
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">訓練覆寫</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {BUTTON_CONFIGS.slice(8, 10).map((config) => (
+                <div className="grid grid-cols-1 gap-2">
+                  {BUTTON_CONFIGS.slice(7, 8).map((config) => (
                     <button
                       key={config.label}
                       type="button"
@@ -791,7 +804,7 @@ export default function SchedulePage() {
               <div>
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">班別登記</span>
                 <div className="grid grid-cols-3 gap-2">
-                  {BUTTON_CONFIGS.slice(0, 8).map((config) => (
+                  {BUTTON_CONFIGS.slice(0, 7).map((config) => (
                     <button
                       key={config.label}
                       type="button"
@@ -806,8 +819,8 @@ export default function SchedulePage() {
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">訓練覆寫</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {BUTTON_CONFIGS.slice(8, 10).map((config) => (
+                <div className="grid grid-cols-1 gap-2">
+                  {BUTTON_CONFIGS.slice(7, 8).map((config) => (
                     <button
                       key={config.label}
                       type="button"

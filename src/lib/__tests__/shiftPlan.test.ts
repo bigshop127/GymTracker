@@ -482,13 +482,13 @@ describe('shiftPlan', () => {
       updatedAt: now,
     };
 
-    test('驗收 4：paused 或 forcedRest 扣抵當週目標次數', () => {
+    test('驗收 4：paused 或（已併入 paused 的舊資料）forcedRest 扣抵當週目標次數', () => {
       const dates = [
         '2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19',
         '2026-08-20', '2026-08-21', '2026-08-22'
       ];
       const overrides = new Map<string, DayOverride>();
-      // 週三 (8/19) 設定 forcedRest
+      // 週三 (8/19) 設定 forcedRest（舊欄位，仍需被視為 paused／今日無法處理）
       overrides.set('2026-08-19', { id: '2026-08-19', forcedRest: true, updatedAt: now });
 
       const result = generateMonthPlan({
@@ -509,13 +509,13 @@ describe('shiftPlan', () => {
       // 週日 (16): 拉 (chestBack) -> train (consecutive=1)
       // 週一 (17): 推 (chestBack) -> train (consecutive=2)
       // 週二 (18): 腿 (legs) -> 由於不急迫且非 chestBack，所以被 defer -> restOrCardio
-      // 週三 (19): forcedRest
+      // 週三 (19): forcedRest -> 併入 paused
       // 週四 (20): 腿 (legs) -> remainingQuota = 3 - 2 = 1. daysLeftInWeek = 3 (Thu, Fri, Sat). Defer -> restOrCardio
       // 週五 (21): 腿 (legs) -> remainingQuota = 1. daysLeftInWeek = 2. Defer -> restOrCardio
       // 週六 (22): 腿 (legs) -> remainingQuota = 1. daysLeftInWeek = 1. Urgent -> train!
       const trainDays = result.filter(r => r.suggestion === 'train');
       expect(trainDays.length).toBe(3);
-      expect(result[3].suggestion).toBe('forcedRest');
+      expect(result[3].suggestion).toBe('paused');
     });
 
     test('驗收 5：腿日前後盡量安排休息/有氧', () => {
@@ -998,7 +998,6 @@ describe('shiftPlan', () => {
       expect(describeSuggestionLabel('restOrCardio', null)).toBe('休息/有氧');
       expect(describeSuggestionLabel('cardio', null)).toBe('建議有氧');
       expect(describeSuggestionLabel('paused', null)).toBe('今日無法');
-      expect(describeSuggestionLabel('forcedRest', null)).toBe('強制休息');
       expect(describeSuggestionLabel('programPaused', null)).toBe('計畫暫停中');
       expect(describeSuggestionLabel('noProgram', null)).toBe('尚未設定課表');
       expect(describeSuggestionLabel('past', null)).toBe('—');

@@ -10,7 +10,7 @@ import {
 } from '../db/schema';
 
 export type DayPlanSuggestion =
-  | 'train' | 'restOrCardio' | 'cardio' | 'paused' | 'forcedRest'
+  | 'train' | 'restOrCardio' | 'cardio' | 'paused'
   | 'programPaused' | 'noProgram' | 'past';
 
 export type SlotCategory = 'legs' | 'chestBack' | 'other';
@@ -65,7 +65,6 @@ export function describeSuggestionLabel(
     case 'restOrCardio': return '休息/有氧';
     case 'cardio': return '建議有氧';
     case 'paused': return '今日無法';
-    case 'forcedRest': return '強制休息';
     case 'programPaused': return '計畫暫停中';
     case 'noProgram': return '尚未設定課表';
     case 'past': return '—';
@@ -138,13 +137,12 @@ export function getWeekStart(dateStr: string): string {
 }
 
 export type ShiftCodeCategory =
-  | 'A' | 'B' | 'C' | 'AB' | 'AC' | 'BC' | 'ABC' | 'dayoff' | 'unable' | 'forcedRest';
+  | 'A' | 'B' | 'C' | 'AB' | 'AC' | 'BC' | 'ABC' | 'dayoff' | 'unable';
 
 export function classifyShiftCodeCategory(code: string): ShiftCodeCategory {
   if (code === 'A' || code === 'B' || code === 'C') return code;
   if (code === '休假') return 'dayoff';
-  if (code === '今日無法') return 'unable';
-  if (code === '強制休息' || code === 'forcedRest') return 'forcedRest';
+  if (code === '今日無法' || code === '強制休息' || code === 'forcedRest') return 'unable';
   if (code === 'AB' || code === 'AC' || code === 'BC' || code === 'ABC') return code;
   return 'unable'; // 防禦性 fallback，理論上不會走到
 }
@@ -152,7 +150,7 @@ export function classifyShiftCodeCategory(code: string): ShiftCodeCategory {
 export const SHIFT_CODE_EMOJI: Record<ShiftCodeCategory, string> = {
   A: '🌅', B: '☀️', C: '🌙',
   AB: '🌆', AC: '🔀', BC: '🌄', ABC: '🔥',
-  dayoff: '🏖️', unable: '🚫', forcedRest: '🛌',
+  dayoff: '🏖️', unable: '🚫',
 };
 
 // 月曆角落徽章用：比照 locationStyle.ts 的 getLocationColor 寫法，回傳 hex 直接進 inline style。
@@ -166,7 +164,6 @@ export const SHIFT_CODE_HEX: Record<ShiftCodeCategory, string> = {
   ABC: '#dc2626',  // red-600（整天沒空，用最強烈的顏色跟其他三個區分）
   dayoff: '#10b981',  // emerald-500
   unable: '#334155',  // slate-700
-  forcedRest: '#0891b2', // cyan-600
 };
 
 // 九宮格按鈕用：完整 Tailwind class 字面值查表
@@ -180,7 +177,6 @@ export const SHIFT_CODE_BUTTON_CLASSES: Record<ShiftCodeCategory, string> = {
   ABC: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900 text-red-600 dark:text-red-400',
   dayoff: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400',
   unable: 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300',
-  forcedRest: 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-900 text-cyan-600 dark:text-cyan-400',
 };
 
 // 深色模式的卡片底色是 slate-900（藍灰色）。冷色系（藍/紫/靛/綠/青/翠綠）跟
@@ -198,7 +194,6 @@ export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
   ABC: 'bg-red-100 dark:bg-red-950/40',
   dayoff: 'bg-emerald-50 dark:bg-emerald-800/45',
   unable: 'bg-slate-100 dark:bg-slate-700/60',
-  forcedRest: 'bg-cyan-50 dark:bg-cyan-800/50',
 };
 
 export function classifySlotCategory(
@@ -377,14 +372,8 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       yesterdayWasLegsTrain = false;
       // 刻意不動 trainedThisWeek 與 effectiveWeeklyTarget：暫停期間沒有週目標可言，
       // 不必像 forcedRest 那樣扣抵配額。
-    } else if (override?.paused) {
+    } else if (override?.paused || override?.forcedRest) {
       suggestion = 'paused';
-      daysSinceWeights += 1;
-      consecutiveTrainDays = 0;
-      yesterdayWasLegsTrain = false;
-      effectiveWeeklyTarget = Math.max(0, effectiveWeeklyTarget - 1);
-    } else if (override?.forcedRest) {
-      suggestion = 'forcedRest';
       daysSinceWeights += 1;
       consecutiveTrainDays = 0;
       yesterdayWasLegsTrain = false;

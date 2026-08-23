@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listCompletedWorkouts, deleteWorkout } from '../db/workouts';
 import { listExercises } from '../db/exercises';
-import { saveTemplate, createTemplateFromWorkout } from '../db/templates';
+import { saveTemplate, createTemplateFromWorkout, updateTemplateFromWorkout, getTemplate } from '../db/templates';
 import { type Workout, type Exercise } from '../db/schema';
 import { calculateWorkoutVolume, calculateEntryVolume } from '../lib/volume';
 import { formatWeight } from '../lib/units';
@@ -14,17 +14,24 @@ import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
 import { rpeToShortLabel } from '../lib/rpe';
 import { buildCalendarGrid } from '../lib/shiftPlan';
+import { useProgramStore } from '../store/program';
+import { getWorkoutSplitCategory, SPLIT_CATEGORIES, type SplitCategory } from '../lib/splitRotation';
+
+type HistoryGroupCategory = SplitCategory | '其他';
+const HISTORY_GROUP_CATEGORIES: HistoryGroupCategory[] = [...SPLIT_CATEGORIES, '其他'];
 
 export default function History() {
   const navigate = useNavigate();
   const { settings } = useSettingsStore();
   const { startWorkoutFromTemplate, activeWorkout } = useActiveWorkoutStore();
+  const { activeProgram, initProgram } = useProgramStore();
 
   const [historyList, setHistoryList] = useState<Workout[]>([]);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<HistoryGroupCategory>>(new Set());
 
   // 7B: 視圖切換與日曆狀態
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -60,6 +67,11 @@ export default function History() {
     }, 0);
     return () => clearTimeout(t);
   }, []);
+
+  // 分類分組要用到目前計畫的 slot 標籤（getWorkoutSplitCategory），跟 History 資料一樣只需載入一次
+  useEffect(() => {
+    initProgram();
+  }, [initProgram]);
 
   const currentUnit = settings?.unit || 'kg';
   const currentFormula = settings?.e1rmFormula || 'epley';
@@ -141,6 +153,26 @@ export default function History() {
 
   // 另存為範本 (保留重量)
   const handleSaveAsTemplate = async (workout: Workout) => {
+    // 這筆訓練是套用既有範本開始的：先問要不要直接更新那份範本，避免同名範本一直重複累積。
+    if (workout.sourceTemplateId) {
+      const sourceTemplate = await getTemplate(workout.sourceTemplateId);
+      if (sourceTemplate) {
+        const updateExisting = window.confirm(
+          `這筆訓練是從範本「${sourceTemplate.name}」開始的。\n\n按「確定」＝更新這份範本的重量/次數紀錄\n按「取消」＝改成另存一份新範本（或不存）`
+        );
+        if (updateExisting) {
+          try {
+            await saveTemplate(updateTemplateFromWorkout(sourceTemplate, workout));
+            alert('範本已更新！');
+          } catch (err) {
+            console.error(err);
+            alert('更新範本失敗');
+          }
+          return;
+        }
+      }
+    }
+
     const defaultName = workout.title || '我的範本';
     const name = window.prompt('請輸入範本名稱：', defaultName);
     if (name === null) return; // user cancelled
@@ -227,6 +259,27 @@ export default function History() {
       return false;
     });
   }, [historyStatsList, searchKeyword, exMap]);
+
+  // 按推/拉/腿/手分類分組（判不出來歸到「其他」），組內維持原本時間新到舊的順序
+  const groupedHistoryList = useMemo(() => {
+    const groups: Record<HistoryGroupCategory, typeof filteredStatsList> = {
+      '拉': [], '推': [], '腿': [], '手': [], '其他': [],
+    };
+    for (const item of filteredStatsList) {
+      const category = getWorkoutSplitCategory(item.workout, activeProgram) ?? '其他';
+      groups[category].push(item);
+    }
+    return groups;
+  }, [filteredStatsList, activeProgram]);
+
+  const toggleGroupCollapsed = (category: HistoryGroupCategory) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
@@ -326,9 +379,35 @@ export default function History() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredStatsList.map(({ id, workout, totalSetsCount, displayVolume }) => {
-                const duration = getDurationMinutes(workout);
+            <div className="space-y-5">
+              {HISTORY_GROUP_CATEGORIES.map((category) => {
+                const items = groupedHistoryList[category];
+                if (items.length === 0) return null;
+                const isCollapsed = collapsedGroups.has(category);
+                return (
+                  <div key={category} className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupCollapsed(category)}
+                      className="w-full flex items-center justify-between px-1 py-1 cursor-pointer"
+                    >
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        {category}
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full">
+                          {items.length}
+                        </span>
+                      </span>
+                      <svg
+                        fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                        className={`w-4 h-4 text-slate-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    {!isCollapsed && (
+                      <div className="space-y-3">
+                        {items.map(({ id, workout, totalSetsCount, displayVolume }) => {
+                          const duration = getDurationMinutes(workout);
                 const summary = getDaySummary([workout], exMap);
                 const color = getLocationColor(summary.location);
                 const markup = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
@@ -422,6 +501,11 @@ export default function History() {
                         })
                         .join('、')}
                     </div>
+                  </div>
+                        );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}

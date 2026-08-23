@@ -33,6 +33,17 @@ export function createTemplateFromWorkout(workout: Workout, name: string): Worko
   };
 }
 
+/** 用一次訓練的最新內容覆寫既有範本（保留 id/name/category/createdAt，只換 entries/location）*/
+export function updateTemplateFromWorkout(template: WorkoutTemplate, workout: Workout): WorkoutTemplate {
+  const fresh = createTemplateFromWorkout(workout, template.name);
+  return {
+    ...fresh,
+    id: template.id,
+    category: template.category,
+    createdAt: template.createdAt,
+  };
+}
+
 export async function listTemplates(): Promise<WorkoutTemplate[]> {
   const templates = await db.templates.reverse().sortBy('createdAt');
   return templates.filter(t => !t.deletedAt);
