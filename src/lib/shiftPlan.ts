@@ -412,6 +412,17 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       // 班別政策直接指定「有氧」或「休息」時（新版三選一，不再自動用「明天是不是腿日」去猜）
       let pinnedShiftSuggestion: 'cardio' | 'restOnly' | null = null;
 
+      // 解析今天的班別政策（可複選）；非明確排班（休假/無設定）比照 DAYOFF 預設全開可訓練
+      const shiftKey = hasExplicitShift ? [...override!.shiftLetters!].sort().join('') : 'DAYOFF';
+      const shiftPolicies = resolvePolicies(shiftKey, policyOverrides);
+      const shiftAllowsTrain = shiftPolicies.includes('train');
+      const shiftAllowsCardio = shiftPolicies.includes('cardio');
+      const shiftAllowsRest = shiftPolicies.includes('rest');
+      // 複選時，「安排訓練」有勾就照下面配額/節奏邏輯正常判斷今天要不要練；
+      // 沒有要練（或根本沒勾「安排訓練」）時，才在有勾的選項裡照優先序（有氧 > 休息）挑一個定案
+      const pickNonTrainOutcome = (): 'cardio' | 'restOnly' | null =>
+        shiftAllowsCardio ? 'cardio' : shiftAllowsRest ? 'restOnly' : null;
+
       if (override?.pinnedSlotId && activeProgram) {
         const candidate = activeProgram.slots.find(s => s.id === override.pinnedSlotId);
         if (candidate) {
@@ -436,10 +447,10 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       // 規則 d：拉/推/腿/手任一分類距上次訓練達門檻天數，強制排入該分類——
       // 優先度僅次於使用者當天親自指定（pinnedOutcome／指定部位），連班別建議的休息/有氧、
       // 週目標已達成都能推翻。多個分類同時逾期時，挑等最久的那個。
-      // 刻意不看該班別是否有勾「安排訓練」：這是「最晚幾天內一定要補練」的硬性防線，
-      // 就算那天班別完全沒開放訓練（例如 ABC 整天沒空），太久沒練一樣要強制排進去。
+      // 但只在這天的班別政策有勾「安排訓練」時才會觸發：使用者明確把某班別設成
+      // 只休息／只有氧，就是刻意表示這個班別不排訓練，這個意願不該被悄悄推翻。
       let forcedCategory: SplitCategory | null = null;
-      if (!override?.pinnedOutcome && !resolvedPinSlot) {
+      if (!override?.pinnedOutcome && !resolvedPinSlot && shiftAllowsTrain) {
         let maxGap = -1;
         for (const cat of SPLIT_CATEGORIES) {
           if (!categoriesInProgram.has(cat)) continue;
@@ -456,17 +467,7 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       } else if (resolvedPinSlot) {
         wantsTrain = true;
       } else if (hasExplicitShift) {
-        const key = [...override!.shiftLetters!].sort().join('');
-        const policies = resolvePolicies(key, policyOverrides);
-        const allowsTrain = policies.includes('train');
-        const allowsCardio = policies.includes('cardio');
-        const allowsRest = policies.includes('rest');
-        // 複選時，「安排訓練」有勾就照下面配額/節奏邏輯正常判斷今天要不要練；
-        // 沒有要練（或根本沒勾「安排訓練」）時，才在有勾的選項裡照優先序（有氧 > 休息）挑一個定案
-        const pickNonTrainOutcome = (): 'cardio' | 'restOnly' | null =>
-          allowsCardio ? 'cardio' : allowsRest ? 'restOnly' : null;
-
-        if (!allowsTrain) {
+        if (!shiftAllowsTrain) {
           wantsTrain = false;
           pinnedShiftSuggestion = pickNonTrainOutcome();
         } else if (remainingQuota <= 0) {

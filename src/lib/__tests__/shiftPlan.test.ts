@@ -107,8 +107,9 @@ describe('shiftPlan', () => {
       expect(result[1].suggestion).toBe('noProgram');
     });
 
-    test('連續 ABC 班（預設政策=休息）未達門檻為 restOnly，分類達門檻會強制 train 且 cursor 不漏跳', () => {
-      // 假設 8/16（今天）是基準點。8/16 ~ 8/25 連續 10 天 ABC 班。門檻是 7 天。
+    test('連續 ABC 班且班別有勾「安排訓練」：未達門檻為 restOnly，分類達門檻會強制 train 且 cursor 不漏跳', () => {
+      // 假設 8/16（今天）是基準點。8/16 ~ 8/25 連續 10 天 ABC 班，班別政策勾了「安排訓練」+「休息」。
+      // 門檻是 7 天，週目標設 0 讓平常的配額邏輯永遠不想練，只單獨看太久沒練規則會不會強制介入。
       // 課表只有 胸(推)/背(拉)/腿(腿) 三個分類；8/15 只練過推，拉、腿完全沒有歷史紀錄，
       // 三者幾乎同時到期，會連續觸發 3 天強制訓練把三個分類都補齊。
       const lastWorkout: Workout = {
@@ -133,10 +134,11 @@ describe('shiftPlan', () => {
         completedWorkouts: [lastWorkout],
         activeWorkoutToday: null,
         overridesByDate: overrides,
-        policyOverrides: undefined,
+        policyOverrides: { 'ABC': ['train', 'rest'] },
         restOverrideDays: 7,
         exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 0,
         templatesById: new Map(),
       });
 
@@ -158,6 +160,39 @@ describe('shiftPlan', () => {
       // 三個分類都補齊後，8/25 回到休息
       expect(result[9].dateStr).toBe('2026-08-25');
       expect(result[9].suggestion).toBe('restOnly');
+    });
+
+    test('連續 ABC 班且班別完全沒勾「安排訓練」（只勾休息）：不管多久沒練都不會被太久沒練規則推翻', () => {
+      // 對應真實回報的問題：使用者把某班別明確設成只休息，太久沒練規則不該悄悄蓋過這個設定。
+      const lastWorkout: Workout = {
+        id: 'w-last',
+        startedAt: new Date('2026-08-15T10:00:00').getTime(),
+        status: 'completed',
+        entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }],
+      };
+
+      const overrides = new Map<string, DayOverride>();
+      const dates: string[] = [];
+      for (let i = 16; i <= 25; i++) {
+        const dStr = `2026-08-${i}`;
+        dates.push(dStr);
+        overrides.set(dStr, { id: dStr, shiftLetters: ['A', 'B', 'C'], updatedAt: now });
+      }
+
+      const result = generateMonthPlan({
+        dateStrings: dates,
+        activeProgram: program,
+        completedWorkouts: [lastWorkout],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: { 'ABC': ['rest'] }, // 明確只勾休息（不含「安排訓練」）
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        templatesById: new Map(),
+      });
+
+      expect(result.every((d) => d.suggestion === 'restOnly')).toBe(true);
     });
 
     test('paused 日期不推進 simCursor 且增加 daysSinceWeights', () => {
@@ -210,16 +245,19 @@ describe('shiftPlan', () => {
       // 情境一：最近一次重訓是 8/14，而 8/15 只有純有氧。
       // 計算 daysSinceWeights 是看 8/14，到今天 8/16 為 2 天，到明 8/17 為 3 天。
       // 設定門檻為 3，因此 8/17 的 AB 班應該被強制轉為 train。
+      // 班別政策勾了「安排訓練」（太久沒練規則才有效）+ 週目標設 0（平常配額邏輯不會自己想練），
+      // 讓這裡只單獨看太久沒練規則本身的天數計算對不對。
       const resultWithCardio = generateMonthPlan({
         dateStrings: ['2026-08-16', '2026-08-17'],
         activeProgram: program,
         completedWorkouts: [cardioWorkout, weightWorkoutOn14],
         activeWorkoutToday: null,
         overridesByDate: overrides,
-        policyOverrides: undefined,
+        policyOverrides: { 'ABC': ['train', 'rest'] },
         restOverrideDays: 3,
         exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 0,
         templatesById: new Map(),
       });
 
@@ -242,10 +280,11 @@ describe('shiftPlan', () => {
         completedWorkouts: [weightWorkoutOn15, weightWorkoutOn14],
         activeWorkoutToday: null,
         overridesByDate: overrides,
-        policyOverrides: undefined,
+        policyOverrides: { 'ABC': ['train', 'rest'] },
         restOverrideDays: 3,
         exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 0,
         templatesById: new Map(),
       });
 
