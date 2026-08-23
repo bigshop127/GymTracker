@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
 interface NavItemProps {
@@ -26,10 +26,72 @@ function NavItem({ to, label, icon }: NavItemProps) {
 }
 
 export default function BottomNav() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // 9 個項目在窄版版面會塞不下、被裁掉一部分（例如「設定」滑到畫面外）；
+  // 桌機滑鼠沒有觸控滑動可用，這裡用箭頭按鈕給一個一定按得到的捲動方式。
+  const updateScrollState = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollState);
+    window.addEventListener('resize', updateScrollState);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, []);
+
+  const scrollByAmount = (dx: number) => {
+    scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
+  };
+
+  // 滑鼠垂直滾輪在桌機是另一種直覺操作方式，這裡把垂直滾動量轉成橫向捲動。
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 已經是橫向滾動（觸控板）就交給瀏覽器原生處理
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  };
+
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] z-50">
-      <div className="px-2">
-        <div className="flex overflow-x-auto scrollbar-none items-center h-16 gap-1">
+      <div className="relative px-2">
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollByAmount(-140)}
+            aria-label="向左捲動選單"
+            className="absolute left-0 top-0 h-16 w-7 flex items-center justify-center bg-gradient-to-r from-white dark:from-slate-900 via-white/90 dark:via-slate-900/90 to-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 z-10"
+          >
+            <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+        )}
+        {canScrollRight && (
+          <button
+            type="button"
+            onClick={() => scrollByAmount(140)}
+            aria-label="向右捲動選單"
+            className="absolute right-0 top-0 h-16 w-7 flex items-center justify-center bg-gradient-to-l from-white dark:from-slate-900 via-white/90 dark:via-slate-900/90 to-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 z-10"
+          >
+            <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+        )}
+        <div ref={scrollRef} onWheel={handleWheel} className="flex overflow-x-auto scrollbar-none items-center h-16 gap-1">
           <NavItem
             to="/"
             label="訓練"
