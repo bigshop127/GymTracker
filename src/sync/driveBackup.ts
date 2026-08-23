@@ -73,13 +73,13 @@ export async function uploadBackupToDrive(accessToken: string): Promise<DriveBac
   return res.json();
 }
 
-/** 列出備份資料夾裡的所有備份檔，新到舊排序。*/
-export async function listBackupsFromDrive(accessToken: string): Promise<DriveBackupFile[]> {
+/** 列出備份資料夾裡最新的幾份備份檔，新到舊排序（預設只拿最新 5 份）。*/
+export async function listBackupsFromDrive(accessToken: string, limit = 5): Promise<DriveBackupFile[]> {
   const folderId = await ensureBackupFolderId(accessToken);
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
   const res = await driveFetch(
     accessToken,
-    `${DRIVE_API}/files?q=${q}&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=100&spaces=drive`
+    `${DRIVE_API}/files?q=${q}&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=${limit}&spaces=drive`
   );
   const data = await res.json();
   return data.files ?? [];

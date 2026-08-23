@@ -95,29 +95,35 @@ export function mergeBaselinePlan(
   });
 }
 
-export const DEFAULT_SHIFT_POLICIES: Record<string, ShiftPolicy> = {
-  'DAYOFF': 'train',
-  'A': 'train',
-  'B': 'train',
-  'C': 'train',
-  'AB': 'train',
-  'AC': 'train',
-  'BC': 'train',
-  'ABC': 'rest',
+export const DEFAULT_SHIFT_POLICIES: Record<string, ShiftPolicy[]> = {
+  'DAYOFF': ['train'],
+  'A': ['train'],
+  'B': ['train'],
+  'C': ['train'],
+  'AB': ['train'],
+  'AC': ['train'],
+  'BC': ['train'],
+  'ABC': ['rest'],
 };
+
+function resolvePolicies(
+  key: string,
+  policyOverrides: Record<string, ShiftPolicy[]> | undefined,
+): ShiftPolicy[] {
+  const raw = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key];
+  return raw && raw.length > 0 ? raw : ['train'];
+}
 
 export function classifyShiftCode(
   override: DayOverride | null | undefined,
-  policyOverrides: Record<string, ShiftPolicy> | undefined,
-): ShiftPolicy {
+  policyOverrides: Record<string, ShiftPolicy[]> | undefined,
+): ShiftPolicy[] {
   if (!override || override.isDayOff || !override.shiftLetters || override.shiftLetters.length === 0) {
-    const policy = policyOverrides?.['DAYOFF'] || DEFAULT_SHIFT_POLICIES['DAYOFF'];
-    return policy || 'train';
+    return resolvePolicies('DAYOFF', policyOverrides);
   }
-  
+
   const key = [...override.shiftLetters].sort().join('');
-  const policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key];
-  return policy || 'train';
+  return resolvePolicies(key, policyOverrides);
 }
 
 export function getCalendarDaysDiff(dateStr1: string, dateStr2: string): number {
@@ -227,7 +233,7 @@ export interface GenerateMonthPlanInput {
   completedWorkouts: Workout[];       // listCompletedWorkouts() 的結果
   activeWorkoutToday: Workout | null; // 來自 useActiveWorkoutStore 的進行中訓練（還沒 complete，不在上面那個陣列裡）
   overridesByDate: Map<string, DayOverride>;
-  policyOverrides: Record<string, ShiftPolicy> | undefined;
+  policyOverrides: Record<string, ShiftPolicy[]> | undefined;
   restOverrideDays: number;
   exerciseMap: Map<string, Exercise>; // 判斷「是不是純有氧」用，buildExerciseMap() 建
   today: number;                      // Date.now()，測試時可以注入固定時間
@@ -430,6 +436,8 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       // 規則 d：拉/推/腿/手任一分類距上次訓練達門檻天數，強制排入該分類——
       // 優先度僅次於使用者當天親自指定（pinnedOutcome／指定部位），連班別建議的休息/有氧、
       // 週目標已達成都能推翻。多個分類同時逾期時，挑等最久的那個。
+      // 刻意不看該班別是否有勾「安排訓練」：這是「最晚幾天內一定要補練」的硬性防線，
+      // 就算那天班別完全沒開放訓練（例如 ABC 整天沒空），太久沒練一樣要強制排進去。
       let forcedCategory: SplitCategory | null = null;
       if (!override?.pinnedOutcome && !resolvedPinSlot) {
         let maxGap = -1;
@@ -449,17 +457,27 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
         wantsTrain = true;
       } else if (hasExplicitShift) {
         const key = [...override!.shiftLetters!].sort().join('');
-        const policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
-        if (policy === 'cardio' || policy === 'rest') {
+        const policies = resolvePolicies(key, policyOverrides);
+        const allowsTrain = policies.includes('train');
+        const allowsCardio = policies.includes('cardio');
+        const allowsRest = policies.includes('rest');
+        // 複選時，「安排訓練」有勾就照下面配額/節奏邏輯正常判斷今天要不要練；
+        // 沒有要練（或根本沒勾「安排訓練」）時，才在有勾的選項裡照優先序（有氧 > 休息）挑一個定案
+        const pickNonTrainOutcome = (): 'cardio' | 'restOnly' | null =>
+          allowsCardio ? 'cardio' : allowsRest ? 'restOnly' : null;
+
+        if (!allowsTrain) {
           wantsTrain = false;
-          pinnedShiftSuggestion = policy === 'cardio' ? 'cardio' : 'restOnly';
+          pinnedShiftSuggestion = pickNonTrainOutcome();
         } else if (remainingQuota <= 0) {
           wantsTrain = false; // 這週目標已達成，班別允許練不代表要練，讓訓練自然分散
+          pinnedShiftSuggestion = pickNonTrainOutcome();
         } else if (urgent) {
           wantsTrain = true; // 剩餘天數已經不夠湊到目標，沒有選擇餘地
         } else {
           // 有餘裕時偏好隔一天再練，避免班別連續好幾天都能練，把訓練擠成一坨
           wantsTrain = consecutiveTrainDays === 0;
+          if (!wantsTrain) pinnedShiftSuggestion = pickNonTrainOutcome();
         }
       } else if (remainingQuota <= 0) {
         wantsTrain = false;

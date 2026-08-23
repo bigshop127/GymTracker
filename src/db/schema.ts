@@ -106,7 +106,7 @@ export interface Settings {
   soundOnRestEnd: boolean;
   vibrateOnRestEnd: boolean;
   locations?: string[];     // 可選地點清單，例如 ['中壢建工', '楊梅WG']
-  shiftPolicyOverrides?: Record<string, ShiftPolicy>;  // key 是正規化後的班別代碼，例如 'AB'、'ABC'、'DAYOFF'
+  shiftPolicyOverrides?: Record<string, ShiftPolicy[]>;  // key 是正規化後的班別代碼，例如 'AB'、'ABC'、'DAYOFF'；值可複選，例如 ['train', 'cardio']
   restOverrideDays?: number;    // 任一分類（拉/推/腿/手）連續沒訓練達此天數，強制排入該分類，預設 7
   weeklyTargetSessions?: number; // 每週目標訓練次數，預設 4
 }

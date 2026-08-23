@@ -7,6 +7,7 @@ import { playRestEndSound } from '../store/restTimer';
 import { exportBackupData, importBackupData } from '../lib/backup';
 import NumberStepper from '../components/NumberStepper';
 import { DEFAULT_SHIFT_POLICIES } from '../lib/shiftPlan';
+import type { ShiftPolicy } from '../db/schema';
 import { shouldUseGis, renderGoogleSignInButton } from '../sync/auth';
 import { getDriveAccessToken } from '../sync/driveAuth';
 import { uploadBackupToDrive, listBackupsFromDrive, downloadBackupFromDrive, type DriveBackupFile } from '../sync/driveBackup';
@@ -354,70 +355,47 @@ export default function SettingsPage() {
         {/* 班別對照表 */}
         <div className="space-y-2">
           <span className="text-xs font-bold text-slate-700 dark:text-slate-300">班別建議對照表</span>
+          <p className="text-[10px] text-slate-400">可複選：勾多個時，當天照現有輪替規則優先選「安排訓練」，其次「有氧」，最後「休息」。</p>
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
             {Object.entries(SHIFT_LABELS).map(([key, label]) => {
-              const currentPolicy = settings.shiftPolicyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
+              const currentPolicies = settings.shiftPolicyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || ['train'];
+              const togglePolicy = (value: ShiftPolicy) => {
+                const isActive = currentPolicies.includes(value);
+                if (isActive && currentPolicies.length === 1) return; // 至少要保留一個勾選
+                const nextPolicies = isActive
+                  ? currentPolicies.filter((p) => p !== value)
+                  : [...currentPolicies, value];
+                const currentOverrides = settings.shiftPolicyOverrides || {};
+                handleUpdate({
+                  shiftPolicyOverrides: {
+                    ...currentOverrides,
+                    [key]: nextPolicies,
+                  }
+                });
+              };
               return (
                 <div key={key} className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-800/30 last:border-0">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{label}</span>
                   <div className="bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg flex gap-0.5 text-[10px] font-semibold w-52">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const currentOverrides = settings.shiftPolicyOverrides || {};
-                        handleUpdate({
-                          shiftPolicyOverrides: {
-                            ...currentOverrides,
-                            [key]: 'train',
-                          }
-                        });
-                      }}
-                      className={`flex-1 py-1 text-center rounded transition duration-200 ${
-                        currentPolicy === 'train'
-                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      安排訓練
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const currentOverrides = settings.shiftPolicyOverrides || {};
-                        handleUpdate({
-                          shiftPolicyOverrides: {
-                            ...currentOverrides,
-                            [key]: 'cardio',
-                          }
-                        });
-                      }}
-                      className={`flex-1 py-1 text-center rounded transition duration-200 ${
-                        currentPolicy === 'cardio'
-                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      有氧
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const currentOverrides = settings.shiftPolicyOverrides || {};
-                        handleUpdate({
-                          shiftPolicyOverrides: {
-                            ...currentOverrides,
-                            [key]: 'rest',
-                          }
-                        });
-                      }}
-                      className={`flex-1 py-1 text-center rounded transition duration-200 ${
-                        currentPolicy === 'rest'
-                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      休息
-                    </button>
+                    {([
+                      { value: 'train' as const, text: '安排訓練' },
+                      { value: 'cardio' as const, text: '有氧' },
+                      { value: 'rest' as const, text: '休息' },
+                    ]).map(({ value, text }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => togglePolicy(value)}
+                        aria-pressed={currentPolicies.includes(value)}
+                        className={`flex-1 py-1 text-center rounded transition duration-200 ${
+                          currentPolicies.includes(value)
+                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        {text}
+                      </button>
+                    ))}
                   </div>
                 </div>
               );
@@ -560,6 +538,7 @@ export default function SettingsPage() {
 
               {/* 同步狀態 */}
               <div className="space-y-2 text-xs">
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">快速同步</p>
                 <p className="text-slate-500 dark:text-slate-400">
                   {syncStatus === 'syncing' ? (
                     <span className="flex items-center gap-1.5">
@@ -580,7 +559,7 @@ export default function SettingsPage() {
                   )}
                 </p>
                 <p className="text-[10px] text-slate-400">
-                  同步不會自動觸發，切換裝置前記得手動下載，改完資料記得手動上傳。
+                  只互相補齊新舊資料，不會整包覆蓋。不會自動觸發，切換裝置前記得手動下載，改完資料記得手動上傳。
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -600,11 +579,13 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* 雲端硬碟備份檔：跟上面的「同步」是不同機制——這裡每次上傳都存成新的一份帶
-                  時間戳記的完整快照檔，不會互相覆蓋，下載前可以自己挑要還原哪一份 */}
+              {/* 雲端硬碟備份檔：跟上面的「快速同步」是不同機制——這裡每次上傳都存成新的一份帶
+                  時間戳記的完整快照檔，不會互相覆蓋；下載會直接跳出最近 5 份的清單挑一份還原，
+                  還原是整包覆蓋（跟快速同步的合併方式不同，請小心使用）*/}
               <div className="space-y-2 text-xs border-t border-slate-100 dark:border-slate-800 pt-3">
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">完整備份</p>
                 <p className="text-[10px] text-slate-400">
-                  另存一份帶時間戳記的完整備份到你的 Google 雲端硬碟，之後可以挑選任一份還原。
+                  另存一份帶時間戳記的完整快照到 Google 雲端硬碟；下載會列出最近 5 份讓你挑一份「整包覆蓋」還原，請小心使用。
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -612,14 +593,14 @@ export default function SettingsPage() {
                     disabled={isDriveBusy}
                     className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/30 hover:bg-teal-100 dark:hover:bg-teal-950/60 text-teal-700 dark:text-teal-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
                   >
-                    ☁️ 存一份到雲端硬碟
+                    ↑ 上傳
                   </button>
                   <button
                     onClick={handleOpenDrivePicker}
                     disabled={isDriveBusy}
                     className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/30 hover:bg-teal-100 dark:hover:bg-teal-950/60 text-teal-700 dark:text-teal-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
                   >
-                    📂 選擇備份下載
+                    ↓ 下載
                   </button>
                 </div>
                 {driveMessage && (
@@ -677,7 +658,7 @@ export default function SettingsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">選擇要還原的備份</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">選擇要還原的備份（最近 5 份）</span>
               <button
                 onClick={() => setDriveBackups(null)}
                 className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold"

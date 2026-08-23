@@ -15,7 +15,8 @@ import {
   type DayOverride,
   type TrainingProgram,
   type Workout,
-  type Exercise
+  type Exercise,
+  type ShiftPolicy
 } from '../../db/schema';
 import { buildExerciseMap } from '../workoutSummary';
 
@@ -45,24 +46,27 @@ describe('shiftPlan', () => {
     test('輸入順序不同 [A, B, C] 與 [C, B, A] 應正規化為同一個 key', () => {
       const o1: DayOverride = { id: '2026-08-17', shiftLetters: ['A', 'B', 'C'], updatedAt: now };
       const o2: DayOverride = { id: '2026-08-17', shiftLetters: ['C', 'B', 'A'], updatedAt: now };
-      expect(classifyShiftCode(o1, undefined)).toBe('rest');
-      expect(classifyShiftCode(o2, undefined)).toBe('rest');
+      expect(classifyShiftCode(o1, undefined)).toEqual(['rest']);
+      expect(classifyShiftCode(o2, undefined)).toEqual(['rest']);
     });
 
     test('isDayOff 優先於 shiftLetters', () => {
       const o: DayOverride = { id: '2026-08-17', shiftLetters: ['A'], isDayOff: true, updatedAt: now };
-      expect(classifyShiftCode(o, undefined)).toBe('train');
+      expect(classifyShiftCode(o, undefined)).toEqual(['train']);
     });
 
     test('查無代碼 fallback 到預設對照表', () => {
       const o: DayOverride = { id: '2026-08-17', shiftLetters: ['C'], updatedAt: now };
-      expect(classifyShiftCode(o, undefined)).toBe('train');
+      expect(classifyShiftCode(o, undefined)).toEqual(['train']);
     });
 
-    test('使用自訂 policyOverrides', () => {
+    test('使用自訂 policyOverrides（可複選）', () => {
       const o: DayOverride = { id: '2026-08-17', shiftLetters: ['A'], updatedAt: now };
-      const overrides = { 'A': 'rest' as const };
-      expect(classifyShiftCode(o, overrides)).toBe('rest');
+      const overrides: Record<string, ShiftPolicy[]> = { 'A': ['rest'] };
+      expect(classifyShiftCode(o, overrides)).toEqual(['rest']);
+
+      const multiOverrides: Record<string, ShiftPolicy[]> = { 'A': ['train', 'cardio'] };
+      expect(classifyShiftCode(o, multiOverrides)).toEqual(['train', 'cardio']);
     });
   });
 
@@ -708,7 +712,7 @@ describe('shiftPlan', () => {
         completedWorkouts: [recentWeightWorkout],
         activeWorkoutToday: null,
         overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
-        policyOverrides: { 'ABC': policy },
+        policyOverrides: { 'ABC': [policy] },
         restOverrideDays: 7,
         exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
@@ -719,6 +723,50 @@ describe('shiftPlan', () => {
       // 明天是腿日，若沒有明確政策舊邏輯會建議「有氧」；這裡兩個政策都要各自固定顯示，不能都變成有氧
       expect(runWithPolicy('cardio').suggestion).toBe('cardio');
       expect(runWithPolicy('rest').suggestion).toBe('restOnly');
+    });
+
+    test('班別政策複選：只勾「有氧」+「休息」（沒勾「安排訓練」）時直接照優先序挑有氧，不進訓練池', () => {
+      const result = generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
+        policyOverrides: { 'ABC': ['cardio', 'rest'] },
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      })[0];
+
+      expect(result.suggestion).toBe('cardio');
+      expect(result.suggestedSlot).toBeNull();
+    });
+
+    test('班別政策複選：勾「安排訓練」+「有氧」時，週目標已達成、輪不到練的那天改顯示有氧（不是舊版的自動猜測）', () => {
+      const recentWeightWorkout: Workout = {
+        id: 'w-recent',
+        startedAt: new Date('2026-08-15T10:00:00').getTime(),
+        status: 'completed',
+        entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }],
+      };
+
+      const result = generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        activeProgram: program,
+        completedWorkouts: [recentWeightWorkout],
+        activeWorkoutToday: null,
+        overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
+        policyOverrides: { 'ABC': ['train', 'cardio'] },
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 0, // 週目標已達成（0 表示不用再練），逼進「今天不練」分支
+        templatesById: templatesMap,
+      })[0];
+
+      expect(result.suggestion).toBe('cardio');
     });
 
     test('驗收 2-b：AB/AC/BC 連續好幾天都能練時，沒有 urgent 就隔天休息，訓練平均分散不擠成一坨', () => {
