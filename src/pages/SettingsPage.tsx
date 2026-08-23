@@ -268,8 +268,8 @@ export default function SettingsPage() {
         {/* 太久沒重訓門檻 */}
         <div className="flex items-center justify-between gap-4 border-b border-slate-50 dark:border-slate-800/50 pb-4">
           <div className="space-y-0.5">
-            <span className="text-sm font-bold text-slate-800 dark:text-slate-200">太久沒重量訓練門檻</span>
-            <p className="text-[10px] text-slate-400">當連續沒做重訓達此天數時，將強制排入訓練（天）</p>
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-200">太久沒訓練門檻</span>
+            <p className="text-[10px] text-slate-400">拉/推/腿/手任一分類連續沒訓練達此天數時，將強制排入該分類（天）</p>
           </div>
           <div className="w-32">
             <NumberStepper
@@ -304,7 +304,7 @@ export default function SettingsPage() {
               return (
                 <div key={key} className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-800/30 last:border-0">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{label}</span>
-                  <div className="bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg flex gap-0.5 text-[10px] font-semibold w-40">
+                  <div className="bg-slate-100 dark:bg-slate-950 p-0.5 rounded-lg flex gap-0.5 text-[10px] font-semibold w-52">
                     <button
                       type="button"
                       onClick={() => {
@@ -322,7 +322,7 @@ export default function SettingsPage() {
                           : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                     >
-                      建議訓練
+                      安排訓練
                     </button>
                     <button
                       type="button"
@@ -331,17 +331,36 @@ export default function SettingsPage() {
                         handleUpdate({
                           shiftPolicyOverrides: {
                             ...currentOverrides,
-                            [key]: 'restOrCardio',
+                            [key]: 'cardio',
                           }
                         });
                       }}
                       className={`flex-1 py-1 text-center rounded transition duration-200 ${
-                        currentPolicy === 'restOrCardio'
+                        currentPolicy === 'cardio'
                           ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
                           : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                     >
-                      有氧/休息
+                      有氧
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentOverrides = settings.shiftPolicyOverrides || {};
+                        handleUpdate({
+                          shiftPolicyOverrides: {
+                            ...currentOverrides,
+                            [key]: 'rest',
+                          }
+                        });
+                      }}
+                      className={`flex-1 py-1 text-center rounded transition duration-200 ${
+                        currentPolicy === 'rest'
+                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      休息
                     </button>
                   </div>
                 </div>

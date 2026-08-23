@@ -45,8 +45,8 @@ describe('shiftPlan', () => {
     test('輸入順序不同 [A, B, C] 與 [C, B, A] 應正規化為同一個 key', () => {
       const o1: DayOverride = { id: '2026-08-17', shiftLetters: ['A', 'B', 'C'], updatedAt: now };
       const o2: DayOverride = { id: '2026-08-17', shiftLetters: ['C', 'B', 'A'], updatedAt: now };
-      expect(classifyShiftCode(o1, undefined)).toBe('restOrCardio');
-      expect(classifyShiftCode(o2, undefined)).toBe('restOrCardio');
+      expect(classifyShiftCode(o1, undefined)).toBe('rest');
+      expect(classifyShiftCode(o2, undefined)).toBe('rest');
     });
 
     test('isDayOff 優先於 shiftLetters', () => {
@@ -61,8 +61,8 @@ describe('shiftPlan', () => {
 
     test('使用自訂 policyOverrides', () => {
       const o: DayOverride = { id: '2026-08-17', shiftLetters: ['A'], updatedAt: now };
-      const overrides = { 'A': 'restOrCardio' as const };
-      expect(classifyShiftCode(o, overrides)).toBe('restOrCardio');
+      const overrides = { 'A': 'rest' as const };
+      expect(classifyShiftCode(o, overrides)).toBe('rest');
     });
   });
 
@@ -103,9 +103,10 @@ describe('shiftPlan', () => {
       expect(result[1].suggestion).toBe('noProgram');
     });
 
-    test('連續 AB 班未達門檻為 restOrCardio，達門檻強制 train 且 cursor 不漏跳', () => {
-      // 假設 8/16（今天）是基準點。8/17 ~ 8/25 連續 9 天 AB 班。門檻是 7 天。
-      // 最近一次重訓是 8/15 (daysSinceWeights=1)
+    test('連續 ABC 班（預設政策=休息）未達門檻為 restOnly，分類達門檻會強制 train 且 cursor 不漏跳', () => {
+      // 假設 8/16（今天）是基準點。8/16 ~ 8/25 連續 10 天 ABC 班。門檻是 7 天。
+      // 課表只有 胸(推)/背(拉)/腿(腿) 三個分類；8/15 只練過推，拉、腿完全沒有歷史紀錄，
+      // 三者幾乎同時到期，會連續觸發 3 天強制訓練把三個分類都補齊。
       const lastWorkout: Workout = {
         id: 'w-last',
         startedAt: new Date('2026-08-15T10:00:00').getTime(),
@@ -135,29 +136,24 @@ describe('shiftPlan', () => {
         templatesById: new Map(),
       });
 
-      // 8/15 練過 (daysSinceWeights = 1)
-      // 8/16: AB -> restOrCardio (daysSinceWeights 增為 2)
-      // 8/17: AB -> restOrCardio (3)
-      // 8/18: AB -> restOrCardio (4)
-      // 8/19: AB -> restOrCardio (5)
-      // 8/20: AB -> restOrCardio (6)
-      // 8/21: AB -> restOrCardio (7) -> 達門檻！強制變 train，建議 slot-0 (胸)，daysSinceWeights 歸零。
-      // 8/22: AB -> restOrCardio (1)
-      // 8/23: AB -> restOrCardio (2)
-      // 8/24: AB -> restOrCardio (3)
-      // 8/25: AB -> restOrCardio (4)
-
       expect(result[1].dateStr).toBe('2026-08-17');
-      expect(result[1].suggestion).toBe('restOrCardio');
+      expect(result[1].suggestion).toBe('restOnly');
 
-      // 8/22 應該是強制訓練胸 (index 6)
+      // 推最早到期（8/15 練過），8/22 應該是強制訓練胸 (index 6)
       expect(result[6].dateStr).toBe('2026-08-22');
       expect(result[6].suggestion).toBe('train');
       expect(result[6].suggestedSlot?.label).toBe('胸');
 
-      // 8/23 應該又變回休息有氧 (index 7)
+      // 拉、腿從未練過，緊接著也到期，8/23、8/24 會連續補訓練
       expect(result[7].dateStr).toBe('2026-08-23');
-      expect(result[7].suggestion).toBe('restOrCardio');
+      expect(result[7].suggestion).toBe('train');
+
+      expect(result[8].dateStr).toBe('2026-08-24');
+      expect(result[8].suggestion).toBe('train');
+
+      // 三個分類都補齊後，8/25 回到休息
+      expect(result[9].dateStr).toBe('2026-08-25');
+      expect(result[9].suggestion).toBe('restOnly');
     });
 
     test('paused 日期不推進 simCursor 且增加 daysSinceWeights', () => {
@@ -250,7 +246,7 @@ describe('shiftPlan', () => {
       });
 
       expect(resultWithWeightOn15[1].dateStr).toBe('2026-08-17');
-      expect(resultWithWeightOn15[1].suggestion).toBe('restOrCardio'); // 未達 3 天門檻，建議休息
+      expect(resultWithWeightOn15[1].suggestion).toBe('restOnly'); // 未達 3 天門檻，建議休息
     });
 
     test('isPast 的日期 suggestion 為 past，且不影響未來模擬', () => {
@@ -676,7 +672,7 @@ describe('shiftPlan', () => {
       const runSingleDay = (shiftLetters: ('A' | 'B' | 'C')[]) => generateMonthPlan({
         dateStrings: ['2026-08-16'],
         activeProgram: program,
-        // 昨天才練過，daysSinceWeights=1，避免「從沒練過→99999」的門檻逃逸讓 ABC 誤判成 train
+        // 昨天才練過推，避免「從沒練過分類」的墊底邏輯干擾這裡要驗證的班別政策本身
         completedWorkouts: [recentWeightWorkout],
         activeWorkoutToday: null,
         overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters, updatedAt: now }]]),
@@ -690,7 +686,39 @@ describe('shiftPlan', () => {
 
       expect(runSingleDay(['A', 'C']).suggestion).toBe('train'); // AC -> train
       expect(runSingleDay(['B', 'C']).suggestion).toBe('train'); // BC -> train
-      expect(runSingleDay(['A', 'B', 'C']).suggestion).toBe('restOrCardio'); // ABC -> restOrCardio
+      expect(runSingleDay(['A', 'B', 'C']).suggestion).toBe('restOnly'); // ABC -> restOnly（預設政策=休息）
+    });
+
+    test('班別政策指定「有氧」或「休息」時直接定案，不再用明天是不是腿日去猜', () => {
+      const recentWeightWorkout: Workout = {
+        id: 'w-recent',
+        startedAt: new Date('2026-08-15T10:00:00').getTime(),
+        status: 'completed',
+        entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }],
+      };
+      // completedSlotIdsThisLap 讓明天輪到腿：如果沒有明確政策，舊邏輯會自動猜「有氧」
+      const programWithLegsNext: TrainingProgram = {
+        ...program,
+        completedSlotIdsThisLap: ['slot-pull', 'slot-push'],
+      };
+
+      const runWithPolicy = (policy: 'cardio' | 'rest') => generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        activeProgram: programWithLegsNext,
+        completedWorkouts: [recentWeightWorkout],
+        activeWorkoutToday: null,
+        overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
+        policyOverrides: { 'ABC': policy },
+        restOverrideDays: 7,
+        exerciseMap: exMap,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+        templatesById: templatesMap,
+      })[0];
+
+      // 明天是腿日，若沒有明確政策舊邏輯會建議「有氧」；這裡兩個政策都要各自固定顯示，不能都變成有氧
+      expect(runWithPolicy('cardio').suggestion).toBe('cardio');
+      expect(runWithPolicy('rest').suggestion).toBe('restOnly');
     });
 
     test('驗收 2-b：AB/AC/BC 連續好幾天都能練時，沒有 urgent 就隔天休息，訓練平均分散不擠成一坨', () => {

@@ -8,9 +8,15 @@ import {
   type WorkoutTemplate,
   type MuscleGroup
 } from '../db/schema';
+import {
+  type SplitCategory,
+  SPLIT_CATEGORIES,
+  classifySlotSplitCategory,
+  classifyWorkoutSplitCategoryByExercises,
+} from './splitRotation';
 
 export type DayPlanSuggestion =
-  | 'train' | 'restOrCardio' | 'cardio' | 'paused'
+  | 'train' | 'restOrCardio' | 'cardio' | 'restOnly' | 'paused'
   | 'programPaused' | 'noProgram' | 'past';
 
 export type SlotCategory = 'legs' | 'chestBack' | 'other';
@@ -64,6 +70,7 @@ export function describeSuggestionLabel(
     case 'train': return slot ? slot.label : '訓練';
     case 'restOrCardio': return '休息/有氧';
     case 'cardio': return '建議有氧';
+    case 'restOnly': return '休息';
     case 'paused': return '今日無法';
     case 'programPaused': return '計畫暫停中';
     case 'noProgram': return '尚未設定課表';
@@ -96,7 +103,7 @@ export const DEFAULT_SHIFT_POLICIES: Record<string, ShiftPolicy> = {
   'AB': 'train',
   'AC': 'train',
   'BC': 'train',
-  'ABC': 'restOrCardio',
+  'ABC': 'rest',
 };
 
 export function classifyShiftCode(
@@ -263,24 +270,6 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     }
   }
 
-  // Find latest completed weight training workout
-  let maxWeightStartedAt = 0;
-  for (const w of completedWorkouts) {
-    const isWeight = w.entries.some(entry => {
-      const ex = exerciseMap.get(entry.exerciseId);
-      return ex ? ex.muscleGroup !== '有氧' : false;
-    });
-    if (isWeight && w.startedAt > maxWeightStartedAt) {
-      maxWeightStartedAt = w.startedAt;
-    }
-  }
-
-  let daysSinceWeights = 99999;
-  if (maxWeightStartedAt > 0) {
-    const wDateStr = getLocalDateStr(maxWeightStartedAt);
-    daysSinceWeights = getCalendarDaysDiff(wDateStr, todayStr);
-  }
-
   const completedSlotIdsThisLap = activeProgram?.completedSlotIdsThisLap ?? [];
   const pool = new Set<string>(
     activeProgram
@@ -301,6 +290,38 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
   const slots = activeProgram ? activeProgram.slots : [];
   const slotCategories = slots.map(s => classifySlotCategory(s, templatesById, exerciseMap));
   const allOther = slotCategories.every(cat => cat === 'other');
+
+  // 拉/推/腿/手 輪替：課表裡實際涵蓋到的分類才需要被「太久沒練」規則盯著，
+  // 課表根本沒有的分類（例如只練三分化，沒有手臂日）不強制。
+  const categoriesInProgram = new Set<SplitCategory>();
+  for (const s of slots) {
+    const cat = classifySlotSplitCategory(s, templatesById, exerciseMap);
+    if (cat) categoriesInProgram.add(cat);
+  }
+
+  function pickFromPoolByCategory(category: SplitCategory): ProgramSlot | null {
+    if (!activeProgram) return null;
+    for (const s of activeProgram.slots) {
+      if (pool.has(s.id) && classifySlotSplitCategory(s, templatesById, exerciseMap) === category) return s;
+    }
+    return null;
+  }
+
+  // 每個分類距上次訓練幾天：用真實歷史紀錄（不受月曆顯示範圍侷限）算出「以今天為基準」的起始值；
+  // 從未練過該分類的，先當作剛歸零（0），不要一開始就判定成逃逸值，避免舊資料/新分類在上線
+  // 第一天就被誤判成全部超過門檻、瞬間強制排滿。
+  const daysSinceCategory: Record<SplitCategory, number> = { '拉': 0, '推': 0, '腿': 0, '手': 0 };
+  for (const cat of SPLIT_CATEGORIES) {
+    let maxStartedAt = 0;
+    for (const w of completedWorkouts) {
+      if (w.deletedAt) continue;
+      if (classifyWorkoutSplitCategoryByExercises(w, exerciseMap) !== cat) continue;
+      if (w.startedAt > maxStartedAt) maxStartedAt = w.startedAt;
+    }
+    if (maxStartedAt > 0) {
+      daysSinceCategory[cat] = getCalendarDaysDiff(getLocalDateStr(maxStartedAt), todayStr);
+    }
+  }
 
   const plannedDays: PlannedDay[] = [];
 
@@ -367,14 +388,14 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       suggestion = 'past';
     } else if (programPaused) {
       suggestion = 'programPaused';
-      daysSinceWeights += 1;
+      for (const cat of SPLIT_CATEGORIES) daysSinceCategory[cat] += 1;
       consecutiveTrainDays = 0;
       yesterdayWasLegsTrain = false;
       // 刻意不動 trainedThisWeek 與 effectiveWeeklyTarget：暫停期間沒有週目標可言，
       // 不必像 forcedRest 那樣扣抵配額。
     } else if (override?.paused || override?.forcedRest) {
       suggestion = 'paused';
-      daysSinceWeights += 1;
+      for (const cat of SPLIT_CATEGORIES) daysSinceCategory[cat] += 1;
       consecutiveTrainDays = 0;
       yesterdayWasLegsTrain = false;
       effectiveWeeklyTarget = Math.max(0, effectiveWeeklyTarget - 1);
@@ -382,6 +403,8 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       const hasExplicitShift = !!override && !override.isDayOff && !!override.shiftLetters && override.shiftLetters.length > 0;
       let wantsTrain: boolean;
       let resolvedPinSlot: ProgramSlot | null = null;
+      // 班別政策直接指定「有氧」或「休息」時（新版三選一，不再自動用「明天是不是腿日」去猜）
+      let pinnedShiftSuggestion: 'cardio' | 'restOnly' | null = null;
 
       if (override?.pinnedSlotId && activeProgram) {
         const candidate = activeProgram.slots.find(s => s.id === override.pinnedSlotId);
@@ -404,6 +427,21 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       const remainingQuota = effectiveWeeklyTarget - trainedThisWeek;
       const urgent = remainingQuota >= daysLeftInWeek; // 剩下的天數已經不夠湊到目標，沒有選擇餘地
 
+      // 規則 d：拉/推/腿/手任一分類距上次訓練達門檻天數，強制排入該分類——
+      // 優先度僅次於使用者當天親自指定（pinnedOutcome／指定部位），連班別建議的休息/有氧、
+      // 週目標已達成都能推翻。多個分類同時逾期時，挑等最久的那個。
+      let forcedCategory: SplitCategory | null = null;
+      if (!override?.pinnedOutcome && !resolvedPinSlot) {
+        let maxGap = -1;
+        for (const cat of SPLIT_CATEGORIES) {
+          if (!categoriesInProgram.has(cat)) continue;
+          if (daysSinceCategory[cat] >= restOverrideDays && daysSinceCategory[cat] > maxGap) {
+            maxGap = daysSinceCategory[cat];
+            forcedCategory = cat;
+          }
+        }
+      }
+
       if (override?.pinnedOutcome) {
         // 指定當天就是休息或有氧，不進訓練池、不看班別/週目標，直接定案
         wantsTrain = false;
@@ -411,10 +449,10 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
         wantsTrain = true;
       } else if (hasExplicitShift) {
         const key = [...override!.shiftLetters!].sort().join('');
-        let policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
-        if (policy === 'restOrCardio' && daysSinceWeights >= restOverrideDays) policy = 'train';
-        if (policy !== 'train') {
+        const policy = policyOverrides?.[key] || DEFAULT_SHIFT_POLICIES[key] || 'train';
+        if (policy === 'cardio' || policy === 'rest') {
           wantsTrain = false;
+          pinnedShiftSuggestion = policy === 'cardio' ? 'cardio' : 'restOnly';
         } else if (remainingQuota <= 0) {
           wantsTrain = false; // 這週目標已達成，班別允許練不代表要練，讓訓練自然分散
         } else if (urgent) {
@@ -438,6 +476,10 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
         }
       }
 
+      if (forcedCategory) {
+        wantsTrain = true;
+      }
+
       // 規則 b：連續訓練天數硬上限，優先度最高，連明確排班都能推翻，也連「指定部位」都推翻
       if (wantsTrain && consecutiveTrainDays >= MAX_CONSECUTIVE_TRAIN_DAYS) {
         wantsTrain = false;
@@ -449,7 +491,7 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
 
       if (wantsTrain && slots.length > 0) {
         suggestion = 'train';
-        suggestedSlot = resolvedPinSlot ?? pickDefaultFromPool();
+        suggestedSlot = resolvedPinSlot ?? (forcedCategory ? pickFromPoolByCategory(forcedCategory) : null) ?? pickDefaultFromPool();
         if (suggestedSlot) {
           pool.delete(suggestedSlot.id);
           if (pool.size === 0) {
@@ -458,8 +500,11 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
           }
         }
         const suggestedCategory = suggestedSlot ? classifySlotCategory(suggestedSlot, templatesById, exerciseMap) : 'other';
+        const suggestedSplitCategory = suggestedSlot ? classifySlotSplitCategory(suggestedSlot, templatesById, exerciseMap) : null;
         yesterdayWasLegsTrain = suggestedCategory === 'legs';
-        daysSinceWeights = 0;
+        for (const cat of SPLIT_CATEGORIES) {
+          daysSinceCategory[cat] = cat === suggestedSplitCategory ? 0 : daysSinceCategory[cat] + 1;
+        }
         consecutiveTrainDays += 1;
         if (!actualWorkout) trainedThisWeek += 1;
       } else {
@@ -469,12 +514,14 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
           suggestion = 'cardio';
         } else if (override?.pinnedOutcome === 'rest') {
           suggestion = 'restOrCardio';
+        } else if (pinnedShiftSuggestion) {
+          suggestion = pinnedShiftSuggestion;
         } else if (activeProgram) {
           suggestion = upcomingCategory === 'legs' ? 'cardio' : 'restOrCardio';
         } else {
           suggestion = 'noProgram';
         }
-        daysSinceWeights += 1;
+        for (const cat of SPLIT_CATEGORIES) daysSinceCategory[cat] += 1;
       }
     }
 

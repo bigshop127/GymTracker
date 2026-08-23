@@ -95,7 +95,7 @@ export interface DayOverride {
   deletedAt?: number;             // 沿用既有軟刪除慣例
 }
 
-export type ShiftPolicy = 'train' | 'restOrCardio';
+export type ShiftPolicy = 'train' | 'cardio' | 'rest';
 
 export interface Settings {
   id: 'global';           // 固定為 'global' 單一紀錄
@@ -107,7 +107,7 @@ export interface Settings {
   vibrateOnRestEnd: boolean;
   locations?: string[];     // 可選地點清單，例如 ['中壢建工', '楊梅WG']
   shiftPolicyOverrides?: Record<string, ShiftPolicy>;  // key 是正規化後的班別代碼，例如 'AB'、'ABC'、'DAYOFF'
-  restOverrideDays?: number;    // 「太久沒重量訓練」的門檻天數，預設 7
+  restOverrideDays?: number;    // 任一分類（拉/推/腿/手）連續沒訓練達此天數，強制排入該分類，預設 7
   weeklyTargetSessions?: number; // 每週目標訓練次數，預設 4
 }
 

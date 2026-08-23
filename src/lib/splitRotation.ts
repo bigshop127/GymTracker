@@ -1,4 +1,12 @@
-import { type Workout, type TrainingProgram, type WorkoutTemplate, type TemplateCategory } from '../db/schema';
+import {
+  type Workout,
+  type TrainingProgram,
+  type WorkoutTemplate,
+  type TemplateCategory,
+  type ProgramSlot,
+  type Exercise,
+  type MuscleGroup,
+} from '../db/schema';
 
 export type SplitCategory = '拉' | '推' | '腿' | '手';
 export const SPLIT_CATEGORIES: SplitCategory[] = ['拉', '推', '腿', '手'];
@@ -123,6 +131,77 @@ export function getMonthlySplitCounts(
     if (category) counts[category] += 1;
   }
   return counts;
+}
+
+/** 肌群 -> 拉/推/腿/手 四分類；核心、有氧判不出來歸屬哪個分化，回 null */
+function muscleGroupToSplit(group: MuscleGroup): SplitCategory | null {
+  switch (group) {
+    case '腿臀': return '腿';
+    case '背': return '拉';
+    case '胸':
+    case '肩': return '推';
+    case '手臂': return '手';
+    default: return null;
+  }
+}
+
+/**
+ * ProgramSlot 的分化分類：優先看 label 文字（例：'腿臀日'），判不出來才退而求其次，
+ * 用對應範本裡出現次數最多的肌群歸類；兩者都判不出來回 null（例如純核心/有氧的 slot）。
+ */
+export function classifySlotSplitCategory(
+  slot: ProgramSlot,
+  templatesById: Map<string, WorkoutTemplate>,
+  exerciseMap: Map<string, Exercise>,
+): SplitCategory | null {
+  const fromLabel = normalizeSplit(slot.label);
+  if (fromLabel) return fromLabel;
+  if (!slot.templateId) return null;
+  const template = templatesById.get(slot.templateId);
+  if (!template) return null;
+  const counts: Record<SplitCategory, number> = { '拉': 0, '推': 0, '腿': 0, '手': 0 };
+  for (const entry of template.entries) {
+    const ex = exerciseMap.get(entry.exerciseId);
+    if (!ex) continue;
+    const cat = muscleGroupToSplit(ex.muscleGroup);
+    if (cat) counts[cat] += 1;
+  }
+  let best: SplitCategory | null = null;
+  let bestCount = 0;
+  for (const cat of SPLIT_CATEGORIES) {
+    if (counts[cat] > bestCount) {
+      best = cat;
+      bestCount = counts[cat];
+    }
+  }
+  return best;
+}
+
+/**
+ * 已完成訓練的分化分類：直接看這次訓練實際做了哪些動作的肌群（多數決），
+ * 不像 getWorkoutSplitCategory 那樣依賴 slot label／訓練標題文字比對——
+ * 排課演算法要能對「沒掛 slot、沒填標題」的隨手訓練一樣正確判斷分類。
+ */
+export function classifyWorkoutSplitCategoryByExercises(
+  workout: Workout,
+  exerciseMap: Map<string, Exercise>,
+): SplitCategory | null {
+  const counts: Record<SplitCategory, number> = { '拉': 0, '推': 0, '腿': 0, '手': 0 };
+  for (const entry of workout.entries) {
+    const ex = exerciseMap.get(entry.exerciseId);
+    if (!ex) continue;
+    const cat = muscleGroupToSplit(ex.muscleGroup);
+    if (cat) counts[cat] += 1;
+  }
+  let best: SplitCategory | null = null;
+  let bestCount = 0;
+  for (const cat of SPLIT_CATEGORIES) {
+    if (counts[cat] > bestCount) {
+      best = cat;
+      bestCount = counts[cat];
+    }
+  }
+  return best;
 }
 
 // ---- 訓練範本五分類（Phase 29）：拉/推/腿/手 沿用 SplitCategory，另加「自訂」接住判不出來的 ----

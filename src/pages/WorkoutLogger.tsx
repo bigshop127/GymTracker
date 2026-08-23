@@ -752,8 +752,9 @@ export default function WorkoutLogger() {
                   );
                 }
 
-                if (showSuggestion && (todayPlan.suggestion === 'restOrCardio' || todayPlan.suggestion === 'cardio')) {
+                if (showSuggestion && (todayPlan.suggestion === 'restOrCardio' || todayPlan.suggestion === 'cardio' || todayPlan.suggestion === 'restOnly')) {
                   const isCardioOnly = todayPlan.suggestion === 'cardio';
+                  const isRestOnly = todayPlan.suggestion === 'restOnly';
                   return (
                     <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 w-full">
                       <div className="space-y-1">
@@ -761,7 +762,7 @@ export default function WorkoutLogger() {
                           訓練建議
                         </span>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          {isCardioOnly ? '腿日前後，建議安排有氧訓練' : '今天班表較累，建議休息或有氧'}
+                          {isCardioOnly ? '腿日前後，建議安排有氧訓練' : isRestOnly ? '今天班表較累，建議純休息' : '今天班表較累，建議休息或有氧'}
                         </p>
                         {todayPlan?.pinConflict && (
                           <span className="text-[10px] text-red-500 font-medium block mt-1">
@@ -775,15 +776,17 @@ export default function WorkoutLogger() {
                           </span>
                         )}
                       </div>
-                      
-                      {/* 放大版有氧按鈕 */}
-                      <button
-                        type="button"
-                        onClick={() => setIsCardioSheetOpen(true)}
-                        className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-sm transition cursor-pointer shadow-sm"
-                      >
-                        🏃 開始有氧訓練
-                      </button>
+
+                      {/* 放大版有氧按鈕：純休息時不顯示 */}
+                      {!isRestOnly && (
+                        <button
+                          type="button"
+                          onClick={() => setIsCardioSheetOpen(true)}
+                          className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl text-sm transition cursor-pointer shadow-sm"
+                        >
+                          🏃 開始有氧訓練
+                        </button>
+                      )}
 
                       {/* 次要連結還是想練 */}
                       {currentSlot && (

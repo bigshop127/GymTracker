@@ -497,6 +497,9 @@ export default function SchedulePage() {
             } else if (suggestion === 'cardio') {
               labelText = '建議有氧';
               labelColorClass = 'text-[8px] font-semibold text-slate-500 dark:text-slate-400';
+            } else if (suggestion === 'restOnly') {
+              labelText = '休息';
+              labelColorClass = 'text-[8px] font-semibold text-slate-500 dark:text-slate-400';
             }
 
             let badgeText = '';
