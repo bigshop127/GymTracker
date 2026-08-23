@@ -1,2 +1,2 @@
 // 每次有改動要手動 +0.1，滿 1.10 進位到下一個整數（1.10 之後變 2.0，以此類推）。
-export const APP_VERSION = '1.4';
+export const APP_VERSION = '1.5';

@@ -40,16 +40,25 @@ declare global {
             options: { type: string; theme: string; size: string; text: string; width: number }
           ) => void;
         };
+        // OAuth2 token client：跟上面的 id（純登入身分）是不同的 API，
+        // 用來換有實際 API 存取權限（例如 Drive）的 access token，需要另外要 scope 同意。
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: { access_token?: string; error?: string }) => void;
+          }) => { requestAccessToken: () => void };
+        };
       };
     };
   }
 }
 
-const GIS_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined;
+export const GIS_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined;
 
 let gisScriptPromise: Promise<void> | null = null;
 
-function loadGisScript(): Promise<void> {
+export function loadGisScript(): Promise<void> {
   if (window.google?.accounts?.id) return Promise.resolve();
   if (!gisScriptPromise) {
     gisScriptPromise = new Promise((resolve, reject) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSettingsStore } from '../store/settings';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
@@ -8,6 +8,8 @@ import { exportBackupData, importBackupData } from '../lib/backup';
 import NumberStepper from '../components/NumberStepper';
 import { DEFAULT_SHIFT_POLICIES } from '../lib/shiftPlan';
 import { shouldUseGis, renderGoogleSignInButton } from '../sync/auth';
+import { getDriveAccessToken } from '../sync/driveAuth';
+import { uploadBackupToDrive, listBackupsFromDrive, downloadBackupFromDrive, type DriveBackupFile } from '../sync/driveBackup';
 
 const SHIFT_LABELS: Record<string, string> = {
   'A': '單班 A (早班)',
@@ -27,6 +29,10 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gisButtonRef = useRef<HTMLDivElement>(null);
   const useGis = shouldUseGis();
+
+  const [isDriveBusy, setIsDriveBusy] = useState(false);
+  const [driveMessage, setDriveMessage] = useState<string | null>(null);
+  const [driveBackups, setDriveBackups] = useState<DriveBackupFile[] | null>(null);
 
   useEffect(() => {
     if (!isFirebaseConfigured || user || !useGis || !gisButtonRef.current) return;
@@ -95,6 +101,56 @@ export default function SettingsPage() {
     };
     reader.readAsText(file);
     e.target.value = ''; // clear input
+  };
+
+  const handleDriveUpload = async () => {
+    setIsDriveBusy(true);
+    setDriveMessage(null);
+    try {
+      const token = await getDriveAccessToken();
+      const file = await uploadBackupToDrive(token);
+      setDriveMessage(`已存到雲端硬碟：${file.name}`);
+    } catch (err) {
+      console.error(err);
+      setDriveMessage(err instanceof Error ? err.message : '上傳到雲端硬碟失敗');
+    } finally {
+      setIsDriveBusy(false);
+    }
+  };
+
+  const handleOpenDrivePicker = async () => {
+    setIsDriveBusy(true);
+    setDriveMessage(null);
+    try {
+      const token = await getDriveAccessToken();
+      const files = await listBackupsFromDrive(token);
+      setDriveBackups(files);
+    } catch (err) {
+      console.error(err);
+      setDriveMessage(err instanceof Error ? err.message : '讀取雲端硬碟備份清單失敗');
+    } finally {
+      setIsDriveBusy(false);
+    }
+  };
+
+  const handleRestoreDriveBackup = async (file: DriveBackupFile) => {
+    if (!window.confirm(`還原「${file.name}」將會完全覆蓋您目前所有的健身動作、訓練紀錄與全域設定，且無法還原。確定要繼續嗎？`)) {
+      return;
+    }
+    setIsDriveBusy(true);
+    try {
+      const token = await getDriveAccessToken();
+      await downloadBackupFromDrive(token, file.id);
+      await initSettings();
+      await initActiveWorkout();
+      alert('資料還原成功！頁面即將重新載入。');
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+      const errMsg = err instanceof Error ? err.message : '格式錯誤';
+      alert(`還原失敗：${errMsg}`);
+      setIsDriveBusy(false);
+    }
   };
 
   return (
@@ -544,6 +600,33 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* 雲端硬碟備份檔：跟上面的「同步」是不同機制——這裡每次上傳都存成新的一份帶
+                  時間戳記的完整快照檔，不會互相覆蓋，下載前可以自己挑要還原哪一份 */}
+              <div className="space-y-2 text-xs border-t border-slate-100 dark:border-slate-800 pt-3">
+                <p className="text-[10px] text-slate-400">
+                  另存一份帶時間戳記的完整備份到你的 Google 雲端硬碟，之後可以挑選任一份還原。
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handleDriveUpload}
+                    disabled={isDriveBusy}
+                    className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/30 hover:bg-teal-100 dark:hover:bg-teal-950/60 text-teal-700 dark:text-teal-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
+                  >
+                    ☁️ 存一份到雲端硬碟
+                  </button>
+                  <button
+                    onClick={handleOpenDrivePicker}
+                    disabled={isDriveBusy}
+                    className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/30 hover:bg-teal-100 dark:hover:bg-teal-950/60 text-teal-700 dark:text-teal-400 text-[11px] font-bold rounded-lg transition disabled:opacity-60"
+                  >
+                    📂 選擇備份下載
+                  </button>
+                </div>
+                {driveMessage && (
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">{driveMessage}</p>
+                )}
+              </div>
+
               <button
                 onClick={signOut}
                 className="w-full py-2.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition"
@@ -585,6 +668,44 @@ export default function SettingsPage() {
           className="hidden"
         />
       </div>
+
+      {/* 雲端硬碟備份清單挑選 */}
+      {driveBackups !== null && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => setDriveBackups(null)}>
+          <div
+            className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl p-4 space-y-3 max-h-[70vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">選擇要還原的備份</span>
+              <button
+                onClick={() => setDriveBackups(null)}
+                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold"
+              >
+                關閉
+              </button>
+            </div>
+
+            {driveBackups.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">雲端硬碟裡還沒有任何備份檔</p>
+            ) : (
+              <div className="space-y-2">
+                {driveBackups.map((file) => (
+                  <button
+                    key={file.id}
+                    onClick={() => handleRestoreDriveBackup(file)}
+                    disabled={isDriveBusy}
+                    className="w-full flex items-center justify-between gap-2 p-3 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-left transition disabled:opacity-60"
+                  >
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{file.name}</span>
+                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold shrink-0">還原</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
