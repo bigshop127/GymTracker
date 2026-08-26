@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { isConfigured } from '../lib/firebase';
 import { signInWithGoogle, signOut, onAuthChange, type User } from '../sync/auth';
 import { downloadAll, uploadAll, type UploadResult } from '../sync/sync';
+import { clearDriveAccessTokenCache } from '../sync/driveAuth';
 import { useActiveWorkoutStore } from './activeWorkout';
 
 type SyncStatus = 'idle' | 'syncing' | 'error';
@@ -75,6 +76,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   signOut: async () => {
     await signOut();
+    clearDriveAccessTokenCache();
     set({ user: null, lastUploadAt: null, lastDownloadAt: null });
   },
 

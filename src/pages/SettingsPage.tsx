@@ -9,7 +9,7 @@ import NumberStepper from '../components/NumberStepper';
 import { DEFAULT_SHIFT_POLICIES } from '../lib/shiftPlan';
 import type { ShiftPolicy } from '../db/schema';
 import { shouldUseGis, renderGoogleSignInButton } from '../sync/auth';
-import { getDriveAccessToken } from '../sync/driveAuth';
+import { getDriveAccessToken, clearDriveAccessTokenCache } from '../sync/driveAuth';
 import { uploadBackupToDrive, listBackupsFromDrive, downloadBackupFromDrive, type DriveBackupFile } from '../sync/driveBackup';
 
 const SHIFT_LABELS: Record<string, string> = {
@@ -113,6 +113,7 @@ export default function SettingsPage() {
       setDriveMessage(`已存到雲端硬碟：${file.name}`);
     } catch (err) {
       console.error(err);
+      clearDriveAccessTokenCache();
       setDriveMessage(err instanceof Error ? err.message : '上傳到雲端硬碟失敗');
     } finally {
       setIsDriveBusy(false);
@@ -128,6 +129,7 @@ export default function SettingsPage() {
       setDriveBackups(files);
     } catch (err) {
       console.error(err);
+      clearDriveAccessTokenCache();
       setDriveMessage(err instanceof Error ? err.message : '讀取雲端硬碟備份清單失敗');
     } finally {
       setIsDriveBusy(false);
@@ -148,6 +150,7 @@ export default function SettingsPage() {
       window.location.reload();
     } catch (err) {
       console.error(err);
+      clearDriveAccessTokenCache();
       const errMsg = err instanceof Error ? err.message : '格式錯誤';
       alert(`還原失敗：${errMsg}`);
       setIsDriveBusy(false);
