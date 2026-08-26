@@ -2,7 +2,7 @@ import { db, type WorkoutEntry, type SetLog } from '../db/schema';
 import { listExercises, addExercise } from '../db/exercises';
 import { saveTemplate } from '../db/templates';
 import { useProgramStore } from '../store/program';
-import { ZONGYUAN_8WEEK_PLAN, ZONGYUAN_PROGRAM_NAME } from '../data/zongyuan-8week-program';
+import { ZONGYUAN_8WEEK_PLAN, ZONGYUAN_PROGRAM_NAME, parseZongYuanWeeklyTargets } from '../data/zongyuan-8week-program';
 
 export async function isZongYuanProgramImported(): Promise<boolean> {
   const programs = await db.programs.toArray();
@@ -52,6 +52,7 @@ export async function importZongYuanProgram(): Promise<void> {
         exerciseId,
         order,
         sets,
+        weeklyTargets: parseZongYuanWeeklyTargets(ex.weekly, ex.week1Sets, ex.week1Reps),
       };
     });
 

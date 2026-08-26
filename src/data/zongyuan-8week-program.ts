@@ -21,6 +21,27 @@ export interface ZongYuanDayPlan {
   exercises: ZongYuanExercisePlan[];
 }
 
+/**
+ * 把 weekly 顯示字串（例如 '4組 × 12下'）轉成匯入範本用的結構化週目標。
+ * 遇到非「N組 × M下」格式的字串（例如 W8 測試週的 1RM 說明），沿用上一筆已解析出的數字當
+ * 組數/次數預設值，並把原文字存進 note——顯示時 note 優先於「N組×M下」。
+ */
+export function parseZongYuanWeeklyTargets(
+  weekly: string[],
+  week1Sets: number,
+  week1Reps: number
+): { sets: number; reps: number; note?: string }[] {
+  let last = { sets: week1Sets, reps: week1Reps };
+  return weekly.map((text) => {
+    const match = text.match(/^(\d+)組\s*×\s*(\d+)下$/);
+    if (match) {
+      last = { sets: Number(match[1]), reps: Number(match[2]) };
+      return { ...last };
+    }
+    return { ...last, note: text };
+  });
+}
+
 export const ZONGYUAN_PROGRAM_NAME = '宗諺 8週4天分化訓練計畫';
 
 export const ZONGYUAN_WEEK_LABELS = ['W1', 'W2', 'W3', 'W4（減量）', 'W5', 'W6', 'W7', 'W8（測試）'];

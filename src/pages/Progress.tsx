@@ -26,7 +26,6 @@ export default function Progress() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [metric, setMetric] = useState<TrendMetric>('e1rm');
-  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -51,7 +50,6 @@ export default function Progress() {
 
   const handleSelectExercise = (exercise: Exercise) => {
     setSelectedExercise(exercise);
-    setIsSelectorOpen(false);
     // 有氧動作自動切換到時長指標
     if (exercise.muscleGroup === '有氧') {
       setMetric('cardioMinutes');
@@ -133,7 +131,7 @@ export default function Progress() {
       {/* 動作選擇 */}
       {selectedExercise ? (
         <div
-          onClick={() => setIsSelectorOpen(true)}
+          onClick={() => setSelectedExercise(null)}
           className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-500 hover:shadow-md transition duration-200"
         >
           <div>
@@ -153,18 +151,7 @@ export default function Progress() {
           </span>
         </div>
       ) : (
-        <div
-          onClick={() => setIsSelectorOpen(true)}
-          className="bg-indigo-50/30 dark:bg-indigo-950/10 border border-dashed border-indigo-200 dark:border-indigo-900/40 rounded-2xl p-6 text-center cursor-pointer hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 transition duration-200"
-        >
-          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center text-xl mx-auto mb-3 shadow-inner">
-            📈
-          </div>
-          <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">點擊選擇健身動作</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-            選擇你想追蹤趨勢的動作，我們將為你分析該動作的歷史表現與最佳紀錄。
-          </p>
-        </div>
+        <ExerciseList mode="select" onSelect={handleSelectExercise} showImages={false} defaultViewMode="list" />
       )}
 
       {selectedExercise && (
@@ -346,26 +333,6 @@ export default function Progress() {
             </div>
           )}
         </>
-      )}
-
-      {/* 動作選擇器 Modal (Slide Up Drawer) */}
-      {isSelectorOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
-          <div className="fixed inset-0" onClick={() => setIsSelectorOpen(false)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">選擇動作</h3>
-              <button onClick={() => setIsSelectorOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="overflow-y-auto max-h-[65vh]">
-              <ExerciseList mode="select" onSelect={handleSelectExercise} />
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

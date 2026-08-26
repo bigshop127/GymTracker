@@ -48,6 +48,9 @@ export interface WorkoutEntry {
   order: number;
   sets: SetLog[];
   defaultRestSeconds?: number;
+  // 範本專用：多週漸進目標，index 0 = 第1週。有值時，依計畫節點開訓（startWorkoutFromProgramSlot）
+  // 會依當週輪數挑對應那筆生成組數，而不是照搬 sets 的固定值。note 有值時顯示 note 取代「N組×M下」。
+  weeklyTargets?: { sets: number; reps: number; note?: string }[];
 }
 
 // ---- 一次訓練 (Workout) ----

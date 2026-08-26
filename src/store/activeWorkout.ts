@@ -9,6 +9,41 @@ import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
 import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry, replaceEntryExercise } from '../lib/workoutEntries';
 
+/**
+ * 依「第幾輪」(cycleNumber，1-indexed) 從 entry.weeklyTargets 挑當週該練的組數/次數；
+ * 沒有 weeklyTargets（一般範本）就照搬 entry.sets 的固定值，行為與改動前完全一樣。
+ * 重量沿用該動作目前記錄的第一組重量（範本本來就會保留上次練的重量當起始建議值）。
+ */
+export function buildEntrySets(entry: WorkoutEntry, cycleNumber: number): SetLog[] {
+  const targets = entry.weeklyTargets;
+  if (!targets || targets.length === 0) {
+    return entry.sets.map((setLog) => ({
+      id: crypto.randomUUID(),
+      weight: setLog.weight,
+      reps: setLog.reps,
+      isWarmup: setLog.isWarmup,
+      completed: false,
+      createdAt: Date.now(),
+      ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
+      ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
+      ...(setLog.calories !== undefined && { calories: setLog.calories }),
+      ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
+    }));
+  }
+
+  const weekIdx = Math.min(Math.max(cycleNumber - 1, 0), targets.length - 1);
+  const target = targets[weekIdx];
+  const baseWeight = entry.sets[0]?.weight ?? 0;
+  return Array.from({ length: target.sets }, () => ({
+    id: crypto.randomUUID(),
+    weight: baseWeight,
+    reps: target.reps,
+    isWarmup: false,
+    completed: false,
+    createdAt: Date.now(),
+  }));
+}
+
 interface ActiveWorkoutState {
   activeWorkout: Workout | null;
   isLoading: boolean;
@@ -567,18 +602,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
             : {}),
           order: entry.order,
           defaultRestSeconds: entry.defaultRestSeconds,
-          sets: entry.sets.map((setLog) => ({
-            id: crypto.randomUUID(),
-            weight: setLog.weight,
-            reps: setLog.reps,
-            isWarmup: setLog.isWarmup,
-            completed: false,
-            createdAt: Date.now(),
-            ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
-            ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
-            ...(setLog.calories !== undefined && { calories: setLog.calories }),
-            ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
-          })),
+          sets: buildEntrySets(entry, cycleNumber),
         })),
       };
     } else {

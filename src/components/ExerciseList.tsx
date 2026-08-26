@@ -12,6 +12,10 @@ const EQUIPMENTS: Equipment[] = ['槓鈴', '啞鈴', '機械', '纜繩', '徒手
 interface ExerciseListProps {
   mode: 'manage' | 'select';
   onSelect?: (exercise: Exercise) => void;
+  /** 是否顯示動作縮圖／照片，預設 true。false 時一律顯示肌群 icon，不打圖片來源。 */
+  showImages?: boolean;
+  /** select 模式的初始顯示方式，預設 'grid'。 */
+  defaultViewMode?: 'grid' | 'list';
 }
 
 // ── 縮圖（列表模式用）────────────────────────────────────────────
@@ -19,13 +23,14 @@ interface ExerciseThumbProps {
   exerciseName: string;
   muscleGroup: MuscleGroup;
   size?: 'md' | 'lg';
+  showImage?: boolean;
 }
 
-function ExerciseThumb({ exerciseName, muscleGroup, size = 'md' }: ExerciseThumbProps) {
+function ExerciseThumb({ exerciseName, muscleGroup, size = 'md', showImage = true }: ExerciseThumbProps) {
   const [imgError, setImgError] = useState(false);
   const qcard = getExerciseQCard(exerciseName);
   const imgSrc = qcard ?? (getExerciseImages(exerciseName)[0] as string | undefined);
-  const hasImage = !!imgSrc;
+  const hasImage = showImage && !!imgSrc;
   const dim = size === 'lg' ? 'w-16 h-16' : 'w-12 h-12';
   const iconDim = size === 'lg' ? 'w-8 h-8' : 'w-6 h-6';
 
@@ -67,14 +72,15 @@ function ExerciseThumb({ exerciseName, muscleGroup, size = 'md' }: ExerciseThumb
 interface ExerciseGridCardProps {
   ex: Exercise;
   onSelect: (ex: Exercise) => void;
+  showImage?: boolean;
 }
 
-function ExerciseGridCard({ ex, onSelect }: ExerciseGridCardProps) {
+function ExerciseGridCard({ ex, onSelect, showImage = true }: ExerciseGridCardProps) {
   const [imgError, setImgError] = useState(false);
   const color = MUSCLE_COLORS[ex.muscleGroup];
   const qcard = getExerciseQCard(ex.name);
   const imgSrc = qcard ?? (getExerciseImages(ex.name)[0] as string | undefined);
-  const hasImage = !!imgSrc && !imgError;
+  const hasImage = showImage && !!imgSrc && !imgError;
   const markup = getMuscleIcon(ex.muscleGroup);
 
   return (
@@ -183,13 +189,13 @@ function ManageGridCard({ ex, onTap }: ManageGridCardProps) {
 }
 
 // ── 主元件 ───────────────────────────────────────────────────────
-export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
+export default function ExerciseList({ mode, onSelect, showImages = true, defaultViewMode = 'grid' }: ExerciseListProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | '全部'>('全部');
   const [selectedSub, setSelectedSub] = useState<ArmSubGroup | '全部'>('全部');
   const [detailEx, setDetailEx] = useState<Exercise | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(defaultViewMode);
 
   // Form State for Add / Edit
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -409,7 +415,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
         // ── Select Grid ──
         <div className="grid grid-cols-2 gap-3">
           {filteredExercises.map((ex) => (
-            <ExerciseGridCard key={ex.id} ex={ex} onSelect={onSelect!} />
+            <ExerciseGridCard key={ex.id} ex={ex} onSelect={onSelect!} showImage={showImages} />
           ))}
         </div>
       ) : (
@@ -423,7 +429,7 @@ export default function ExerciseList({ mode, onSelect }: ExerciseListProps) {
             >
               <div className="p-3.5 flex justify-between items-center gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <ExerciseThumb exerciseName={ex.name} muscleGroup={ex.muscleGroup} size="md" />
+                  <ExerciseThumb exerciseName={ex.name} muscleGroup={ex.muscleGroup} size="md" showImage={showImages} />
                   <div className="space-y-1.5 min-w-0">
                     <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{ex.name}</span>
                     <div className="flex gap-1">
