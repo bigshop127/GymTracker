@@ -97,3 +97,12 @@ export function getExerciseQCard(name: string): string | null {
   const slug = EXERCISE_IMAGE_SLUGS[name];
   return slug ? `${import.meta.env.BASE_URL}exercises-q/${slug}.png` : null;
 }
+
+/**
+ * 這個動作名稱有沒有任何配圖（Q 版圖卡或原照片）。
+ * 目前配圖只涵蓋內建動作（依名稱查表），自訂動作一律沒有——
+ * 呼叫端（動作庫「隱藏沒有圖片的自訂動作」篩選）用這個當唯一判斷依據。
+ */
+export function hasExerciseImage(name: string): boolean {
+  return getExerciseQCard(name) !== null || getExerciseImages(name).length > 0;
+}

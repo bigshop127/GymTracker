@@ -15,7 +15,7 @@ import { getLocationColor } from '../lib/locationStyle';
 import { rpeToShortLabel } from '../lib/rpe';
 import { buildCalendarGrid } from '../lib/shiftPlan';
 import { useProgramStore } from '../store/program';
-import { getWorkoutSplitCategory, SPLIT_CATEGORIES, type SplitCategory } from '../lib/splitRotation';
+import { getWorkoutSplitCategory, SPLIT_CATEGORIES, SPLIT_CATEGORY_HEX, type SplitCategory } from '../lib/splitRotation';
 
 type HistoryGroupCategory = SplitCategory | '其他';
 const HISTORY_GROUP_CATEGORIES: HistoryGroupCategory[] = [...SPLIT_CATEGORIES, '其他'];
@@ -580,14 +580,22 @@ export default function History() {
                   >
                     {cell.dayNum}
                     {/* 當天練的是什麼（推/拉/腿/手類別，判不出來就退回主要部位文字），
-                        取代原本只有小圖示/圓點看不出內容的問題；仍判不出任何文字時退回地點色小圓點。 */}
+                        取代原本只有小圖示/圓點看不出內容的問題；不同類別用不同顏色一眼區分
+                        （地點色改用文字下方那顆小圓點表示，不再跟類別共用同一個顏色來源，
+                        否則同地點練不同部位會一直顯示同一種顏色，看不出差異）。 */}
                     {hasWorkouts && !isSelected && (() => {
                       const summary = getDaySummary(workoutsByDate[cell.dateStr], exMap);
-                      const color = getLocationColor(summary.location);
-                      const label = getDayTrainedLabel(summary, activeProgram);
-                      return label
-                        ? <span className="absolute bottom-1 text-[9px] font-extrabold leading-none" style={{ color }}>{label}</span>
-                        : <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />;
+                      const locationColor = getLocationColor(summary.location);
+                      const { text: label, category } = getDayTrainedLabel(summary, activeProgram);
+                      const labelColor = category ? SPLIT_CATEGORY_HEX[category] : locationColor;
+                      return label ? (
+                        <span className="absolute bottom-2.5 flex flex-col items-center gap-0.5">
+                          <span className="text-[9px] font-extrabold leading-none" style={{ color: labelColor }}>{label}</span>
+                          <span className="w-1 h-1 rounded-full" style={{ backgroundColor: locationColor }} />
+                        </span>
+                      ) : (
+                        <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: locationColor }} />
+                      );
                     })()}
                   </button>
                 );
@@ -613,6 +621,16 @@ export default function History() {
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#cbd5e1' }} />
               <span>無地點</span>
             </div>
+          </div>
+
+          {/* 訓練類別顏色圖例（日曆格子裡的文字顏色＝類別，小圓點才是上面那組地點色） */}
+          <div className="flex flex-wrap justify-center gap-4 text-[10px] font-semibold text-slate-400 py-1 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-800/50">
+            {SPLIT_CATEGORIES.map((cat) => (
+              <div key={cat} className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SPLIT_CATEGORY_HEX[cat] }} />
+                <span>{cat}</span>
+              </div>
+            ))}
           </div>
 
           {/* 當日訓練列表 */}

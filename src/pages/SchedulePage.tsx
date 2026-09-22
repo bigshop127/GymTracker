@@ -483,7 +483,7 @@ export default function SchedulePage() {
               // 而不是只有一顆看不出內容的小圖示——旁邊再點一顆地點色小圓點當輔助線索。
               const summary = getDaySummary([actualWorkout], exerciseMap);
               locationDotColor = getLocationColor(summary.location);
-              labelText = getDayTrainedLabel(summary, activeProgram);
+              labelText = getDayTrainedLabel(summary, activeProgram).text;
               labelColorClass = 'text-[9px] font-extrabold text-white';
             } else if (isPast) {
               // past without workout: blank

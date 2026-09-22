@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { type Exercise, type MuscleGroup, type Equipment, type ArmSubGroup } from '../db/schema';
 import { listExercises, addExercise, updateExercise, deleteExercise } from '../db/exercises';
-import { getExerciseImages, getExerciseQCard } from '../data/exercise-images';
+import { getExerciseImages, getExerciseQCard, hasExerciseImage } from '../data/exercise-images';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { MUSCLE_COLORS } from '../data/muscle-colors';
 import { sortExercisesForDisplay } from '../lib/exerciseOrder';
@@ -196,6 +196,10 @@ export default function ExerciseList({ mode, onSelect, showImages = true, defaul
   const [selectedSub, setSelectedSub] = useState<ArmSubGroup | '全部'>('全部');
   const [detailEx, setDetailEx] = useState<Exercise | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(defaultViewMode);
+  // manage 模式（動作庫）預設隱藏「沒有配圖的自訂動作」——內建動作都有圖，只有自訂的會沒有，
+  // 這類卡片在網格裡看起來全部長得一樣（只剩一顆部位小圖示），容易越存越多份也看不出差異。
+  // 開關留著讓使用者需要管理／刪除這些動作時還是找得到，不是永久藏起來。
+  const [showImagelessCustom, setShowImagelessCustom] = useState(false);
 
   // Form State for Add / Edit
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -226,15 +230,24 @@ export default function ExerciseList({ mode, onSelect, showImages = true, defaul
     setSelectedSub('全部');
   };
 
+  // 只在 manage 模式套用「隱藏沒圖片的自訂動作」——select 模式（訓練中挑動作/替代）
+  // 本來就需要找得到自己的自訂動作，不受這個顯示篩選影響。
+  const imagelessCustomCount = useMemo(
+    () => exercises.filter((ex) => ex.isCustom && !hasExerciseImage(ex.name)).length,
+    [exercises]
+  );
+
   const filteredExercises = useMemo(() => {
     const filtered = exercises.filter((ex) => {
       const matchesSearch = ex.name.toLowerCase().includes(search.toLowerCase());
       const matchesMuscle = selectedMuscle === '全部' || ex.muscleGroup === selectedMuscle;
       const matchesSub = selectedMuscle !== '手臂' || selectedSub === '全部' || ex.subGroup === selectedSub;
-      return matchesSearch && matchesMuscle && matchesSub;
+      const matchesImageFilter =
+        mode !== 'manage' || showImagelessCustom || !ex.isCustom || hasExerciseImage(ex.name);
+      return matchesSearch && matchesMuscle && matchesSub && matchesImageFilter;
     });
     return sortExercisesForDisplay(filtered);
-  }, [exercises, search, selectedMuscle, selectedSub]);
+  }, [exercises, search, selectedMuscle, selectedSub, mode, showImagelessCustom]);
 
   const handleOpenAdd = () => {
     setEditingExercise(null);
@@ -261,15 +274,26 @@ export default function ExerciseList({ mode, onSelect, showImages = true, defaul
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim()) {
+    const trimmedName = formName.trim();
+    if (!trimmedName) {
       setFormError('請輸入動作名稱');
+      return;
+    }
+    // 防呆：新增/改名時如果已經有同名動作（不分大小寫、去頭尾空白），擋下來不建立重複的一筆，
+    // 避免「動作庫」裡同一個動作越存越多份看不出圖片也分不出差異（歷史真的踩過這個坑）。
+    const nameLower = trimmedName.toLowerCase();
+    const duplicate = exercises.find(
+      (ex) => ex.id !== editingExercise?.id && ex.name.trim().toLowerCase() === nameLower
+    );
+    if (duplicate) {
+      setFormError(`已經有同名的動作「${duplicate.name}」了，不會建立重複的一筆`);
       return;
     }
     const subGroupVal = formMuscle === '手臂' ? (formSub || undefined) : undefined;
     try {
       if (editingExercise) {
         await updateExercise(editingExercise.id, {
-          name: formName.trim(),
+          name: trimmedName,
           muscleGroup: formMuscle,
           equipment: formEquipment,
           notes: formNotes.trim() || undefined,
@@ -277,7 +301,7 @@ export default function ExerciseList({ mode, onSelect, showImages = true, defaul
         });
       } else {
         await addExercise({
-          name: formName.trim(),
+          name: trimmedName,
           muscleGroup: formMuscle,
           equipment: formEquipment,
           notes: formNotes.trim() || undefined,
@@ -400,6 +424,22 @@ export default function ExerciseList({ mode, onSelect, showImages = true, defaul
           </button>
         )}
       </div>
+
+      {/* 沒圖片的自訂動作預設隱藏，但留個開關方便找回來管理／刪除（例如清掉不小心建立的重複動作）*/}
+      {mode === 'manage' && imagelessCustomCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowImagelessCustom((v) => !v)}
+          className={`w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-[11px] font-semibold transition ${
+            showImagelessCustom
+              ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40'
+              : 'bg-slate-50 dark:bg-slate-950 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800'
+          }`}
+        >
+          <span>沒有圖片的自訂動作（{imagelessCustomCount} 筆）已{showImagelessCustom ? '顯示' : '隱藏'}</span>
+          <span className="underline">{showImagelessCustom ? '隱藏' : '顯示'}</span>
+        </button>
+      )}
 
       {/* 動作列表 / 網格 */}
       {filteredExercises.length === 0 ? (

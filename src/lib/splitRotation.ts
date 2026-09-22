@@ -11,6 +11,15 @@ import {
 export type SplitCategory = '拉' | '推' | '腿' | '手';
 export const SPLIT_CATEGORIES: SplitCategory[] = ['拉', '推', '腿', '手'];
 
+// 不同訓練類別要用不同顏色一眼區分（日曆格子文字用）。刻意避開 locationStyle.ts
+// 已經用掉的藍/紅（中壢建工/楊梅WG），不然同一格「地點小圓點」跟「類別文字」撞色會混淆。
+export const SPLIT_CATEGORY_HEX: Record<SplitCategory, string> = {
+  拉: '#10b981', // emerald-500
+  推: '#f59e0b', // amber-500
+  腿: '#8b5cf6', // violet-500
+  手: '#06b6d4', // cyan-500
+};
+
 /** 把 slot label 或訓練標題正規化成四類之一；判不出來回 null */
 export function normalizeSplit(text: string | undefined): SplitCategory | null {
   if (!text) return null;

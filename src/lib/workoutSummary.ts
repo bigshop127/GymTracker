@@ -1,5 +1,5 @@
 import type { Workout, Exercise, MuscleGroup, TrainingProgram } from '../db/schema';
-import { getWorkoutSplitCategory } from './splitRotation';
+import { getWorkoutSplitCategory, type SplitCategory } from './splitRotation';
 
 /** 由動作清單建立 id → Exercise 查表 */
 export function buildExerciseMap(exercises: Exercise[]): Map<string, Exercise> {
@@ -102,11 +102,13 @@ export function getDaySummary(dayWorkouts: Workout[], exMap: Map<string, Exercis
  * 取代原本只有小圖示/圓點看不出內容的問題。
  * 優先權：代表訓練所屬的推/拉/腿/手類別（跟班表/歷史既有的分類統計同一套判斷）
  * → 判不出類別就退回代表訓練的主要部位（胸/背/腿臀/肩/手臂/核心/有氧）→ 都沒有就回傳空字串。
+ * 一併回傳 category，讓呼叫端可以依訓練類別（而不是地點）上色，
+ * 不同類別才能一眼區分開來（地點色留給另外的小圓點用）。
  */
 export function getDayTrainedLabel(
   summary: { primaryMuscle?: MuscleGroup; workout?: Workout },
   program: TrainingProgram | null
-): string {
+): { text: string; category: SplitCategory | null } {
   const category = summary.workout ? getWorkoutSplitCategory(summary.workout, program) : null;
-  return category ?? summary.primaryMuscle ?? '';
+  return { text: category ?? summary.primaryMuscle ?? '', category };
 }
