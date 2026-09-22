@@ -20,6 +20,17 @@ export const SPLIT_CATEGORY_HEX: Record<SplitCategory, string> = {
   手: '#06b6d4', // cyan-500
 };
 
+// 日曆格子「整格底色」用（比純文字上色明顯很多，深色/淺色主題都要夠清楚，
+// 所以走跟 shiftPlan.ts 的 SHIFT_CODE_CELL_BG_CLASSES 同一套寫法：淺色主題用淡色調 -100，
+// 深色主題用半透明的 -800/50，色相對齊 SPLIT_CATEGORY_HEX）。
+// ⚠️ Tailwind 只認靜態 class 字串，不可動態拼接。
+export const SPLIT_CATEGORY_CELL_BG_CLASSES: Record<SplitCategory, string> = {
+  拉: 'bg-emerald-100 dark:bg-emerald-800/50',
+  推: 'bg-amber-100 dark:bg-amber-800/50',
+  腿: 'bg-violet-100 dark:bg-violet-800/50',
+  手: 'bg-cyan-100 dark:bg-cyan-800/50',
+};
+
 /** 把 slot label 或訓練標題正規化成四類之一；判不出來回 null */
 export function normalizeSplit(text: string | undefined): SplitCategory | null {
   if (!text) return null;
