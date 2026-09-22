@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { useSettingsStore } from '../store/settings';
 import { useRestTimerStore } from '../store/restTimer';
@@ -25,6 +27,7 @@ import {
 import { MUSCLE_ORDER } from '../lib/exerciseOrder';
 import NumberStepper from '../components/NumberStepper';
 import ExerciseList from '../components/ExerciseList';
+import SortableExerciseTab from '../components/SortableExerciseTab';
 import SheetHeader from '../components/SheetHeader';
 import ProgramFormSheet from '../components/ProgramFormSheet';
 import { useProgramStore } from '../store/program';
@@ -59,6 +62,7 @@ export default function WorkoutLogger() {
     replaceEntryExercise,
     addAlternativeToEntry,
     removeAlternativeFromEntry,
+    reorderEntries,
   } = useActiveWorkoutStore();
 
   const { settings } = useSettingsStore();
@@ -274,6 +278,22 @@ export default function WorkoutLogger() {
     }
     return activeWorkout.entries[0].id;
   }, [activeWorkout, selectedEntryId]);
+
+  // 動作分頁列拖曳排序：按住不放 150ms 才進入拖曳模式，快速點擊／橫向滑動瀏覽維持原本行為不受影響
+  const tabDragSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 150, tolerance: 8 },
+    })
+  );
+
+  const handleTabDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!activeWorkout || !over || active.id === over.id) return;
+    const oldIndex = activeWorkout.entries.findIndex((e) => e.id === active.id);
+    const newIndex = activeWorkout.entries.findIndex((e) => e.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    reorderEntries(arrayMove(activeWorkout.entries, oldIndex, newIndex));
+  };
 
   // 取得動作庫以供顯示對應動作資訊 (僅在動作個數改變時更新，以避免每次鍵盤輸入重複讀取 DB)
   useEffect(() => {
@@ -1109,46 +1129,26 @@ export default function WorkoutLogger() {
             />
           </div>
 
-          {/* 頂部分頁列 */}
+          {/* 頂部分頁列：按住不放可拖曳左右換順序 */}
           <div className="flex items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-            <div className="flex-1 min-w-0 overflow-x-auto flex gap-2 pr-2 pb-1 whitespace-nowrap">
-              {activeWorkout.entries.map((entry) => {
-                const ex = allExercises.find((e) => e.id === entry.exerciseId);
-                const isSelected = entry.id === activeEntryId;
-                const hasAlt = entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1;
-                
-                // 計算完成度
-                const totalSets = entry.sets.length;
-                const completedSets = entry.sets.filter((s) => s.completed).length;
-                const isAllCompleted = totalSets > 0 && completedSets === totalSets;
-                
-                return (
-                  <button
-                    key={entry.id}
-                    onClick={() => setSelectedEntryId(entry.id)}
-                    className={`shrink-0 px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition select-none cursor-pointer ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                        : 'bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className={ex ? '' : 'text-amber-600 dark:text-amber-500'}>
-                      {ex ? ex.name : '⚠ 未知動作'}
-                    </span>
-                    {hasAlt && <span className="opacity-75">⇄</span>}
-                    {totalSets > 0 && (
-                      isAllCompleted ? (
-                        <span className="text-emerald-500 font-bold">●</span>
-                      ) : (
-                        <span className={`text-[10px] ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
-                          {completedSets}/{totalSets}
-                        </span>
-                      )
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <DndContext sensors={tabDragSensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
+              <SortableContext items={activeWorkout.entries.map((e) => e.id)} strategy={horizontalListSortingStrategy}>
+                <div className="flex-1 min-w-0 overflow-x-auto flex gap-2 pr-2 pb-1 whitespace-nowrap">
+                  {activeWorkout.entries.map((entry) => {
+                    const ex = allExercises.find((e) => e.id === entry.exerciseId);
+                    return (
+                      <SortableExerciseTab
+                        key={entry.id}
+                        entry={entry}
+                        exercise={ex}
+                        isSelected={entry.id === activeEntryId}
+                        onSelect={() => setSelectedEntryId(entry.id)}
+                      />
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
             {/* 尾端 ＋ 分頁 */}
             <button
               onClick={() => {

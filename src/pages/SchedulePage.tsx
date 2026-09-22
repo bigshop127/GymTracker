@@ -470,6 +470,7 @@ export default function SchedulePage() {
             const isPast = cell.dateStr < todayDateStr;
             const isToday = cell.dateStr === todayDateStr;
             const actualWorkout = plannedDay.actualWorkout;
+            const hasWorkout = Boolean(actualWorkout);
             const suggestion = plannedDay.suggestion;
             const suggestedSlot = plannedDay.suggestedSlot;
             const override = plannedDay.override;
@@ -518,6 +519,25 @@ export default function SchedulePage() {
             const pinnedSlot = activeProgram?.slots.find((s) => s.id === override?.pinnedSlotId);
             const pinBadgeText = pinnedSlot ? pinnedSlot.label.charAt(0) : '';
 
+            // 已完成訓練是「一眼看出來」的最重要資訊，優先權蓋過班別色與「今天」淡色，
+            // 只有拖曳批次選取中的高亮框比它更優先。
+            let cellStateClasses: string;
+            if (isRangeSelecting && cell.dateStr && rangeMinDate && rangeMaxDate && cell.dateStr >= rangeMinDate && cell.dateStr <= rangeMaxDate) {
+              cellStateClasses = 'bg-indigo-100/50 dark:bg-indigo-900/30 ring-2 ring-indigo-400 dark:ring-indigo-500 z-10';
+            } else if (hasWorkout) {
+              cellStateClasses = `bg-emerald-500 dark:bg-emerald-600 ${isToday ? 'ring-2 ring-indigo-400 dark:ring-indigo-300' : ''}`;
+            } else if (isToday) {
+              cellStateClasses = 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800';
+            } else if (badgeCategory) {
+              cellStateClasses = SHIFT_CODE_CELL_BG_CLASSES[badgeCategory];
+            } else {
+              cellStateClasses = 'bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800';
+            }
+
+            const dayNumClass = hasWorkout
+              ? 'text-[10px] font-bold text-white'
+              : 'text-[10px] font-bold text-slate-700 dark:text-slate-300';
+
             return (
               <button
                 key={cell.dateStr}
@@ -543,17 +563,14 @@ export default function SchedulePage() {
                 }}
                 className={`h-12 rounded-xl relative flex flex-col items-center justify-between py-1 transition ${
                   isPast ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800'
-                } ${
-                  isRangeSelecting && cell.dateStr && rangeMinDate && rangeMaxDate && cell.dateStr >= rangeMinDate && cell.dateStr <= rangeMaxDate
-                    ? 'bg-indigo-100/50 dark:bg-indigo-900/30 ring-2 ring-indigo-400 dark:ring-indigo-500 z-10'
-                    : isToday
-                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800'
-                    : badgeCategory
-                    ? SHIFT_CODE_CELL_BG_CLASSES[badgeCategory]
-                    : 'bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
+                } ${cellStateClasses}`}
               >
-                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{cell.dayNum}</span>
+                <span className={dayNumClass}>{cell.dayNum}</span>
+                {hasWorkout && (
+                  <span className="absolute bottom-0.5 right-1 text-[9px] font-extrabold text-white leading-none">
+                    ✓
+                  </span>
+                )}
                 {badgeText && badgeCategory && (
                   <span
                     style={{ backgroundColor: SHIFT_CODE_HEX[badgeCategory] }}
@@ -586,8 +603,10 @@ export default function SchedulePage() {
                 )}
                 <div className="h-4 flex items-center justify-center">
                   {iconHtml ? (
-                    <svg viewBox="0 0 24 24" fill="currentColor" style={{ color: iconColor }}
-                      className="w-3.5 h-3.5" dangerouslySetInnerHTML={{ __html: iconHtml }} />
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/90">
+                      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color: iconColor }}
+                        className="w-3 h-3" dangerouslySetInnerHTML={{ __html: iconHtml }} />
+                    </span>
                   ) : labelText ? (
                     <span className={labelColorClass}>{labelText}</span>
                   ) : null}
@@ -596,6 +615,11 @@ export default function SchedulePage() {
             );
           })}
         </div>
+
+        <p className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 dark:text-slate-500 pt-1">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500 dark:bg-emerald-600" />
+          ✓ = 當日已完成訓練
+        </p>
       </div>
 
       {/* 本月訓練次數統計 */}
