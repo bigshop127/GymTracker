@@ -9,7 +9,7 @@ import { formatWeight } from '../lib/units';
 import { calculateE1rm } from '../lib/e1rm';
 import { useSettingsStore } from '../store/settings';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
-import { buildExerciseMap, getDaySummary } from '../lib/workoutSummary';
+import { buildExerciseMap, getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
 import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
 import { rpeToShortLabel } from '../lib/rpe';
@@ -579,14 +579,14 @@ export default function History() {
                     }`}
                   >
                     {cell.dayNum}
-                    {/* 有訓練的部位圖示或小圓點 */}
+                    {/* 當天練的是什麼（推/拉/腿/手類別，判不出來就退回主要部位文字），
+                        取代原本只有小圖示/圓點看不出內容的問題；仍判不出任何文字時退回地點色小圓點。 */}
                     {hasWorkouts && !isSelected && (() => {
                       const summary = getDaySummary(workoutsByDate[cell.dateStr], exMap);
                       const color = getLocationColor(summary.location);
-                      const markup = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
-                      return markup
-                        ? <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }}
-                            className="absolute bottom-1 w-3.5 h-3.5" dangerouslySetInnerHTML={{ __html: markup }} />
+                      const label = getDayTrainedLabel(summary, activeProgram);
+                      return label
+                        ? <span className="absolute bottom-1 text-[9px] font-extrabold leading-none" style={{ color }}>{label}</span>
                         : <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />;
                     })()}
                   </button>

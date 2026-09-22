@@ -1,4 +1,5 @@
-import type { Workout, Exercise, MuscleGroup } from '../db/schema';
+import type { Workout, Exercise, MuscleGroup, TrainingProgram } from '../db/schema';
+import { getWorkoutSplitCategory } from './splitRotation';
 
 /** 由動作清單建立 id → Exercise 查表 */
 export function buildExerciseMap(exercises: Exercise[]): Map<string, Exercise> {
@@ -65,11 +66,13 @@ export function buildAutoWorkoutTitle(workout: Workout, exMap: Map<string, Exerc
 
 /**
  * 這天的代表：主場 = 總組數最多的那筆（同分取較晚 startedAt）。
- * 回傳其 location 與主要部位（top1）。
+ * 回傳其 location、主要部位（top1）與代表訓練本身（呼叫端可再拿去判斷推/拉/腿/手類別，
+ * 例如 getWorkoutSplitCategory，日曆格子才能顯示「當天練的是什麼」而不是只有小圖示）。
  */
 export function getDaySummary(dayWorkouts: Workout[], exMap: Map<string, Exercise>): {
   location?: string;
   primaryMuscle?: MuscleGroup;
+  workout?: Workout;
 } {
   if (dayWorkouts.length === 0) {
     return {};
@@ -90,5 +93,20 @@ export function getDaySummary(dayWorkouts: Workout[], exMap: Map<string, Exercis
   return {
     location: representative.location,
     primaryMuscle,
+    workout: representative,
   };
+}
+
+/**
+ * 日曆格子用：把 getDaySummary() 的結果換成一句「當天練的是什麼」短文字，
+ * 取代原本只有小圖示/圓點看不出內容的問題。
+ * 優先權：代表訓練所屬的推/拉/腿/手類別（跟班表/歷史既有的分類統計同一套判斷）
+ * → 判不出類別就退回代表訓練的主要部位（胸/背/腿臀/肩/手臂/核心/有氧）→ 都沒有就回傳空字串。
+ */
+export function getDayTrainedLabel(
+  summary: { primaryMuscle?: MuscleGroup; workout?: Workout },
+  program: TrainingProgram | null
+): string {
+  const category = summary.workout ? getWorkoutSplitCategory(summary.workout, program) : null;
+  return category ?? summary.primaryMuscle ?? '';
 }

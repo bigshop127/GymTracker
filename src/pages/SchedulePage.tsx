@@ -26,8 +26,7 @@ import {
   describeSuggestionLabel,
 } from '../lib/shiftPlan';
 import { type DayOverride, type ShiftLetter, type Workout, type Exercise, type WorkoutTemplate } from '../db/schema';
-import { getDaySummary } from '../lib/workoutSummary';
-import { getMuscleIcon } from '../data/muscle-icons';
+import { getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
 import { getLocationColor } from '../lib/locationStyle';
 import { getMonthlySplitCounts, SPLIT_CATEGORIES } from '../lib/splitRotation';
 
@@ -477,13 +476,15 @@ export default function SchedulePage() {
 
             let labelText = '';
             let labelColorClass = '';
-            let iconHtml = null;
-            let iconColor = '';
+            let locationDotColor = '';
 
             if (actualWorkout) {
+              // 已完成訓練：顯示當天練的是什麼（推/拉/腿/手類別，判不出來就退回主要部位），
+              // 而不是只有一顆看不出內容的小圖示——旁邊再點一顆地點色小圓點當輔助線索。
               const summary = getDaySummary([actualWorkout], exerciseMap);
-              iconColor = getLocationColor(summary.location);
-              iconHtml = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
+              locationDotColor = getLocationColor(summary.location);
+              labelText = getDayTrainedLabel(summary, activeProgram);
+              labelColorClass = 'text-[9px] font-extrabold text-white';
             } else if (isPast) {
               // past without workout: blank
             } else if (override?.paused || override?.forcedRest) {
@@ -601,15 +602,11 @@ export default function SchedulePage() {
                     {override.pinnedOutcome === 'cardio' ? '🏃' : '😴'}
                   </span>
                 )}
-                <div className="h-4 flex items-center justify-center">
-                  {iconHtml ? (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/90">
-                      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color: iconColor }}
-                        className="w-3 h-3" dangerouslySetInnerHTML={{ __html: iconHtml }} />
-                    </span>
-                  ) : labelText ? (
-                    <span className={labelColorClass}>{labelText}</span>
-                  ) : null}
+                <div className="h-4 flex items-center justify-center gap-1">
+                  {hasWorkout && locationDotColor && (
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: locationDotColor }} />
+                  )}
+                  {labelText ? <span className={labelColorClass}>{labelText}</span> : null}
                 </div>
               </button>
             );
