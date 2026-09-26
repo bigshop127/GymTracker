@@ -11,7 +11,7 @@
 | 目標 | 自製一個類 [Gymie](https://apps.apple.com/us/app/gymie-fitness-tracker/id6758956867) 的健身訓練紀錄器 |
 | 平台 | **Web PWA**（手機優先、可安裝、離線可用） |
 | 首版範圍 | **精簡 MVP**：動作庫 + 訓練紀錄 + 組間休息計時 + 訓練歷史 + 基本進度圖 |
-| 互動模式 | 規格（Claude 擬）→ 自己寫 code → Claude review |
+| 互動模式 | 2026-09-26 起：規格（Claude 擬、使用者確認）→ Claude 實作＋自我 review → 上線 → 使用者驗收（原「自己寫 code → Claude review」的寫 code 方是 Gemini，已退場） |
 | 儲存策略 | **本機離線優先（IndexedDB）+ 每筆即時自動寫入**；資料層設計成日後可加雲端同步而不需重寫 |
 
 ### 核心設計原則（每個階段都要守）
@@ -220,8 +220,8 @@ GymTracker/
 | Phase 28（v1.22） | 訓練計畫生命週期：重新開始／暫停／終止／封存清單 | `TrainingProgram.status` 擴成 `active/paused/completed/abandoned`＋新增 `pausedAt/accumulatedPausedMs/runNumber/restartedFromProgramId`；純函式層 `src/lib/programLifecycle.ts`；store 拆 `currentProgram`/`activeProgram` 兩欄位讓暫停自動生效（既有讀 `activeProgram` 的程式碼不用改）；新頁 `/programs` 管理目前計畫（暫停/繼續/重新開始/終止）與封存清單（重新啟用/永久刪除）；`shiftPlan.ts` 新增 `programPaused` 建議；`SchedulePage` 移除 early-return 改顯示提示橫幅；表單抽成共用 `ProgramFormSheet`。無 Dexie version bump（純新增選填欄位）。 |
 | Phase 29（v1.23） | 範本分類整理：拉／推／腿／手／自訂 五分類＋兩段式選擇 | 重用既有 `splitRotation.ts` 的 `normalizeSplit` 判斷邏輯（運算單一來源），新增 `TemplateCategory`（`WorkoutTemplate.category?`，選填、手動指定優先）與 `getTemplateCategory`/`groupTemplatesByCategory`；首頁「我的範本」改成 5 顆分類藥丸＋點進去才看全螢幕清單（新到舊排序），有氧範本整批排除在外；清單內每筆範本新增「分類」按鈕；完成訓練另存範本時新增分類選擇（有預選猜測值）；計畫表單的綁定範本下拉選單改用 `<optgroup>` 依分類分組。無 Dexie version bump（純新增選填欄位）。 |
 
-> 一次做一個階段，做完讓 Claude review，過了再進下一階段。
-> **進度（2026-08-17）**：Phase 0–26.1 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.21（Phase 7–26.1）。各階段完成紀錄見 Obsidian `健身APP開發/`。
+> 一次做一個階段，做完自我 review（eslint／build／vitest＋讀變更檔），過了再進下一階段。
+> **進度（2026-08-17）**：Phase 0–26.1 全數完成並上線（https://bigshop127.github.io/GymTracker/ ）：MVP v1.0（Phase 0–6）+ v1.1–v1.21（Phase 7–26.1）。之後的現況見 Obsidian `健身APP開發/GymTracker 目前進度.md`（2026-09-26 起只留這一頁，舊的各階段完成紀錄已整理掉）。
 >
 > **Phase 12 啟用前置作業**（雲端同步需自行設定）：
 > 1. 至 console.firebase.google.com 建立 Firebase 專案
