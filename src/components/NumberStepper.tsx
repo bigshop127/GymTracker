@@ -100,12 +100,12 @@ export default function NumberStepper({
   };
 
   return (
-    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50/50 shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition duration-150 h-9 w-full">
+    <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-slate-50/50 dark:bg-slate-800/50 shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition duration-150 h-9 w-full">
       {/* 減少按鈕 */}
       <button
         type="button"
         onClick={handleDecrement}
-        className="w-8 h-full bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-600 font-bold border-r border-slate-200 select-none transition cursor-pointer flex items-center justify-center shrink-0"
+        className="w-8 h-full bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-600 dark:text-slate-300 font-bold border-r border-slate-200 dark:border-slate-700 select-none transition cursor-pointer flex items-center justify-center shrink-0"
       >
         <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
@@ -120,7 +120,7 @@ export default function NumberStepper({
         onChange={handleInputChange}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        className="w-full text-center text-xs font-semibold text-slate-800 focus:outline-none bg-transparent h-full px-1 min-w-0"
+        className="w-full text-center text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none bg-transparent h-full px-1 min-w-0"
         placeholder="0"
       />
 
@@ -128,7 +128,7 @@ export default function NumberStepper({
       <button
         type="button"
         onClick={handleIncrement}
-        className="w-8 h-full bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-600 font-bold border-l border-slate-200 select-none transition cursor-pointer flex items-center justify-center shrink-0"
+        className="w-8 h-full bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-600 dark:text-slate-300 font-bold border-l border-slate-200 dark:border-slate-700 select-none transition cursor-pointer flex items-center justify-center shrink-0"
       >
         <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5H4.5" />

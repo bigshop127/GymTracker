@@ -10,12 +10,11 @@ import {
   saveTemplate,
 } from '../db/templates';
 import { listExercises } from '../db/exercises';
-import { type Exercise, type WorkoutEntry, type WorkoutTemplate } from '../db/schema';
+import { type Exercise, type WorkoutTemplate } from '../db/schema';
 import { isCardioTemplate } from '../lib/cardioTemplates';
 import { getTemplateCategory, normalizeSplit } from '../lib/splitRotation';
-import { replaceEntryExercise } from '../lib/workoutEntries';
-import ExerciseList from '../components/ExerciseList';
-import NumberStepper from '../components/NumberStepper';
+import { buildBlankTemplateFromProgramDay, isSkippedInWeek, weekTargetOf } from '../lib/programWeeks';
+import ProgramDayEditCard from '../components/ProgramDayEditCard';
 import {
   ZONGYUAN_8WEEK_PLAN,
   ZONGYUAN_WEEK_LABELS,
@@ -23,21 +22,11 @@ import {
   ZONGYUAN_PROGRAM_NAME,
 } from '../data/zongyuan-8week-program';
 
-type WeekTarget = { sets: number; reps: number; note?: string };
-
-interface LiveExerciseRow {
-  entryId: string;
-  exerciseId: string;
-  name: string;
-  weeklyTargets: WeekTarget[];
-}
-
 interface LiveDayPlan {
   kind: 'live';
   slotId: string;
-  templateId: string;
   label: string;
-  exercises: LiveExerciseRow[];
+  template: WorkoutTemplate;
 }
 
 /** 課表這天指到的範本找不到（被刪了／從來沒有）：不能擋住整頁，單獨這天顯示修復選項 */
@@ -51,11 +40,19 @@ interface MissingDayPlan {
 
 type DayPlan = LiveDayPlan | MissingDayPlan;
 
-const DEFAULT_WEEK_TARGET: WeekTarget = { sets: 3, reps: 10 };
+/** 「用這週內容產生空白範本」的選單 */
+interface GenerateSheetState {
+  /** 勾選要產生的天（slotId） */
+  selected: string[];
+  /** 我的範本裡已經有的名稱（同名會提醒） */
+  existingNames: string[];
+  /** 產生完成後的範本名稱 */
+  created?: string[];
+}
 
-function getWeekTarget(targets: WeekTarget[], weekIdx: number): WeekTarget {
-  if (targets.length === 0) return DEFAULT_WEEK_TARGET;
-  return targets[Math.min(weekIdx, targets.length - 1)];
+/** 課表這天這週要做的動作（跳過的不算），照順序 */
+function plannedEntriesOf(template: WorkoutTemplate, weekIdx: number) {
+  return [...template.entries].sort((a, b) => a.order - b.order).filter((e) => !isSkippedInWeek(e, weekIdx));
 }
 
 export default function ProgramGuide() {
@@ -72,8 +69,10 @@ export default function ProgramGuide() {
   const [deletedTemplates, setDeletedTemplates] = useState<Record<string, WorkoutTemplate>>({});
   const [isLiveLoaded, setIsLiveLoaded] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [picker, setPicker] = useState<{ templateId: string; entryId: string | null } | null>(null);
+  // 正在編輯的那天（slot id）；編輯中週次固定，不能切換
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  const [generateSheet, setGenerateSheet] = useState<GenerateSheetState | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   // 範本找不到的那天：「改用其他範本」的選單
   const [slotPicker, setSlotPicker] = useState<{ slotId: string; label: string; templates: WorkoutTemplate[] } | null>(null);
 
@@ -130,18 +129,21 @@ export default function ProgramGuide() {
         });
         continue;
       }
-      const exercises = [...tpl.entries]
-        .sort((a, b) => a.order - b.order)
-        .map((entry) => ({
-          entryId: entry.id,
-          exerciseId: entry.exerciseId,
-          name: exerciseMap.get(entry.exerciseId)?.name ?? '未知動作',
-          weeklyTargets: entry.weeklyTargets ?? [{ sets: entry.sets.length, reps: entry.sets[0]?.reps ?? 0 }],
-        }));
-      days.push({ kind: 'live', slotId: slot.id, templateId: tpl.id, label: slot.label, exercises });
+      days.push({ kind: 'live', slotId: slot.id, label: slot.label, template: tpl });
     }
     return days;
-  }, [showLive, currentProgram, isLiveLoaded, liveTemplates, deletedTemplates, exerciseMap]);
+  }, [showLive, currentProgram, isLiveLoaded, liveTemplates, deletedTemplates]);
+
+  const nameOf = (id: string) => exerciseMap.get(id)?.name ?? '未知動作';
+  const weekLabel = ZONGYUAN_WEEK_LABELS[weekIdx] ?? `W${selectedWeek}`;
+  const liveDayPlans = (liveDays ?? []).filter((d): d is LiveDayPlan => d.kind === 'live');
+  const generatedName = (label: string) => `${label}・${weekLabel}`;
+
+  // 編輯時把週次釘住：計畫進度（自動週次）在編輯中變了也不會換週
+  const startEditing = (slotId: string) => {
+    setManualWeek(selectedWeek);
+    setEditingSlotId(slotId);
+  };
 
   const linkSlotToTemplate = async (slotId: string, templateId: string) => {
     if (!currentProgram) return;
@@ -171,7 +173,7 @@ export default function ProgramGuide() {
     await saveTemplate(template);
     await linkSlotToTemplate(slotId, template.id);
     // 直接打開這天的編輯模式，好接著加動作
-    setEditingTemplateId(template.id);
+    startEditing(slotId);
   };
 
   const handleImport = async () => {
@@ -201,84 +203,52 @@ export default function ProgramGuide() {
     setLiveTemplates((prev) => ({ ...prev, [updated.id]: updated }));
   };
 
-  const handleDeleteEntry = async (templateId: string, entryId: string) => {
-    const tpl = liveTemplates[templateId];
-    if (!tpl) return;
-    if (tpl.entries.length <= 1) {
-      alert('這天至少要留一個動作');
-      return;
-    }
-    if (!window.confirm('確定要移除這個動作嗎？')) return;
-    const entries = [...tpl.entries]
-      .sort((a, b) => a.order - b.order)
-      .filter((e) => e.id !== entryId)
-      .map((e, i) => ({ ...e, order: i }));
-    await persistTemplate({ ...tpl, entries });
+  const handleSaveDay = async (updated: WorkoutTemplate) => {
+    await persistTemplate(updated);
+    setEditingSlotId(null);
   };
 
-  const handleMoveEntry = async (templateId: string, entryId: string, direction: 'up' | 'down') => {
-    const tpl = liveTemplates[templateId];
-    if (!tpl) return;
-    const sorted = [...tpl.entries].sort((a, b) => a.order - b.order);
-    const index = sorted.findIndex((e) => e.id === entryId);
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (index < 0 || targetIndex < 0 || targetIndex >= sorted.length) return;
-    [sorted[index], sorted[targetIndex]] = [sorted[targetIndex], sorted[index]];
-    const entries = sorted.map((e, i) => ({ ...e, order: i }));
-    await persistTemplate({ ...tpl, entries });
-  };
-
-  const handleUpdateWeekTarget = async (
-    templateId: string,
-    entryId: string,
-    weekIndex: number,
-    patch: Partial<{ sets: number; reps: number }>
-  ) => {
-    const tpl = liveTemplates[templateId];
-    if (!tpl) return;
-    const entries = tpl.entries.map((e) => {
-      if (e.id !== entryId) return e;
-      const base =
-        e.weeklyTargets && e.weeklyTargets.length === 8
-          ? e.weeklyTargets
-          : Array.from({ length: 8 }, (_, i) => e.weeklyTargets?.[i] ?? { sets: e.sets.length || 3, reps: e.sets[0]?.reps || 10 });
-      const targets = [...base];
-      const current = targets[weekIndex];
-      // 手動調整過的一週，改用單純的組數×次數顯示，不再沿用教練原始備註文字
-      targets[weekIndex] = { sets: patch.sets ?? current.sets, reps: patch.reps ?? current.reps };
-      return { ...e, weeklyTargets: targets };
+  const handleOpenGenerate = async () => {
+    const templates = await listTemplates();
+    setGenerateSheet({
+      selected: liveDayPlans.filter((d) => plannedEntriesOf(d.template, weekIdx).length > 0).map((d) => d.slotId),
+      existingNames: templates.map((t) => t.name),
     });
-    await persistTemplate({ ...tpl, entries });
   };
 
-  const handlePickExercise = async (ex: Exercise) => {
-    if (!picker) return;
-    const tpl = liveTemplates[picker.templateId];
-    if (!tpl) return;
-    let entries: WorkoutEntry[];
-    if (picker.entryId) {
-      // 共用換動作邏輯：替代清單裡的舊 id 一併換掉，不會留下選不到的候選
-      entries = replaceEntryExercise(tpl.entries, picker.entryId, ex.id);
-    } else {
-      const weeklyTargets = Array.from({ length: 8 }, () => ({ ...DEFAULT_WEEK_TARGET }));
-      const newEntry: WorkoutEntry = {
-        id: crypto.randomUUID(),
-        exerciseId: ex.id,
-        order: tpl.entries.length,
-        sets: Array.from({ length: DEFAULT_WEEK_TARGET.sets }, () => ({
-          id: crypto.randomUUID(),
-          weight: 0,
-          reps: DEFAULT_WEEK_TARGET.reps,
-          isWarmup: false,
-          completed: false,
-          createdAt: Date.now(),
-        })),
-        weeklyTargets,
-      };
-      entries = [...tpl.entries, newEntry];
+  const toggleGenerateDay = (slotId: string) => {
+    setGenerateSheet((prev) =>
+      prev
+        ? {
+            ...prev,
+            selected: prev.selected.includes(slotId)
+              ? prev.selected.filter((id) => id !== slotId)
+              : [...prev.selected, slotId],
+          }
+        : prev
+    );
+  };
+
+  const handleGenerate = async () => {
+    if (!generateSheet) return;
+    setIsGenerating(true);
+    try {
+      const created: string[] = [];
+      // createdAt 依課表天數錯開一點，「我的範本」的排序才會跟課表一樣
+      const now = Date.now();
+      const days = liveDayPlans.filter((d) => generateSheet.selected.includes(d.slotId));
+      for (const [i, day] of days.entries()) {
+        const name = generatedName(day.label);
+        await saveTemplate(buildBlankTemplateFromProgramDay(day.template, weekIdx, name, now + i));
+        created.push(name);
+      }
+      setGenerateSheet({ ...generateSheet, created });
+    } catch (err) {
+      console.error('Failed to generate templates from program:', err);
+      alert('產生範本失敗，請稍後再試。');
+    } finally {
+      setIsGenerating(false);
     }
-    await persistTemplate({ ...tpl, entries });
-    setPicker(null);
   };
 
   return (
@@ -307,7 +277,7 @@ export default function ProgramGuide() {
             )}
             {showLive && (
               <p className="text-[11px] text-indigo-500 dark:text-indigo-400 font-semibold">
-                💡 下方各天卡片右上角按「編輯」即可調整動作與組數，改動會直接套用到「訓練」頁。
+                💡 各天卡片右上角按「編輯」可以調整動作、組數和替代動作，儲存時選「套用到全部 8 週」或「只改這週」，會直接套用到「訓練」頁。
               </p>
             )}
             <button
@@ -344,7 +314,8 @@ export default function ProgramGuide() {
               <button
                 key={week}
                 onClick={() => setManualWeek(week)}
-                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                disabled={!!editingSlotId && !isSelected}
+                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                   isSelected
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -355,7 +326,22 @@ export default function ProgramGuide() {
             );
           })}
         </div>
+        {editingSlotId && (
+          <p className="text-[10px] text-slate-400 font-semibold">編輯中不能切換週次，先儲存或取消。</p>
+        )}
       </div>
+
+      {/* 用這週的內容產生空白範本 */}
+      {showLive && liveDayPlans.length > 0 && (
+        <button
+          type="button"
+          onClick={handleOpenGenerate}
+          disabled={!!editingSlotId}
+          className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-40 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-800 transition cursor-pointer"
+        >
+          📋 用 {weekLabel} 的內容產生空白範本
+        </button>
+      )}
 
       {/* 4 天課表卡片 */}
       <div className="space-y-4">
@@ -407,8 +393,23 @@ export default function ProgramGuide() {
                   </div>
                 );
               }
-              const isEditing = editingTemplateId === day.templateId;
-              const dayTotal = day.exercises.reduce((sum, ex) => sum + getWeekTarget(ex.weeklyTargets, weekIdx).sets, 0);
+              if (editingSlotId === day.slotId) {
+                return (
+                  <ProgramDayEditCard
+                    key={day.slotId}
+                    label={day.label}
+                    template={day.template}
+                    weekIdx={weekIdx}
+                    weekLabel={weekLabel}
+                    exerciseMap={exerciseMap}
+                    onCancel={() => setEditingSlotId(null)}
+                    onSave={handleSaveDay}
+                  />
+                );
+              }
+              const planned = plannedEntriesOf(day.template, weekIdx);
+              const skippedCount = day.template.entries.length - planned.length;
+              const dayTotal = planned.reduce((sum, entry) => sum + weekTargetOf(entry, weekIdx).sets, 0);
               return (
                 <div
                   key={day.slotId}
@@ -422,116 +423,56 @@ export default function ProgramGuide() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => setEditingTemplateId(isEditing ? null : day.templateId)}
-                        className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                        onClick={() => startEditing(day.slotId)}
+                        disabled={!!editingSlotId}
+                        className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 transition cursor-pointer"
                       >
-                        {isEditing ? '完成' : '編輯'}
+                        編輯
                       </button>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {day.exercises.map((ex, idx) => {
-                      const target = getWeekTarget(ex.weeklyTargets, weekIdx);
+                    {planned.length === 0 && (
+                      <p className="text-xs text-slate-400 text-center py-2">這週還沒有動作，按「編輯」加動作。</p>
+                    )}
+                    {planned.map((entry) => {
+                      const target = weekTargetOf(entry, weekIdx);
+                      const alternatives = (entry.candidateExerciseIds ?? []).filter((id) => id !== entry.exerciseId);
                       return (
                         <div
-                          key={ex.entryId}
-                          className="py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0 space-y-1.5"
+                          key={entry.id}
+                          className="py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0 space-y-1"
                         >
                           <div className="flex justify-between items-center gap-2">
-                            {isEditing ? (
-                              <button
-                                type="button"
-                                onClick={() => setPicker({ templateId: day.templateId, entryId: ex.entryId })}
-                                className="min-w-0 flex-1 text-left text-xs font-semibold text-indigo-600 dark:text-indigo-400 truncate underline decoration-dotted cursor-pointer"
-                              >
-                                {ex.name}
-                              </button>
-                            ) : (
-                              <p className="min-w-0 flex-1 text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
-                                {ex.name}
-                              </p>
-                            )}
-                            {isEditing ? (
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveEntry(day.templateId, ex.entryId, 'up')}
-                                  disabled={idx === 0}
-                                  className="p-1 text-slate-400 disabled:opacity-30 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                                >
-                                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveEntry(day.templateId, ex.entryId, 'down')}
-                                  disabled={idx === day.exercises.length - 1}
-                                  className="p-1 text-slate-400 disabled:opacity-30 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                                >
-                                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteEntry(day.templateId, ex.entryId)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
-                                >
-                                  <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                                  </svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200 text-right">
-                                {target.note ?? `${target.sets}組 × ${target.reps}下`}
-                              </span>
-                            )}
-                          </div>
-                          {isEditing && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-0.5">
-                                <span className="text-[9px] font-bold text-slate-400 block">{ZONGYUAN_WEEK_LABELS[weekIdx]} 組數</span>
-                                <NumberStepper
-                                  value={target.sets}
-                                  onChange={(v) => handleUpdateWeekTarget(day.templateId, ex.entryId, weekIdx, { sets: v })}
-                                  step={1}
-                                  min={1}
-                                  max={20}
-                                  decimals={0}
-                                />
-                              </div>
-                              <div className="space-y-0.5">
-                                <span className="text-[9px] font-bold text-slate-400 block">次數</span>
-                                <NumberStepper
-                                  value={target.reps}
-                                  onChange={(v) => handleUpdateWeekTarget(day.templateId, ex.entryId, weekIdx, { reps: v })}
-                                  step={1}
-                                  min={1}
-                                  max={50}
-                                  decimals={0}
-                                />
-                              </div>
-                            </div>
-                          )}
-                          {isEditing && target.note && (
-                            <p className="text-[10px] text-amber-600 dark:text-amber-400">
-                              原始教練備註：{target.note}（調整組數/次數後會蓋掉這則備註）
+                            <p className="min-w-0 flex-1 text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                              {nameOf(entry.exerciseId)}
                             </p>
-                          )}
+                            <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200 text-right">
+                              {target.note ?? `${target.sets}組 × ${target.reps}下`}
+                            </span>
+                          </div>
+                          {alternatives.map((altId) => {
+                            const altTarget = weekTargetOf(entry, weekIdx, altId);
+                            return (
+                              <div key={altId} className="flex justify-between items-center gap-2 pl-3">
+                                <p className="min-w-0 flex-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+                                  <span className="text-slate-400 dark:text-slate-500">或 </span>
+                                  {nameOf(altId)}
+                                </p>
+                                <span className="shrink-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400 text-right">
+                                  {altTarget.note ?? `${altTarget.sets}組 × ${altTarget.reps}下`}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })}
                   </div>
-                  {isEditing && (
-                    <button
-                      type="button"
-                      onClick={() => setPicker({ templateId: day.templateId, entryId: null })}
-                      className="w-full py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-300 text-[11px] font-bold rounded-lg border border-dashed border-slate-300 dark:border-slate-700 transition cursor-pointer"
-                    >
-                      ＋ 新增動作
-                    </button>
+                  {skippedCount > 0 && (
+                    <p className="text-[10px] text-slate-400 font-semibold">
+                      {weekLabel} 跳過 {skippedCount} 個動作（按「編輯」可以加回來）
+                    </p>
                   )}
                 </div>
               );
@@ -611,24 +552,109 @@ export default function ProgramGuide() {
         </div>
       </details>
 
-      {/* 換動作／新增動作 picker */}
-      {picker && (
+      {/* 用這週的內容產生空白範本 */}
+      {generateSheet && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-end justify-center">
-          <div className="fixed inset-0" onClick={() => setPicker(null)} />
+          <div className="fixed inset-0" onClick={() => !isGenerating && setGenerateSheet(null)} />
           <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
-                {picker.entryId ? '換成別的動作' : '新增動作'}
-              </h3>
-              <button onClick={() => setPicker(null)} className="text-slate-400 hover:text-slate-600">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">用 {weekLabel} 產生空白範本</h3>
+              <button
+                onClick={() => setGenerateSheet(null)}
+                disabled={isGenerating}
+                className="text-slate-400 hover:text-slate-600"
+                aria-label="關閉"
+              >
                 <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="overflow-y-auto max-h-[65vh]">
-              <ExerciseList mode="select" onSelect={handlePickExercise} />
-            </div>
+            {generateSheet.created ? (
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  ✅ 已加到「我的範本」（{generateSheet.created.length} 份）
+                </p>
+                <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-1 list-disc pl-4">
+                  {generateSheet.created.map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  到訓練頁看我的範本
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenerateSheet(null)}
+                  className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  關閉
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  在「我的範本」新增範本：動作、替代動作、組數×次數照 {weekLabel} 排好，重量留白自己填。之後再改課表不會影響這些範本。
+                </p>
+                <div className="space-y-2">
+                  {liveDayPlans.map((day) => {
+                    const planned = plannedEntriesOf(day.template, weekIdx);
+                    const totalSets = planned.reduce((sum, entry) => sum + weekTargetOf(entry, weekIdx).sets, 0);
+                    const name = generatedName(day.label);
+                    const isChecked = generateSheet.selected.includes(day.slotId);
+                    const isEmpty = planned.length === 0;
+                    return (
+                      <label
+                        key={day.slotId}
+                        className={`flex items-start gap-3 rounded-xl border p-3 transition ${
+                          isEmpty ? 'opacity-50' : 'cursor-pointer'
+                        } ${
+                          isChecked
+                            ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20'
+                            : 'border-slate-200 dark:border-slate-800'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={isEmpty || isGenerating}
+                          onChange={() => toggleGenerateDay(day.slotId)}
+                          className="mt-0.5 w-4 h-4 accent-indigo-600"
+                        />
+                        <span className="min-w-0 space-y-0.5">
+                          <span className="block text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{name}</span>
+                          <span className="block text-[10px] text-slate-400 font-medium">
+                            {isEmpty
+                              ? '這週沒有動作'
+                              : `${planned.length} 個動作 • ${totalSets} 組 • ${planned
+                                  .slice(0, 3)
+                                  .map((e) => nameOf(e.exerciseId))
+                                  .join('、')}${planned.length > 3 ? '…' : ''}`}
+                          </span>
+                          {generateSheet.existingNames.includes(name) && (
+                            <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                              已經有同名範本，會再多一份
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || generateSheet.selected.length === 0}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl shadow-md transition cursor-pointer"
+                >
+                  {isGenerating ? '產生中...' : `產生 ${generateSheet.selected.length} 份範本`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

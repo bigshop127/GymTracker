@@ -76,11 +76,11 @@ interface WorkoutEntry {
   id: string;
   exerciseId: string;     // 對應 Exercise.id（＝這次要記錄的那個，歷史/統計只看它＋sets）
   candidateExerciseIds?: string[];  // 替代動作候選（含當前選定）(v1.10)
-  candidateSets?: { exerciseId: string; sets: SetLog[] }[];  // 沒被選中的替代動作各自的組數/重量 (v2.4)
+  candidateSets?: { exerciseId: string; sets: SetLog[]; weeklyTargets?: WeekTarget[] }[];  // 沒被選中的替代動作各自的組數/重量 (v2.4)；範本裡可有自己的週次目標，缺省跟主動作 (v2.5)
   order: number;          // 在這次訓練中的排序
   sets: SetLog[];
   defaultRestSeconds?: number;
-  weeklyTargets?: { sets: number; reps: number; note?: string }[];  // 範本專用：課表週次漸進
+  weeklyTargets?: { sets: number; reps: number; note?: string }[];  // 範本專用：課表週次漸進；某週 sets=0＝那週跳過這個動作 (v2.5)
 }
 
 // ---- 一次訓練（一個 session）----
@@ -222,6 +222,7 @@ GymTracker/
 | Phase 26.1（v1.21） | 訓練排程隔天分散＋AB/AC/BC 底色改色＋指定休息／有氧 | `generateMonthPlan` 明確排班分支追加「週目標已達成不硬練」＋「沒有 urgent 壓力偏好隔天訓練」，避免連續訓練天數擠成一坨 ＋ AB/AC/BC 底色改用 indigo/green/yellow（原本 rose/orange/pink 色相太集中） ＋ 新增 `DayOverride.pinnedOutcome`（'rest' \| 'cardio'），「指定訓練部位」面板擴充成「指定當天安排」可直接指定休息或有氧。 |
 | Phase 28（v1.22） | 訓練計畫生命週期：重新開始／暫停／終止／封存清單 | `TrainingProgram.status` 擴成 `active/paused/completed/abandoned`＋新增 `pausedAt/accumulatedPausedMs/runNumber/restartedFromProgramId`；純函式層 `src/lib/programLifecycle.ts`；store 拆 `currentProgram`/`activeProgram` 兩欄位讓暫停自動生效（既有讀 `activeProgram` 的程式碼不用改）；新頁 `/programs` 管理目前計畫（暫停/繼續/重新開始/終止）與封存清單（重新啟用/永久刪除）；`shiftPlan.ts` 新增 `programPaused` 建議；`SchedulePage` 移除 early-return 改顯示提示橫幅；表單抽成共用 `ProgramFormSheet`。無 Dexie version bump（純新增選填欄位）。 |
 | v2.4（2026-09-28） | 空白範本＋範本編輯器／課表找不到範本不再卡死＋完成時比對課表／替代動作各自組數／班表刪紀錄 | ①`TemplateEditorSheet`：手動建空白範本、編輯名稱/分類/地點/動作/每組重量次數/替代動作 ②課表頁某天範本被刪時只標那天（復原／改用其他範本／建空白），刪除課表在用的範本會先警告 ③完成訓練時 `diffWorkoutAgainstTemplate` 列出跟範本／課表的差異，選「更新，之後照這樣」（`mergeWorkoutIntoTemplate`，保留 weeklyTargets）或「只有今天」；一組都沒打勾先提醒 ④`WorkoutEntry.candidateSets`：每個替代動作自己的組數，切換時互換、第一次切過去沿用上次紀錄 ⑤班表點日期可查看/刪除當天紀錄（過去日子也可），刪課表訓練會退回課表進度（`revertSlotForDeletedWorkout`）；進行中草稿改虛線「進行中」不再顯示 ✓ ⑥所有全屏/底部彈窗改 z-[60]，不再被底部導覽列蓋住按鈕。無 Dexie version bump（純新增選填欄位）。 |
+| v2.5（2026-09-28） | 課表頁：用某週內容產生空白範本／編輯時選「8 週同步」或「只改這週」／替代動作各自的週次組數 | ①課表頁「用 Wn 的內容產生空白範本」：勾選要的天，照那週的動作、替代、組數×次數建一般範本（重量 0、不帶 weeklyTargets、跳過的動作不放）②課表編輯改成草稿（`ProgramDayEditCard`＋`lib/programWeeks`），按「套用到全部 8 週」＝改過的數字 8 週都一樣、刪掉的 8 週都拿掉、新增的 8 週都有；「只改這週」＝只動那週、刪掉的那週 sets=0 跳過、新增的其他週 0；換動作／替代增減／排序兩種都套 8 週；編輯中不能切週次 ③課表可加替代動作，每個替代可設自己的週次組數×次數（`candidateSets[].weeklyTargets`），開訓時照它自己的週次、重量用範本存的或上次做它的 ④開訓時跳過那週 0 組的動作；完成比對不把跳過的列成「沒做」，「更新課表」原樣保留跳過的動作；改做有自己週次的替代時，更新後週次一起換 ⑤數字加減鈕補上深色主題樣式。無 Dexie version bump。 |
 | Phase 29（v1.23） | 範本分類整理：拉／推／腿／手／自訂 五分類＋兩段式選擇 | 重用既有 `splitRotation.ts` 的 `normalizeSplit` 判斷邏輯（運算單一來源），新增 `TemplateCategory`（`WorkoutTemplate.category?`，選填、手動指定優先）與 `getTemplateCategory`/`groupTemplatesByCategory`；首頁「我的範本」改成 5 顆分類藥丸＋點進去才看全螢幕清單（新到舊排序），有氧範本整批排除在外；清單內每筆範本新增「分類」按鈕；完成訓練另存範本時新增分類選擇（有預選猜測值）；計畫表單的綁定範本下拉選單改用 `<optgroup>` 依分類分組。無 Dexie version bump（純新增選填欄位）。 |
 
 > 一次做一個階段，做完自我 review（eslint／build／vitest＋讀變更檔），過了再進下一階段。
@@ -267,6 +268,7 @@ GymTracker/
 
 8. **底部導覽列是 `fixed z-50`**：任何全屏 Sheet／底部彈窗若也用 `z-50`，最底下約 65px 會被導覽列蓋住——按鈕看得到一半、按不到（範本細項的「開始這份訓練」、歷史明細的「刪除此筆訓練紀錄」都中過）。**彈窗一律 `z-[60]` 以上**，彈窗裡再疊的選單用 `z-[70]`。
 9. **課表的 slot 指到的範本可能被刪（軟刪除）**：讀課表內容時查不到就該「那一天」顯示修復選項，**不能整頁 return null 當成還在載入**（v2.3 以前課表頁就這樣永遠卡在「載入課表中…」）。復原範本要把 `deletedAt` 明寫成 `undefined`（鍵存在），同步才會送 `deleteField()` 清掉雲端的刪除標記。
+10. **課表週次 `sets = 0` 代表「那週跳過」**：凡是「依週次排這天要做什麼」的地方（開訓 `startWorkoutFromProgramSlot`、完成比對、更新課表、產生空白範本、課表頁顯示／當週總計）都要先濾掉 `isSkippedInWeek`；更新課表（`mergeWorkoutIntoTemplate`）不能把沒做的跳過動作刪掉。替代動作的週次一律用 `ownTargetsOf(entry, id)` 取（自己的優先、沒有就主動作的），不要直接讀 `entry.weeklyTargets`。
 
 ---
 

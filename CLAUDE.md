@@ -30,3 +30,4 @@ Vite + React 19 + TS(strict) + **Tailwind v4** + React Router 7 + Zustand 5 + **
 - **weight 一律存 kg**，顯示層才換算。
 - **Dexie 改 schema** 要 `version(n).stores({...})` 只宣告新/改的表，舊 version 不動（防掉資料）。
 - **彈窗 z-index 要高過底部導覽列（z-50）**：全屏 Sheet／底部彈窗一律 `z-[60]`，不然最底下的按鈕會被導覽列蓋住按不到（ROADMAP §6-8）。
+- **課表週次 `sets = 0` ＝那週跳過這個動作**：依週次排內容的地方都要先濾 `isSkippedInWeek`，替代動作的週次用 `ownTargetsOf` 取（ROADMAP §6-10）。

@@ -75,17 +75,27 @@ export function selectEntryExercise(
 
     const stored = entry.candidateSets?.find((c) => c.exerciseId === exerciseId);
     const nextSets = stored ? stored.sets : (fallbackSets ?? defaultAlternativeSets(entry.sets));
+    // 範本（課表）裡替代動作可以有自己的週次目標：跟著一起換；沒有自己的就沿用主動作的
+    const nextTargets = stored?.weeklyTargets ?? entry.weeklyTargets;
+    const keepOldTargets =
+      !!entry.weeklyTargets && JSON.stringify(entry.weeklyTargets) !== JSON.stringify(nextTargets);
     const stash: CandidateSets[] = [
-      ...(entry.candidateSets ?? []).filter(
-        (c) => c.exerciseId !== exerciseId && c.exerciseId !== entry.exerciseId,
-      ),
-      { exerciseId: entry.exerciseId, sets: entry.sets },
+      ...(entry.candidateSets ?? [])
+        .filter((c) => c.exerciseId !== exerciseId && c.exerciseId !== entry.exerciseId)
+        // 原本跟著主動作週次的其他替代：主動作換了，數字照舊不跟著變
+        .map((c) => (keepOldTargets && !c.weeklyTargets ? { ...c, weeklyTargets: entry.weeklyTargets } : c)),
+      {
+        exerciseId: entry.exerciseId,
+        sets: entry.sets,
+        ...(keepOldTargets ? { weeklyTargets: entry.weeklyTargets } : {}),
+      },
     ];
     return {
       ...entry,
       exerciseId,
       sets: nextSets,
       candidateSets: stash,
+      ...(nextTargets ? { weeklyTargets: nextTargets } : {}),
     };
   });
 }

@@ -40,10 +40,19 @@ export interface SetLog {
   assistWeight?: number;     // 輔助重量（kg，正數＝被機器/彈力帶抵銷掉的重量）
 }
 
+// ---- 課表的某一週目標（index 0 = 第1週）。sets = 0 代表「這週不做這個動作」（課表「只改這週」刪掉的）----
+export interface WeekTarget {
+  sets: number;
+  reps: number;
+  note?: string;
+}
+
 // ---- 替代動作自己的組數（用陣列不用 map：動作 id 含「:」與中文，當 Firestore 欄位名不保險）----
 export interface CandidateSets {
   exerciseId: string;
   sets: SetLog[];
+  // 範本專用：這個替代動作在課表裡自己的週次組數/次數；缺省＝跟主動作的 weeklyTargets 一樣
+  weeklyTargets?: WeekTarget[];
 }
 
 // ---- 一次訓練中的某個動作 (WorkoutEntry) ----
@@ -60,7 +69,8 @@ export interface WorkoutEntry {
   defaultRestSeconds?: number;
   // 範本專用：多週漸進目標，index 0 = 第1週。有值時，依計畫節點開訓（startWorkoutFromProgramSlot）
   // 會依當週輪數挑對應那筆生成組數，而不是照搬 sets 的固定值。note 有值時顯示 note 取代「N組×M下」。
-  weeklyTargets?: { sets: number; reps: number; note?: string }[];
+  // 某週 sets = 0 ＝那週跳過這個動作（開訓時不會出現）。
+  weeklyTargets?: WeekTarget[];
 }
 
 // ---- 一次訓練 (Workout) ----

@@ -17,6 +17,7 @@ import {
   clonePlannedSets,
 } from '../lib/workoutEntries';
 import { getExerciseSessions } from '../lib/exerciseSessions';
+import { buildWeekSets, isSkippedInWeek, programAlternatives, startingWeightOf } from '../lib/programWeeks';
 
 /**
  * 依「第幾輪」(cycleNumber，1-indexed) 從 entry.weeklyTargets 挑當週該練的組數/次數；
@@ -41,16 +42,7 @@ export function buildEntrySets(entry: WorkoutEntry, cycleNumber: number): SetLog
   }
 
   const weekIdx = Math.min(Math.max(cycleNumber - 1, 0), targets.length - 1);
-  const target = targets[weekIdx];
-  const baseWeight = entry.sets[0]?.weight ?? 0;
-  return Array.from({ length: target.sets }, () => ({
-    id: crypto.randomUUID(),
-    weight: baseWeight,
-    reps: target.reps,
-    isWarmup: false,
-    completed: false,
-    createdAt: Date.now(),
-  }));
+  return buildWeekSets(targets[weekIdx], entry.sets[0]?.weight ?? 0);
 }
 
 interface ActiveWorkoutState {
@@ -580,6 +572,25 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     }
 
     if (template) {
+      // 課表「只改這週」刪掉的動作（這週 0 組）不排進來
+      const plannedEntries = [...template.entries]
+        .sort((a, b) => a.order - b.order)
+        .filter((entry) => !isSkippedInWeek(entry, cycleNumber - 1));
+
+      // 替代動作範本裡沒存重量（或存 0）時，用上次實際做它的重量
+      let completedForAlternatives: Workout[] = [];
+      if (plannedEntries.some((entry) => (entry.candidateExerciseIds?.length ?? 0) > 1)) {
+        try {
+          completedForAlternatives = await listCompletedWorkouts();
+        } catch (err) {
+          console.error('Failed to load history for alternative weights:', err);
+        }
+      }
+      const lastWeightOf = (exerciseId: string) => {
+        const last = getExerciseSessions(completedForAlternatives, exerciseId)[0];
+        return last ? startingWeightOf(last.sets) : undefined;
+      };
+
       newWorkout = {
         id: crypto.randomUUID(),
         title: template.name,
@@ -590,12 +601,12 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         programSlotId: slotId,
         programCycleNumber: cycleNumber,
         sourceTemplateId: template.id,
-        entries: template.entries.map((entry) => ({
+        entries: plannedEntries.map((entry, index) => ({
           id: crypto.randomUUID(),
           exerciseId: entry.exerciseId,
-          // 替代動作也照當週目標排組數，重量用它自己上次的
-          ...carryAlternatives(entry, (sets) => buildEntrySets({ ...entry, sets }, cycleNumber)),
-          order: entry.order,
+          // 替代動作照它自己（沒設就跟主動作）這週的組數×次數，重量用它自己的
+          ...programAlternatives(entry, cycleNumber, lastWeightOf),
+          order: index,
           defaultRestSeconds: entry.defaultRestSeconds,
           sets: buildEntrySets(entry, cycleNumber),
         })),
