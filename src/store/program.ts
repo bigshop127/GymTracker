@@ -1,10 +1,12 @@
 import { create } from 'zustand';
-import { type TrainingProgram, type ProgramSlot } from '../db/schema';
+import { type TrainingProgram, type ProgramSlot, type Workout } from '../db/schema';
 import { getCurrentProgram, saveProgram, listPrograms, restartCurrentProgram, deleteProgram } from '../db/programs';
+import { listCompletedWorkouts } from '../db/workouts';
 import {
   pauseProgram as pauseProgramPure,
   resumeProgram as resumeProgramPure,
   endProgram as endProgramPure,
+  revertSlotForDeletedWorkout,
 } from '../lib/programLifecycle';
 
 interface ProgramState {
@@ -26,6 +28,8 @@ interface ProgramState {
   reactivate: (programId: string) => Promise<void>;
   removeProgram: (programId: string) => Promise<void>;
   completeSlot: (slotId: string) => Promise<void>;
+  /** 訓練紀錄被刪掉後呼叫：那筆若是這輪課表的某一格，把進度退回（那格變回還沒練） */
+  revertForDeletedWorkout: (workout: Workout) => Promise<void>;
 }
 
 async function loadArchivedPrograms(): Promise<TrainingProgram[]> {
@@ -247,6 +251,21 @@ export const useProgramStore = create<ProgramState>((set, get) => {
         applyCurrent(updatedProgram);
       } catch (error) {
         console.error('Failed to complete program slot:', error);
+      }
+    },
+
+    revertForDeletedWorkout: async (workout: Workout) => {
+      // 暫停中的計畫也要退：暫停不影響「那一格其實沒練」這件事
+      const current = get().currentProgram ?? (await getCurrentProgram());
+      if (!current || current.id !== workout.programId) return;
+      try {
+        const remaining = await listCompletedWorkouts();
+        const reverted = revertSlotForDeletedWorkout(current, workout, remaining, Date.now());
+        if (!reverted) return;
+        await saveProgram(reverted);
+        applyCurrent(reverted);
+      } catch (error) {
+        console.error('Failed to revert program progress:', error);
       }
     },
   };

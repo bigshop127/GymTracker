@@ -2,9 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProgramStore } from '../store/program';
 import { isZongYuanProgramImported, importZongYuanProgram } from '../lib/importZongYuanProgram';
-import { getTemplate, saveTemplate } from '../db/templates';
+import {
+  createBlankTemplate,
+  getTemplateIncludingDeleted,
+  listTemplates,
+  restoreTemplate,
+  saveTemplate,
+} from '../db/templates';
 import { listExercises } from '../db/exercises';
 import { type Exercise, type WorkoutEntry, type WorkoutTemplate } from '../db/schema';
+import { isCardioTemplate } from '../lib/cardioTemplates';
+import { getTemplateCategory, normalizeSplit } from '../lib/splitRotation';
+import { replaceEntryExercise } from '../lib/workoutEntries';
 import ExerciseList from '../components/ExerciseList';
 import NumberStepper from '../components/NumberStepper';
 import {
@@ -24,10 +33,23 @@ interface LiveExerciseRow {
 }
 
 interface LiveDayPlan {
+  kind: 'live';
+  slotId: string;
   templateId: string;
   label: string;
   exercises: LiveExerciseRow[];
 }
+
+/** 課表這天指到的範本找不到（被刪了／從來沒有）：不能擋住整頁，單獨這天顯示修復選項 */
+interface MissingDayPlan {
+  kind: 'missing';
+  slotId: string;
+  label: string;
+  /** 範本還有軟刪除墓碑時才有值，可以一鍵復原 */
+  deletedTemplate?: WorkoutTemplate;
+}
+
+type DayPlan = LiveDayPlan | MissingDayPlan;
 
 const DEFAULT_WEEK_TARGET: WeekTarget = { sets: 3, reps: 10 };
 
@@ -38,7 +60,7 @@ function getWeekTarget(targets: WeekTarget[], weekIdx: number): WeekTarget {
 
 export default function ProgramGuide() {
   const navigate = useNavigate();
-  const { currentProgram, initProgram } = useProgramStore();
+  const { currentProgram, initProgram, updateProgram } = useProgramStore();
   const [isImported, setIsImported] = useState<boolean | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   // null = 尚未手動選過週次，跟著目前計畫進度自動顯示
@@ -47,8 +69,13 @@ export default function ProgramGuide() {
   // ── 已匯入且是目前計畫時，改讀真正在用的範本內容（可編輯）；否則維持唯讀預覽 ──
   const [exerciseMap, setExerciseMap] = useState<Map<string, Exercise>>(new Map());
   const [liveTemplates, setLiveTemplates] = useState<Record<string, WorkoutTemplate>>({});
+  const [deletedTemplates, setDeletedTemplates] = useState<Record<string, WorkoutTemplate>>({});
+  const [isLiveLoaded, setIsLiveLoaded] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ templateId: string; entryId: string | null } | null>(null);
+  // 範本找不到的那天：「改用其他範本」的選單
+  const [slotPicker, setSlotPicker] = useState<{ slotId: string; label: string; templates: WorkoutTemplate[] } | null>(null);
 
   useEffect(() => {
     initProgram();
@@ -69,26 +96,40 @@ export default function ProgramGuide() {
       const templateIds = currentProgram.slots.map((s) => s.templateId).filter((id): id is string => !!id);
       const [exercises, templates] = await Promise.all([
         listExercises(),
-        Promise.all(templateIds.map((id) => getTemplate(id))),
+        Promise.all(templateIds.map((id) => getTemplateIncludingDeleted(id))),
       ]);
       if (cancelled) return;
       setExerciseMap(new Map(exercises.map((e) => [e.id, e])));
-      const map: Record<string, WorkoutTemplate> = {};
-      for (const t of templates) if (t) map[t.id] = t;
-      setLiveTemplates(map);
+      const live: Record<string, WorkoutTemplate> = {};
+      const deleted: Record<string, WorkoutTemplate> = {};
+      for (const t of templates) {
+        if (!t) continue;
+        if (t.deletedAt) deleted[t.id] = t;
+        else live[t.id] = t;
+      }
+      setLiveTemplates(live);
+      setDeletedTemplates(deleted);
+      setIsLiveLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [showLive, currentProgram]);
+  }, [showLive, currentProgram, reloadKey]);
 
-  const liveDays = useMemo<LiveDayPlan[] | null>(() => {
-    if (!showLive || !currentProgram) return null;
-    const days: LiveDayPlan[] = [];
+  const liveDays = useMemo<DayPlan[] | null>(() => {
+    if (!showLive || !currentProgram || !isLiveLoaded) return null;
+    const days: DayPlan[] = [];
     for (const slot of currentProgram.slots) {
-      if (!slot.templateId) continue;
-      const tpl = liveTemplates[slot.templateId];
-      if (!tpl) return null; // 還在載入
+      const tpl = slot.templateId ? liveTemplates[slot.templateId] : undefined;
+      if (!tpl) {
+        days.push({
+          kind: 'missing',
+          slotId: slot.id,
+          label: slot.label,
+          deletedTemplate: slot.templateId ? deletedTemplates[slot.templateId] : undefined,
+        });
+        continue;
+      }
       const exercises = [...tpl.entries]
         .sort((a, b) => a.order - b.order)
         .map((entry) => ({
@@ -97,10 +138,41 @@ export default function ProgramGuide() {
           name: exerciseMap.get(entry.exerciseId)?.name ?? '未知動作',
           weeklyTargets: entry.weeklyTargets ?? [{ sets: entry.sets.length, reps: entry.sets[0]?.reps ?? 0 }],
         }));
-      days.push({ templateId: tpl.id, label: slot.label, exercises });
+      days.push({ kind: 'live', slotId: slot.id, templateId: tpl.id, label: slot.label, exercises });
     }
     return days;
-  }, [showLive, currentProgram, liveTemplates, exerciseMap]);
+  }, [showLive, currentProgram, isLiveLoaded, liveTemplates, deletedTemplates, exerciseMap]);
+
+  const linkSlotToTemplate = async (slotId: string, templateId: string) => {
+    if (!currentProgram) return;
+    await updateProgram({
+      slots: currentProgram.slots.map((s) => (s.id === slotId ? { ...s, templateId } : s)),
+    });
+  };
+
+  const handleRestoreSlotTemplate = async (templateId: string) => {
+    await restoreTemplate(templateId);
+    setReloadKey((k) => k + 1);
+  };
+
+  const handleOpenSlotPicker = async (slotId: string, label: string) => {
+    const templates = (await listTemplates()).filter((t) => !isCardioTemplate(t, exerciseMap));
+    setSlotPicker({ slotId, label, templates });
+  };
+
+  const handlePickSlotTemplate = async (templateId: string) => {
+    if (!slotPicker) return;
+    await linkSlotToTemplate(slotPicker.slotId, templateId);
+    setSlotPicker(null);
+  };
+
+  const handleCreateBlankForSlot = async (slotId: string, label: string) => {
+    const template = createBlankTemplate(label, normalizeSplit(label) ?? undefined);
+    await saveTemplate(template);
+    await linkSlotToTemplate(slotId, template.id);
+    // 直接打開這天的編輯模式，好接著加動作
+    setEditingTemplateId(template.id);
+  };
 
   const handleImport = async () => {
     if (currentProgram && currentProgram.name !== ZONGYUAN_PROGRAM_NAME) {
@@ -185,7 +257,8 @@ export default function ProgramGuide() {
     if (!tpl) return;
     let entries: WorkoutEntry[];
     if (picker.entryId) {
-      entries = tpl.entries.map((e) => (e.id === picker.entryId ? { ...e, exerciseId: ex.id } : e));
+      // 共用換動作邏輯：替代清單裡的舊 id 一併換掉，不會留下選不到的候選
+      entries = replaceEntryExercise(tpl.entries, picker.entryId, ex.id);
     } else {
       const weeklyTargets = Array.from({ length: 8 }, () => ({ ...DEFAULT_WEEK_TARGET }));
       const newEntry: WorkoutEntry = {
@@ -289,11 +362,56 @@ export default function ProgramGuide() {
         {showLive ? (
           liveDays ? (
             liveDays.map((day) => {
+              if (day.kind === 'missing') {
+                return (
+                  <div
+                    key={day.slotId}
+                    className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 shadow-sm space-y-3"
+                  >
+                    <div className="flex justify-between items-center gap-2">
+                      <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{day.label}</h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                        ⚠ 找不到範本
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                      {day.deletedTemplate
+                        ? `這天用的範本「${day.deletedTemplate.name}」已經被刪除了，現在輪到這天開始訓練會是空白的。`
+                        : '這天還沒有接上範本，現在輪到這天開始訓練會是空白的。'}
+                    </p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {day.deletedTemplate && (
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreSlotTemplate(day.deletedTemplate!.id)}
+                          className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                        >
+                          復原原本的範本（{day.deletedTemplate.entries.length} 個動作）
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSlotPicker(day.slotId, day.label)}
+                        className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                      >
+                        改用我的其他範本…
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCreateBlankForSlot(day.slotId, day.label)}
+                        className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold rounded-xl border border-dashed border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                      >
+                        建立空白範本，自己加動作
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               const isEditing = editingTemplateId === day.templateId;
               const dayTotal = day.exercises.reduce((sum, ex) => sum + getWeekTarget(ex.weeklyTargets, weekIdx).sets, 0);
               return (
                 <div
-                  key={day.templateId}
+                  key={day.slotId}
                   className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3"
                 >
                   <div className="flex justify-between items-center gap-2">
@@ -495,7 +613,7 @@ export default function ProgramGuide() {
 
       {/* 換動作／新增動作 picker */}
       {picker && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-end justify-center">
           <div className="fixed inset-0" onClick={() => setPicker(null)} />
           <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -511,6 +629,54 @@ export default function ProgramGuide() {
             <div className="overflow-y-auto max-h-[65vh]">
               <ExerciseList mode="select" onSelect={handlePickExercise} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 範本找不到的那天：改用我的其他範本 */}
+      {slotPicker && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-end justify-center">
+          <div className="fixed inset-0" onClick={() => setSlotPicker(null)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
+                「{slotPicker.label}」改用哪份範本？
+              </h3>
+              <button onClick={() => setSlotPicker(null)} className="text-slate-400 hover:text-slate-600" aria-label="關閉">
+                <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {slotPicker.templates.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-8">還沒有其他範本，可以改用「建立空白範本」。</p>
+            ) : (
+              <div className="space-y-2">
+                {slotPicker.templates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handlePickSlotTemplate(t.id)}
+                    className="w-full text-left bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 rounded-xl p-3 transition cursor-pointer space-y-0.5"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                        {getTemplateCategory(t)}
+                      </span>
+                      <span className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{t.name}</span>
+                    </span>
+                    <span className="block text-[10px] text-slate-400 font-medium">
+                      {t.entries.length} 個動作 •{' '}
+                      {t.entries
+                        .map((e) => exerciseMap.get(e.exerciseId)?.name)
+                        .filter(Boolean)
+                        .slice(0, 3)
+                        .join('、')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

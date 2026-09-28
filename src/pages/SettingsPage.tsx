@@ -655,7 +655,7 @@ export default function SettingsPage() {
 
       {/* 雲端硬碟備份清單挑選 */}
       {driveBackups !== null && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => setDriveBackups(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-end justify-center" onClick={() => setDriveBackups(null)}>
           <div
             className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-2xl p-4 space-y-3 max-h-[70vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}

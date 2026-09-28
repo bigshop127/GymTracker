@@ -134,7 +134,7 @@ export function getCalendarDaysDiff(dateStr1: string, dateStr2: string): number 
   return Math.round(Math.abs(t2 - t1) / (1000 * 60 * 60 * 24));
 }
 
-function getLocalDateStr(timestamp: number): string {
+export function getLocalDateStr(timestamp: number): string {
   const date = new Date(timestamp);
   const y = date.getFullYear();
   const m = (date.getMonth() + 1).toString().padStart(2, '0');

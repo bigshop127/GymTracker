@@ -40,11 +40,21 @@ export interface SetLog {
   assistWeight?: number;     // 輔助重量（kg，正數＝被機器/彈力帶抵銷掉的重量）
 }
 
+// ---- 替代動作自己的組數（用陣列不用 map：動作 id 含「:」與中文，當 Firestore 欄位名不保險）----
+export interface CandidateSets {
+  exerciseId: string;
+  sets: SetLog[];
+}
+
 // ---- 一次訓練中的某個動作 (WorkoutEntry) ----
 export interface WorkoutEntry {
   id: string;
   exerciseId: string;
   candidateExerciseIds?: string[]; // 替代動作候選清單（含當前選定）；缺省＝單一動作（向後相容）
+  // 「沒被選中」的替代動作各自的組數/重量/次數（器材不同，數字不共用）。
+  // 當前選定那個的組數永遠放在 sets；切換時把 sets 收進這裡、再把新選的那個拿出來。
+  // 歷史／統計只讀 exerciseId + sets，這裡的組不算有做過。
+  candidateSets?: CandidateSets[];
   order: number;
   sets: SetLog[];
   defaultRestSeconds?: number;

@@ -8,7 +8,15 @@ import { useRestTimerStore } from '../store/restTimer';
 import { listExercises } from '../db/exercises';
 import { ASSISTED_EXERCISE_NAMES } from '../data/seed-exercises';
 import { type Exercise, type WorkoutTemplate, type Workout, type MuscleGroup, type TemplateCategory } from '../db/schema';
-import { saveTemplate, createTemplateFromWorkout, updateTemplateFromWorkout, listTemplates, deleteTemplate, getTemplate } from '../db/templates';
+import {
+  saveTemplate,
+  createTemplateFromWorkout,
+  createBlankTemplate,
+  updateTemplateFromWorkout,
+  listTemplates,
+  deleteTemplate,
+  getTemplate,
+} from '../db/templates';
 import { listCompletedWorkouts } from '../db/workouts';
 import {
   getSplitRotationStatus,
@@ -30,6 +38,9 @@ import ExerciseList from '../components/ExerciseList';
 import SortableExerciseTab from '../components/SortableExerciseTab';
 import SheetHeader from '../components/SheetHeader';
 import ProgramFormSheet from '../components/ProgramFormSheet';
+import TemplateEditorSheet from '../components/TemplateEditorSheet';
+import FinishCompareSheet from '../components/FinishCompareSheet';
+import { diffWorkoutAgainstTemplate, type TemplateChange } from '../lib/templateDiff';
 import { useProgramStore } from '../store/program';
 import { getElapsedWeeks, getPausedDays } from '../lib/programLifecycle';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
@@ -108,6 +119,15 @@ export default function WorkoutLogger() {
   const [selectedTemplateCategory, setSelectedTemplateCategory] = useState<TemplateCategory | null>(null);
   // 點範本先看細項（動作/組數/重量），不要一點就直接開訓
   const [templateDetail, setTemplateDetail] = useState<WorkoutTemplate | null>(null);
+  // 範本編輯器：手動新增空白範本、或編輯既有範本
+  const [templateEditor, setTemplateEditor] = useState<{ template: WorkoutTemplate; isNew: boolean } | null>(null);
+  // 完成訓練前的「跟範本／課表哪裡不一樣」確認
+  const [finishCompare, setFinishCompare] = useState<{
+    workout: Workout;
+    template: WorkoutTemplate;
+    changes: TemplateChange[];
+  } | null>(null);
+  const [isFinishing, setIsFinishing] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -511,25 +531,25 @@ export default function WorkoutLogger() {
     );
   };
 
-  const handleRenameTemplate = async (template: WorkoutTemplate) => {
-    const newName = window.prompt('重新命名範本：', template.name);
-    if (newName !== null && newName.trim() !== '') {
-      try {
-        // react-hooks/purity 對這個大型元件的可達性分析有誤判：改動別處的 handler 接線會連帶誤標這行，
-        // 這裡其實是在 onClick 事件處理器內執行、不是渲染期間，Date.now() 呼叫是合法的。
-        // eslint-disable-next-line react-hooks/purity
-        const updated = { ...template, name: newName.trim(), updatedAt: Date.now() };
-        await saveTemplate(updated);
-        await loadTemplates();
-      } catch (err) {
-        console.error(err);
-        alert('修改名稱失敗');
-      }
-    }
+  const openNewTemplate = (category?: TemplateCategory) => {
+    const name = category && category !== '自訂' ? `${category} 新範本` : '新範本';
+    setTemplateEditor({ template: createBlankTemplate(name, category), isNew: true });
+  };
+
+  const handleTemplateSaved = async (saved: WorkoutTemplate) => {
+    setTemplateEditor(null);
+    // 從細項頁點進來編輯的：細項頁要顯示存好的新內容
+    setTemplateDetail((prev) => (prev && prev.id === saved.id ? saved : prev));
+    await loadTemplates();
   };
 
   const handleDeleteTemplate = async (id: string, name: string) => {
-    if (window.confirm(`確定要永久刪除範本「${name}」嗎？`)) {
+    // 課表正在用的範本：刪掉後課表那天會變空白，要講清楚
+    const usedBySlot = currentProgram?.slots.find((s) => s.templateId === id);
+    const message = usedBySlot
+      ? `「${name}」是目前課表「${currentProgram!.name}」的「${usedBySlot.label}」正在用的範本。\n\n刪掉後，課表這天會找不到內容（之後可以到「課表」頁復原或改用別的範本）。\n\n確定要刪除嗎？`
+      : `確定要永久刪除範本「${name}」嗎？`;
+    if (window.confirm(message)) {
       try {
         await deleteTemplate(id);
         await loadTemplates();
@@ -553,7 +573,7 @@ export default function WorkoutLogger() {
       return;
     }
     try {
-      await saveTemplate({ ...template, category: picked, updatedAt: Date.now() });
+      await saveTemplate({ ...template, category: picked }); // saveTemplate 會自己押 updatedAt
       await loadTemplates();
     } catch (err) {
       console.error(err);
@@ -591,6 +611,133 @@ export default function WorkoutLogger() {
       }
     }
     setIsSelectorOpen(false);
+  };
+
+  /**
+   * 把這次訓練另存成一份新範本（問名稱、分類）。回傳是否真的存了（使用者按取消回 false）。
+   * 13C：課表那一格還沒有範本、或原本的範本已被刪掉時，順便把新範本接上去。
+   */
+  const saveWorkoutAsNewTemplate = async (workout: Workout): Promise<boolean> => {
+    const startDate = new Date(workout.startedAt);
+    const dateStr = `${startDate.getMonth() + 1}/${startDate.getDate()}`;
+    const rawTitle = (workout.title || '').trim();
+    const isGenericTitle = rawTitle === '' || rawTitle === '今日訓練' || /^\d{1,2}\/\d{1,2} 訓練$/.test(rawTitle);
+    const bodyPart = isGenericTitle
+      ? getPrimaryMuscleGroups(workout, buildExerciseMap(allExercises), 2).join('+') || '訓練'
+      : rawTitle;
+    const defaultName = `${dateStr} ${bodyPart}${workout.location ? ` @${workout.location}` : ''}`;
+    const name = window.prompt('請輸入範本名稱：', defaultName);
+    if (name === null) return false;
+
+    const templateName = name.trim() || defaultName;
+    try {
+      const guessedCategory = normalizeSplit(bodyPart) ?? normalizeSplit(templateName) ?? '自訂';
+      const categoryInput = window.prompt(
+        `分類（${TEMPLATE_CATEGORIES.join('/')}，直接 Enter 使用預設）：`,
+        guessedCategory
+      );
+      const category = TEMPLATE_CATEGORIES.find((c) => c === categoryInput?.trim()) ?? guessedCategory;
+      const template = createTemplateFromWorkout(workout, templateName);
+      await saveTemplate({ ...template, category });
+
+      if (workout.programId && workout.programSlotId) {
+        const { activeProgram, updateProgram } = useProgramStore.getState();
+        if (activeProgram && activeProgram.id === workout.programId) {
+          const slotIndex = activeProgram.slots.findIndex(s => s.id === workout.programSlotId);
+          const slotTemplateId = slotIndex !== -1 ? activeProgram.slots[slotIndex].templateId : undefined;
+          const slotTemplateMissing = !slotTemplateId || !(await getTemplate(slotTemplateId));
+          if (slotIndex !== -1 && slotTemplateMissing) {
+            const updatedSlots = [...activeProgram.slots];
+            updatedSlots[slotIndex] = { ...updatedSlots[slotIndex], templateId: template.id };
+            await updateProgram({ slots: updatedSlots });
+          }
+        }
+      }
+
+      alert('範本儲存成功！');
+      return true;
+    } catch (err) {
+      console.error(err);
+      alert('儲存範本失敗');
+      return false;
+    }
+  };
+
+  const handleFinishClick = async () => {
+    if (!activeWorkout) return;
+    const workout = activeWorkout;
+
+    // 一組都沒打勾多半是「其實沒練、只是點進來看看」，按完成會留下一筆假的訓練紀錄
+    const doneSets = workout.entries.reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0);
+    if (
+      doneSets === 0 &&
+      !window.confirm(
+        '這次一組都還沒打勾。\n\n按「確定」＝還是記成已完成的訓練\n按「取消」＝先不要（今天沒練的話請按「取消訓練」，不會留下紀錄）'
+      )
+    ) {
+      return;
+    }
+
+    // 從範本／課表開始的：列出跟原本不一樣的地方，讓使用者決定要不要更新回去。
+    // 課表訓練若是「沿用過去某一次」開的，身上沒有 sourceTemplateId，改拿課表那一格的範本來比。
+    const slotTemplateId =
+      workout.programSlotId && currentProgram && currentProgram.id === workout.programId
+        ? currentProgram.slots.find((s) => s.id === workout.programSlotId)?.templateId
+        : undefined;
+    const sourceId = workout.sourceTemplateId ?? slotTemplateId;
+    if (sourceId) {
+      const source = await getTemplate(sourceId);
+      if (source) {
+        const changes = diffWorkoutAgainstTemplate(source, workout, workout.programCycleNumber);
+        if (changes.length === 0) {
+          await finishWorkout();
+          return;
+        }
+        setFinishCompare({ workout, template: source, changes });
+        return;
+      }
+    }
+
+    if (window.confirm('訓練即將完成！要將本次訓練另存為範本嗎？（下次可帶相同重量/次數直接開始）')) {
+      await saveWorkoutAsNewTemplate(workout);
+    }
+    await finishWorkout();
+  };
+
+  const closeFinishCompare = () => {
+    setFinishCompare(null);
+    setIsFinishing(false);
+  };
+
+  const handleCompareUpdate = async () => {
+    if (!finishCompare) return;
+    setIsFinishing(true);
+    try {
+      await saveTemplate(updateTemplateFromWorkout(finishCompare.template, finishCompare.workout));
+    } catch (err) {
+      console.error(err);
+      alert('更新失敗，這次訓練仍會照常完成');
+    }
+    await finishWorkout();
+    closeFinishCompare();
+  };
+
+  const handleCompareTodayOnly = async () => {
+    setIsFinishing(true);
+    await finishWorkout();
+    closeFinishCompare();
+  };
+
+  const handleCompareSaveAsNew = async () => {
+    if (!finishCompare) return;
+    setIsFinishing(true);
+    const saved = await saveWorkoutAsNewTemplate(finishCompare.workout);
+    if (!saved) {
+      setIsFinishing(false);
+      return;
+    }
+    await finishWorkout();
+    closeFinishCompare();
   };
 
   const currentUnit = settings?.unit || 'kg';
@@ -868,38 +1015,50 @@ export default function WorkoutLogger() {
             </div>
           )}
 
-          {/* 我的範本區塊：5 顆分類藥丸，點進去才看該分類的清單 */}
-          {nonCardioTemplates.length > 0 && (
-            <div className="w-full text-left space-y-3 pt-6 border-t border-slate-100 dark:border-slate-800">
-              <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                我的範本 (保留重量)
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {TEMPLATE_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setSelectedTemplateCategory(cat)}
-                    className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full text-xs font-bold text-slate-700 dark:text-slate-300 hover:border-indigo-300 transition cursor-pointer"
-                  >
-                    {cat} ({groupedTemplates[cat].length})
-                  </button>
-                ))}
-              </div>
+          {/* 我的範本區塊：5 顆分類藥丸，點進去才看該分類的清單；沒有範本也顯示，才找得到「＋ 新增」 */}
+          <div className="w-full text-left space-y-3 pt-6 border-t border-slate-100 dark:border-slate-800">
+            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              我的範本 (保留重量)
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {TEMPLATE_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedTemplateCategory(cat)}
+                  className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full text-xs font-bold text-slate-700 dark:text-slate-300 hover:border-indigo-300 transition cursor-pointer"
+                >
+                  {cat} ({groupedTemplates[cat].length})
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => openNewTemplate()}
+                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 border border-dashed border-indigo-300 dark:border-indigo-800 rounded-full text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition cursor-pointer"
+              >
+                ＋ 新增
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
       {/* 分類範本清單 (全屏) */}
       {selectedTemplateCategory && (
-        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[60] flex flex-col">
           <SheetHeader
             title={`${selectedTemplateCategory} 範本`}
             onBack={() => setSelectedTemplateCategory(null)}
           />
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
+              <button
+                type="button"
+                onClick={() => openNewTemplate(selectedTemplateCategory)}
+                className="w-full py-3 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 font-bold rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800 text-sm transition cursor-pointer"
+              >
+                ＋ 新增空白範本
+              </button>
               {groupedTemplates[selectedTemplateCategory].length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-16 leading-relaxed px-6">
                   這個分類還沒有範本。
@@ -933,11 +1092,11 @@ export default function WorkoutLogger() {
                     {/* 右側操作按鈕 */}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleRenameTemplate(t)}
-                        className="px-2 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 rounded-lg shadow-sm border border-slate-100 dark:border-slate-700 transition cursor-pointer"
-                        title="改名"
+                        onClick={() => setTemplateEditor({ template: t, isNew: false })}
+                        className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 rounded-lg shadow-sm border border-indigo-100 dark:border-indigo-900 transition cursor-pointer"
+                        title="編輯名稱、動作、組數重量"
                       >
-                        改名
+                        編輯
                       </button>
                       <button
                         onClick={() => handleChangeTemplateCategory(t)}
@@ -962,9 +1121,10 @@ export default function WorkoutLogger() {
         </div>
       )}
 
-      {/* 範本細項 (全屏)：點範本先看內容，開始訓練另外按下方按鈕 */}
+      {/* 範本細項 (全屏)：點範本先看內容，開始訓練另外按下方按鈕。
+          z-[60]：底部按鈕要蓋過底部導覽列（z-50），不然「開始這份訓練」會被擋住按不到 */}
       {templateDetail && (
-        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[60] flex flex-col">
           <SheetHeader
             title={templateDetail.name}
             onBack={() => setTemplateDetail(null)}
@@ -977,6 +1137,11 @@ export default function WorkoutLogger() {
                 </p>
               )}
               <div className="space-y-3">
+                {templateDetail.entries.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-12">
+                    這份範本還沒有動作，按下方「編輯」加入。
+                  </p>
+                )}
                 {templateDetail.entries.map((entry) => {
                   const exercise = exerciseMap.get(entry.exerciseId);
                   const isCardio = exercise?.muscleGroup === '有氧';
@@ -993,6 +1158,15 @@ export default function WorkoutLogger() {
                           <span className="text-[9px] text-slate-400 font-bold">
                             {exercise.muscleGroup} / {exercise.equipment}
                           </span>
+                        )}
+                        {entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1 && (
+                          <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                            可替代：
+                            {entry.candidateExerciseIds
+                              .filter((id) => id !== entry.exerciseId)
+                              .map((id) => exerciseMap.get(id)?.name ?? '未知動作')
+                              .join('、')}
+                          </p>
                         )}
                       </div>
                       <div className="p-3 space-y-1.5">
@@ -1037,14 +1211,23 @@ export default function WorkoutLogger() {
               </div>
             </div>
           </div>
-          <div className="max-w-md mx-auto w-full px-4 py-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="max-w-md mx-auto w-full px-4 py-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+            <button
+              onClick={() => setTemplateEditor({ template: templateDetail, isNew: false })}
+              className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-sm transition cursor-pointer"
+            >
+              ✎ 編輯
+            </button>
             <button
               onClick={() => {
                 const t = templateDetail;
                 setTemplateDetail(null);
+                // 分類清單也一起收掉，不然開訓後還蓋在訓練畫面上
+                setSelectedTemplateCategory(null);
                 void handleStartFromTemplate(t);
               }}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow-md transition cursor-pointer"
+              disabled={templateDetail.entries.length === 0}
+              className="flex-[2] py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-40 text-white font-bold rounded-xl text-sm shadow-md transition cursor-pointer"
             >
               ▶ 開始這份訓練
             </button>
@@ -1517,79 +1700,7 @@ export default function WorkoutLogger() {
               取消訓練
             </button>
             <button
-              onClick={async () => {
-                if (!activeWorkout) return;
-
-                // 這次訓練是套用既有範本開始的：先問要不要直接更新那份範本的重量/次數，
-                // 不要每次都無條件另存一份新的，避免同名範本一直重複累積。
-                if (activeWorkout.sourceTemplateId) {
-                  const sourceTemplate = await getTemplate(activeWorkout.sourceTemplateId);
-                  if (sourceTemplate) {
-                    const updateExisting = window.confirm(
-                      `這次訓練是從範本「${sourceTemplate.name}」開始的。\n\n按「確定」＝更新這份範本的重量/次數紀錄\n按「取消」＝改成另存一份新範本（或不存）`
-                    );
-                    if (updateExisting) {
-                      try {
-                        await saveTemplate(updateTemplateFromWorkout(sourceTemplate, activeWorkout));
-                        alert('範本已更新！');
-                      } catch (err) {
-                        console.error(err);
-                        alert('更新範本失敗');
-                      }
-                      await finishWorkout();
-                      return;
-                    }
-                  }
-                }
-
-                const shouldSaveTemplate = window.confirm('訓練即將完成！要將本次訓練另存為範本嗎？（下次可帶相同重量/次數直接開始）');
-                if (shouldSaveTemplate) {
-                  const startDate = new Date(activeWorkout.startedAt);
-                  const dateStr = `${startDate.getMonth() + 1}/${startDate.getDate()}`;
-                  const rawTitle = (activeWorkout.title || '').trim();
-                  const isGenericTitle = rawTitle === '' || rawTitle === '今日訓練' || /^\d{1,2}\/\d{1,2} 訓練$/.test(rawTitle);
-                  const bodyPart = isGenericTitle
-                    ? getPrimaryMuscleGroups(activeWorkout, buildExerciseMap(allExercises), 2).join('+') || '訓練'
-                    : rawTitle;
-                  const defaultName = `${dateStr} ${bodyPart}${activeWorkout.location ? ` @${activeWorkout.location}` : ''}`;
-                  const name = window.prompt('請輸入範本名稱：', defaultName);
-                  if (name !== null) {
-                    const templateName = name.trim() || defaultName;
-                    try {
-                      const guessedCategory = normalizeSplit(bodyPart) ?? normalizeSplit(templateName) ?? '自訂';
-                      const categoryInput = window.prompt(
-                        `分類（${TEMPLATE_CATEGORIES.join('/')}，直接 Enter 使用預設）：`,
-                        guessedCategory
-                      );
-                      const category = TEMPLATE_CATEGORIES.find((c) => c === categoryInput?.trim()) ?? guessedCategory;
-                      const template = createTemplateFromWorkout(activeWorkout, templateName);
-                      await saveTemplate({ ...template, category });
-
-                      // 13C 關鍵機制：完成訓練存範本時，如果 slot.templateId 為空，順便回填計畫 slot.templateId
-                      if (activeWorkout.programId && activeWorkout.programSlotId) {
-                        const { activeProgram, updateProgram } = useProgramStore.getState();
-                        if (activeProgram && activeProgram.id === activeWorkout.programId) {
-                          const slotIndex = activeProgram.slots.findIndex(s => s.id === activeWorkout.programSlotId);
-                          if (slotIndex !== -1 && !activeProgram.slots[slotIndex].templateId) {
-                            const updatedSlots = [...activeProgram.slots];
-                            updatedSlots[slotIndex] = {
-                              ...updatedSlots[slotIndex],
-                              templateId: template.id
-                            };
-                            await updateProgram({ slots: updatedSlots });
-                          }
-                        }
-                      }
-
-                      alert('範本儲存成功！');
-                    } catch (err) {
-                      console.error(err);
-                      alert('儲存範本失敗');
-                    }
-                  }
-                }
-                await finishWorkout();
-              }}
+              onClick={handleFinishClick}
               className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow-md shadow-emerald-100 transition"
             >
               完成訓練
@@ -1600,7 +1711,7 @@ export default function WorkoutLogger() {
 
       {/* 開始新訓練：① 選部位 → ② 選要沿用哪一次 (全屏) */}
       {isNewWorkoutSheetOpen && (
-        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[60] flex flex-col">
           <SheetHeader
             title={selectedGroup ? '要沿用哪一次？' : '今天要練哪裡？'}
             subtitle={selectedGroup ? `部位：${selectedGroup}` : undefined}
@@ -1658,7 +1769,7 @@ export default function WorkoutLogger() {
 
       {/* 有氧範本選擇器 (全屏) */}
       {isCardioSheetOpen && (
-        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[60] flex flex-col">
           <SheetHeader title="選擇有氧範本" onBack={() => setIsCardioSheetOpen(false)} />
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
@@ -1703,7 +1814,7 @@ export default function WorkoutLogger() {
 
       {/* 沿用最近訓練紀錄 (全屏) */}
       {isRecentSheetOpen && currentSlot && (
-        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[60] flex flex-col">
           <SheetHeader
             title="要沿用哪一次？"
             subtitle={`今天該練：${currentSlot.label}`}
@@ -1720,7 +1831,10 @@ export default function WorkoutLogger() {
                 onClick={handleStartFromSlotTemplate}
                 className="w-full py-3 mt-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
               >
-                {currentSlot.templateId ? '用計畫範本開始（不沿用重量）' : '以空白訓練開始'}
+                {/* 範本被刪掉時其實會開成空白訓練，按鈕要照實講 */}
+                {currentSlot.templateId && templatesById.has(currentSlot.templateId)
+                  ? '用計畫範本開始（不沿用重量）'
+                  : '以空白訓練開始'}
               </button>
             </div>
           </div>
@@ -1729,7 +1843,7 @@ export default function WorkoutLogger() {
 
       {/* 動作選擇器 (全屏) */}
       {isSelectorOpen && (
-        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-50 flex flex-col">
+        <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[60] flex flex-col">
           <SheetHeader
             title={
               rebindTargetEntryId
@@ -1747,6 +1861,35 @@ export default function WorkoutLogger() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 範本編輯器 (全屏，z-[60] 蓋過底部導覽列) */}
+      {templateEditor && (
+        <TemplateEditorSheet
+          template={templateEditor.template}
+          isNew={templateEditor.isNew}
+          exerciseMap={exerciseMap}
+          locations={settings?.locations ?? []}
+          unit={currentUnit}
+          onClose={() => setTemplateEditor(null)}
+          onSaved={handleTemplateSaved}
+        />
+      )}
+
+      {/* 完成訓練前：跟範本／課表哪裡不一樣 */}
+      {finishCompare && (
+        <FinishCompareSheet
+          templateName={finishCompare.template.name}
+          isProgram={!!finishCompare.workout.programSlotId}
+          changes={finishCompare.changes}
+          exerciseMap={exerciseMap}
+          unit={currentUnit}
+          busy={isFinishing}
+          onUpdate={handleCompareUpdate}
+          onTodayOnly={handleCompareTodayOnly}
+          onSaveAsNew={handleCompareSaveAsNew}
+          onBack={closeFinishCompare}
+        />
       )}
 
       {/* 建立訓練計畫 (全屏 Sheet，共用元件；編輯/生命週期操作在 /programs) */}

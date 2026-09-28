@@ -7,7 +7,16 @@ import { getTemplate } from '../db/templates';
 import { useRestTimerStore } from './restTimer';
 import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
-import { selectEntryExercise, addAlternativeToEntry, removeAlternativeFromEntry, replaceEntryExercise } from '../lib/workoutEntries';
+import {
+  selectEntryExercise,
+  addAlternativeToEntry,
+  removeAlternativeFromEntry,
+  replaceEntryExercise,
+  hasStoredCandidateSets,
+  carryAlternatives,
+  clonePlannedSets,
+} from '../lib/workoutEntries';
+import { getExerciseSessions } from '../lib/exerciseSessions';
 
 /**
  * 依「第幾輪」(cycleNumber，1-indexed) 從 entry.weeklyTargets 挑當週該練的組數/次數；
@@ -491,6 +500,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       entries: template.entries.map((entry) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
+        // 「重複這次訓練」是重量歸零重做：替代動作只帶候選清單，組數等切過去時再照上次紀錄產生
         ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
           ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
           : {}),
@@ -532,24 +542,10 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       entries: template.entries.map((entry) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
-        ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
-          ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
-          : {}),
+        ...carryAlternatives(entry, (sets) => clonePlannedSets(sets)),
         order: entry.order,
         defaultRestSeconds: entry.defaultRestSeconds,
-        sets: entry.sets.map((setLog) => ({
-          id: crypto.randomUUID(),
-          weight: setLog.weight,
-          reps: setLog.reps,
-          isWarmup: setLog.isWarmup,
-          completed: false,
-          createdAt: Date.now(),
-          // 保留有氧欄位
-          ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
-          ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
-          ...(setLog.calories !== undefined && { calories: setLog.calories }),
-          ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
-        })),
+        sets: clonePlannedSets(entry.sets),
       })),
     };
 
@@ -597,9 +593,8 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         entries: template.entries.map((entry) => ({
           id: crypto.randomUUID(),
           exerciseId: entry.exerciseId,
-          ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
-            ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
-            : {}),
+          // 替代動作也照當週目標排組數，重量用它自己上次的
+          ...carryAlternatives(entry, (sets) => buildEntrySets({ ...entry, sets }, cycleNumber)),
           order: entry.order,
           defaultRestSeconds: entry.defaultRestSeconds,
           sets: buildEntrySets(entry, cycleNumber),
@@ -678,23 +673,10 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       entries: source.entries.map((entry) => ({
         id: crypto.randomUUID(),
         exerciseId: entry.exerciseId,
-        ...(entry.candidateExerciseIds && entry.candidateExerciseIds.length > 1
-          ? { candidateExerciseIds: [...entry.candidateExerciseIds] }
-          : {}),
+        ...carryAlternatives(entry, (sets) => clonePlannedSets(sets, now)),
         order: entry.order,
         defaultRestSeconds: entry.defaultRestSeconds,
-        sets: entry.sets.map((setLog) => ({
-          id: crypto.randomUUID(),
-          weight: setLog.weight,
-          reps: setLog.reps,
-          isWarmup: setLog.isWarmup,
-          completed: false,
-          createdAt: now,
-          ...(setLog.durationSeconds !== undefined && { durationSeconds: setLog.durationSeconds }),
-          ...(setLog.distanceKm !== undefined && { distanceKm: setLog.distanceKm }),
-          ...(setLog.calories !== undefined && { calories: setLog.calories }),
-          ...(setLog.assistWeight !== undefined && { assistWeight: setLog.assistWeight }),
-        })),
+        sets: clonePlannedSets(entry.sets, now),
       })),
     };
 
@@ -703,9 +685,23 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
   },
 
   selectEntryExercise: async (entryId: string, exerciseId: string) => {
+    const entry = get().activeWorkout?.entries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    // 第一次切到這個替代動作：組數/重量/次數沿用上次實際做這個動作的紀錄
+    let fallbackSets: SetLog[] | undefined;
+    if (!hasStoredCandidateSets(entry, exerciseId)) {
+      try {
+        const last = getExerciseSessions(await listCompletedWorkouts(), exerciseId)[0];
+        if (last) fallbackSets = clonePlannedSets(last.sets);
+      } catch (err) {
+        console.error('Failed to load last session for alternative:', err);
+      }
+    }
+
     const { activeWorkout } = get();
     if (!activeWorkout) return;
-    const updatedEntries = selectEntryExercise(activeWorkout.entries, entryId, exerciseId);
+    const updatedEntries = selectEntryExercise(activeWorkout.entries, entryId, exerciseId, fallbackSets);
     const updatedWorkout: Workout = {
       ...activeWorkout,
       entries: updatedEntries,

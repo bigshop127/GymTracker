@@ -1,7 +1,52 @@
-import { type TrainingProgram } from '../db/schema';
+import { type TrainingProgram, type Workout } from '../db/schema';
 
 const MS_PER_WEEK = 604800000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * 刪掉一筆課表訓練紀錄後，把課表進度退回（那一格回到「這輪還沒練」）。
+ * - 只處理屬於這份計畫、而且帶 slot 的紀錄；其他一律不動（回 null）。
+ * - 同一輪同一格還有別筆沒刪的完成紀錄（同一天練了兩次之類）→ 不退。
+ * - 刪的剛好是「跑滿上一輪」的那一格、新的一輪還一格都沒練 → 退回上一輪，其他格維持已練。
+ * - 其他情況（例如新一輪已經開始練了）不去硬拗，維持原狀。
+ * @param otherWorkouts 目前還在的訓練紀錄（用來判斷同一格是不是還有別筆）
+ */
+export function revertSlotForDeletedWorkout(
+  program: TrainingProgram,
+  deleted: Workout,
+  otherWorkouts: Workout[],
+  now: number,
+): TrainingProgram | null {
+  const slotId = deleted.programSlotId;
+  if (deleted.programId !== program.id || !slotId) return null;
+  if (!program.slots.some((s) => s.id === slotId)) return null;
+
+  const lap = deleted.programCycleNumber ?? program.cycleCount + 1;
+  const stillDone = otherWorkouts.some(
+    (w) =>
+      w.id !== deleted.id &&
+      !w.deletedAt &&
+      w.status === 'completed' &&
+      w.programId === program.id &&
+      w.programSlotId === slotId &&
+      (w.programCycleNumber ?? lap) === lap,
+  );
+  if (stillDone) return null;
+
+  const done = program.completedSlotIdsThisLap;
+  if (lap === program.cycleCount + 1 && done.includes(slotId)) {
+    return { ...program, completedSlotIdsThisLap: done.filter((id) => id !== slotId), updatedAt: now };
+  }
+  if (lap === program.cycleCount && program.cycleCount > 0 && done.length === 0) {
+    return {
+      ...program,
+      cycleCount: program.cycleCount - 1,
+      completedSlotIdsThisLap: program.slots.filter((s) => s.id !== slotId).map((s) => s.id),
+      updatedAt: now,
+    };
+  }
+  return null;
+}
 
 /** 這份計畫是不是「目前計畫」（進行中或暫停中） */
 export function isCurrentProgram(p: TrainingProgram): boolean {

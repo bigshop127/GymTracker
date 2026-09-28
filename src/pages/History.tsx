@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listCompletedWorkouts, deleteWorkout } from '../db/workouts';
 import { listExercises } from '../db/exercises';
 import { saveTemplate, createTemplateFromWorkout, updateTemplateFromWorkout, getTemplate } from '../db/templates';
@@ -24,7 +24,10 @@ export default function History() {
   const navigate = useNavigate();
   const { settings } = useSettingsStore();
   const { startWorkoutFromTemplate, activeWorkout } = useActiveWorkoutStore();
-  const { activeProgram, initProgram } = useProgramStore();
+  const { activeProgram, initProgram, revertForDeletedWorkout } = useProgramStore();
+  // 從班表「查看」連過來時帶 ?workout=<id>，載入後直接打開那筆的明細
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedWorkoutId = searchParams.get('workout');
 
   const [historyList, setHistoryList] = useState<Workout[]>([]);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
@@ -54,18 +57,27 @@ export default function History() {
       ]);
       setHistoryList(workouts);
       setAllExercises(exercises);
+      return workouts;
     } catch (err) {
       console.error('Failed to load history data:', err);
+      return [];
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      loadData();
+    const t = setTimeout(async () => {
+      const workouts = await loadData();
+      if (linkedWorkoutId) {
+        const linked = workouts.find((w) => w.id === linkedWorkoutId);
+        if (linked) setSelectedWorkout(linked);
+        setSearchParams({}, { replace: true });
+      }
     }, 0);
     return () => clearTimeout(t);
+    // 只在進頁面時看一次網址參數
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 分類分組要用到目前計畫的 slot 標籤（getWorkoutSplitCategory），跟 History 資料一樣只需載入一次
@@ -121,7 +133,10 @@ export default function History() {
     if (!window.confirm('確定要永久刪除此筆訓練紀錄嗎？此操作無法還原。')) return;
 
     try {
+      const deleted = historyList.find((w) => w.id === workoutId);
       await deleteWorkout(workoutId);
+      // 課表那一格的紀錄被刪掉：課表進度一起退回，不然會卡在「已練過」
+      if (deleted) await revertForDeletedWorkout(deleted);
       setSelectedWorkout(null);
       await loadData();
     } catch (err) {
@@ -716,7 +731,7 @@ export default function History() {
 
       {/* 單次明細彈出面板 (Bottom Sheet style) */}
       {selectedWorkout && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-end justify-center">
           <div className="fixed inset-0" onClick={() => setSelectedWorkout(null)} />
           <div className="relative bg-white w-full max-w-md rounded-t-2xl shadow-xl z-10 p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-slide-up">
             {/* 標頭 */}

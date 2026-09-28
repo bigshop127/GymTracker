@@ -52,6 +52,23 @@ export function remapEntryExerciseIds(
         changed = true;
       }
     }
+
+    // 替代動作各自存著的組數：id 跟著換；撞到當前選定或彼此撞號的只留第一筆
+    const stash = entry.candidateSets;
+    if (stash) {
+      const seen = new Set<string>([entry.exerciseId]);
+      const next = [];
+      for (const c of stash) {
+        const id = resolveId(c.exerciseId);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        next.push(id === c.exerciseId ? c : { ...c, exerciseId: id });
+      }
+      if (next.length !== stash.length || next.some((c, i) => c !== stash[i])) {
+        entry.candidateSets = next;
+        changed = true;
+      }
+    }
   }
   return changed;
 }

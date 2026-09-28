@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProgramStore } from '../store/program';
-import { listCompletedWorkouts } from '../db/workouts';
+import { listCompletedWorkouts, deleteWorkout } from '../db/workouts';
 import { listExercises } from '../db/exercises';
 import { listTemplates } from '../db/templates';
 import {
@@ -24,6 +24,7 @@ import {
   buildBaselineOverridesByDate,
   mergeBaselinePlan,
   describeSuggestionLabel,
+  getLocalDateStr,
 } from '../lib/shiftPlan';
 import { type DayOverride, type ShiftLetter, type Workout, type Exercise, type WorkoutTemplate } from '../db/schema';
 import { getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
@@ -43,7 +44,7 @@ const BUTTON_CONFIGS = [
 
 export default function SchedulePage() {
   const navigate = useNavigate();
-  const { currentProgram, activeProgram, initProgram, resume } = useProgramStore();
+  const { currentProgram, activeProgram, initProgram, resume, revertForDeletedWorkout } = useProgramStore();
 
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
   const [now, setNow] = useState(() => Date.now());
@@ -69,7 +70,7 @@ export default function SchedulePage() {
   const [completedWorkouts, setCompletedWorkouts] = useState<Workout[]>([]);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [allTemplates, setAllTemplates] = useState<WorkoutTemplate[]>([]);
-  const { activeWorkout } = useActiveWorkoutStore();
+  const { activeWorkout, cancelWorkout } = useActiveWorkoutStore();
   const { settings } = useSettingsStore();
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
@@ -208,6 +209,38 @@ export default function SchedulePage() {
   }, [plannedDaysWithBaseline]);
 
   const selectedPlannedDay = selectedDateStr ? plannedDayMap.get(selectedDateStr) : undefined;
+  const isSelectedPast = !!selectedDateStr && selectedDateStr < todayDateStr;
+
+  // 點開某天時列出當天的訓練紀錄（完成的＋今天進行中的），讓使用者能查看或刪掉誤記的
+  const selectedDayWorkouts = useMemo(() => {
+    if (!selectedDateStr) return [];
+    const list = completedWorkouts.filter((w) => getLocalDateStr(w.startedAt) === selectedDateStr);
+    if (activeWorkout && getLocalDateStr(activeWorkout.startedAt) === selectedDateStr) {
+      list.unshift(activeWorkout);
+    }
+    return list;
+  }, [selectedDateStr, completedWorkouts, activeWorkout]);
+
+  const handleDeleteDayWorkout = async (workout: Workout) => {
+    if (workout.status === 'active') {
+      if (!window.confirm('要取消這筆還在進行中的訓練嗎？草稿會被刪掉，不會留下紀錄。')) return;
+      await cancelWorkout();
+      return;
+    }
+    const isProgramWorkout = !!workout.programSlotId && workout.programId === currentProgram?.id;
+    const message = isProgramWorkout
+      ? `確定要刪除「${workout.title ?? '訓練'}」這筆紀錄嗎？\n\n課表進度也會一起退回（這天的部位變回還沒練）。刪除後無法還原。`
+      : `確定要刪除「${workout.title ?? '訓練'}」這筆紀錄嗎？刪除後無法還原。`;
+    if (!window.confirm(message)) return;
+    try {
+      await deleteWorkout(workout.id);
+      await revertForDeletedWorkout(workout);
+      setReloadTrigger((t) => t + 1);
+    } catch (err) {
+      console.error(err);
+      alert('刪除失敗');
+    }
+  };
 
   // 本月（依目前檢視的月份）推/拉/腿/手實際訓練次數統計
   const monthlySplitCounts = useMemo(
@@ -218,6 +251,13 @@ export default function SchedulePage() {
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, dateStr: string) => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    // 過去的日子只能點開看紀錄，不參與長按批次編輯班表
+    if (dateStr < todayDateStr) {
+      touchStartPosRef.current = null;
+      activePointerIdRef.current = null;
+      return;
     }
     const clientX = e.clientX;
     const clientY = e.clientY;
@@ -469,7 +509,9 @@ export default function SchedulePage() {
             const isPast = cell.dateStr < todayDateStr;
             const isToday = cell.dateStr === todayDateStr;
             const actualWorkout = plannedDay.actualWorkout;
-            const hasWorkout = Boolean(actualWorkout);
+            // 今天進行中、還沒按完成的草稿：不能跟「已完成」長得一樣，不然沒練也像練過了
+            const isInProgress = actualWorkout?.status === 'active';
+            const hasWorkout = Boolean(actualWorkout) && !isInProgress;
             const suggestion = plannedDay.suggestion;
             const suggestedSlot = plannedDay.suggestedSlot;
             const override = plannedDay.override;
@@ -478,7 +520,10 @@ export default function SchedulePage() {
             let labelColorClass = '';
             let locationDotColor = '';
 
-            if (actualWorkout) {
+            if (isInProgress) {
+              labelText = '進行中';
+              labelColorClass = 'text-[8px] font-extrabold text-amber-700 dark:text-amber-300';
+            } else if (actualWorkout) {
               // 已完成訓練：顯示當天練的是什麼（推/拉/腿/手類別，判不出來就退回主要部位），
               // 而不是只有一顆看不出內容的小圖示——旁邊再點一顆地點色小圓點當輔助線索。
               const summary = getDaySummary([actualWorkout], exerciseMap);
@@ -527,6 +572,8 @@ export default function SchedulePage() {
               cellStateClasses = 'bg-indigo-100/50 dark:bg-indigo-900/30 ring-2 ring-indigo-400 dark:ring-indigo-500 z-10';
             } else if (hasWorkout) {
               cellStateClasses = `bg-emerald-500 dark:bg-emerald-600 ${isToday ? 'ring-2 ring-indigo-400 dark:ring-indigo-300' : ''}`;
+            } else if (isInProgress) {
+              cellStateClasses = 'bg-amber-50 dark:bg-amber-950/40 border-2 border-dashed border-amber-400 dark:border-amber-500';
             } else if (isToday) {
               cellStateClasses = 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800';
             } else if (badgeCategory) {
@@ -542,7 +589,8 @@ export default function SchedulePage() {
             return (
               <button
                 key={cell.dateStr}
-                disabled={isPast}
+                // 過去的日子只有「有訓練紀錄」才點得開（看紀錄／刪掉誤記的），其餘維持不能點
+                disabled={isPast && !hasWorkout}
                 data-date={cell.dateStr}
                 data-past={isPast ? 'true' : 'false'}
                 onPointerDown={(e) => cell.dateStr && handlePointerDown(e, cell.dateStr)}
@@ -563,7 +611,9 @@ export default function SchedulePage() {
                   userSelect: 'none',
                 }}
                 className={`h-12 rounded-xl relative flex flex-col items-center justify-between py-1 transition ${
-                  isPast ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800'
+                  isPast
+                    ? hasWorkout ? 'opacity-60 cursor-pointer' : 'opacity-50 cursor-default'
+                    : 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800'
                 } ${cellStateClasses}`}
               >
                 <span className={dayNumClass}>{cell.dayNum}</span>
@@ -616,6 +666,11 @@ export default function SchedulePage() {
         <p className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 dark:text-slate-500 pt-1">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500 dark:bg-emerald-600" />
           ✓ = 當日已完成訓練
+          <span className="inline-block w-2.5 h-2.5 rounded-sm border border-dashed border-amber-400 ml-2" />
+          進行中（還沒按完成）
+        </p>
+        <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 -mt-2">
+          點有訓練的日子可以查看或刪除那天的紀錄
         </p>
       </div>
 
@@ -649,19 +704,21 @@ export default function SchedulePage() {
             {/* 標頭 */}
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                編輯 {selectedDateStr}
+                {isSelectedPast ? `${selectedDateStr} 的訓練紀錄` : `編輯 ${selectedDateStr}`}
               </h3>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={async () => {
-                    await clearDayOverride(selectedDateStr);
-                    setReloadTrigger((t) => t + 1);
-                    setSelectedDateStr(null);
-                  }}
-                  className="text-xs font-bold text-red-500 hover:text-red-700"
-                >
-                  清除登記
-                </button>
+                {!isSelectedPast && (
+                  <button
+                    onClick={async () => {
+                      await clearDayOverride(selectedDateStr);
+                      setReloadTrigger((t) => t + 1);
+                      setSelectedDateStr(null);
+                    }}
+                    className="text-xs font-bold text-red-500 hover:text-red-700"
+                  >
+                    清除登記
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedDateStr(null)}
                   className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
@@ -670,6 +727,64 @@ export default function SchedulePage() {
                 </button>
               </div>
             </div>
+
+            {/* 當天訓練紀錄：查看／刪除（誤按完成、其實沒練的可以在這裡刪掉） */}
+            {selectedDayWorkouts.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                  當天訓練紀錄
+                </span>
+                {selectedDayWorkouts.map((w) => {
+                  const totalSets = w.entries.reduce((n, e) => n + e.sets.length, 0);
+                  const doneSets = w.entries.reduce((n, e) => n + e.sets.filter((st) => st.completed).length, 0);
+                  const isActive = w.status === 'active';
+                  return (
+                    <div
+                      key={w.id}
+                      className={`rounded-xl border p-3 space-y-2 ${
+                        isActive
+                          ? 'border-dashed border-amber-400 dark:border-amber-600 bg-amber-50/60 dark:bg-amber-950/20'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">
+                          {w.title || '訓練'}
+                        </span>
+                        <span
+                          className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            isActive
+                              ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
+                              : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                          }`}
+                        >
+                          {isActive ? '進行中' : '已完成'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                        {w.entries.length} 個動作 • 打勾 {doneSets}/{totalSets} 組{w.location ? ` • @${w.location}` : ''}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(isActive ? '/' : `/history?workout=${w.id}`)}
+                          className="flex-1 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg cursor-pointer"
+                        >
+                          {isActive ? '繼續訓練' : '查看'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDayWorkout(w)}
+                          className="flex-1 py-2 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-lg cursor-pointer"
+                        >
+                          {isActive ? '取消這筆訓練' : '刪除這筆紀錄'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {selectedPlannedDay && !selectedPlannedDay.isPast && (
               <div className="text-xs bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-1">
@@ -688,7 +803,8 @@ export default function SchedulePage() {
               </div>
             )}
 
-            {/* 內容：分區 */}
+            {/* 內容：分區（過去的日子不能改班別／安排，只看紀錄） */}
+            {!isSelectedPast && (
             <div className="space-y-4 pt-2">
               <div>
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">班別登記</span>
@@ -789,6 +905,7 @@ export default function SchedulePage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )}
