@@ -8,6 +8,7 @@ import {
   endProgram as endProgramPure,
   revertSlotForDeletedWorkout,
 } from '../lib/programLifecycle';
+import { settleLap } from '../lib/programRotation';
 
 interface ProgramState {
   currentProgram: TrainingProgram | null;   // status ∈ {active, paused}，UI 顯示用
@@ -17,7 +18,7 @@ interface ProgramState {
   initProgram: () => Promise<void>;
   createProgram: (
     name: string,
-    slots: { label: string; templateId?: string }[],
+    slots: { label: string; templateId?: string; selfScheduled?: boolean }[],
     estimatedWeeks: { min: number; max: number }
   ) => Promise<void>;
   updateProgram: (updates: Partial<Omit<TrainingProgram, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
@@ -80,6 +81,7 @@ export const useProgramStore = create<ProgramState>((set, get) => {
           id: crypto.randomUUID(),
           label: s.label,
           templateId: s.templateId,
+          ...(s.selfScheduled ? { selfScheduled: true } : {}),
         }));
 
         const newProgram: TrainingProgram = {
@@ -110,16 +112,11 @@ export const useProgramStore = create<ProgramState>((set, get) => {
       if (!currentProgram) return;
 
       try {
-        let completedSlotIdsThisLap = currentProgram.completedSlotIdsThisLap;
-        if (updates.slots) {
-          const validIds = new Set(updates.slots.map(s => s.id));
-          completedSlotIdsThisLap = completedSlotIdsThisLap.filter(id => validIds.has(id));
-        }
-
+        const merged: TrainingProgram = { ...currentProgram, ...updates };
+        // 刪掉的格子、改成「自行安排」的格子不再算進這輪；輪替格子剛好都練完就進下一輪
         const updatedProgram: TrainingProgram = {
-          ...currentProgram,
-          ...updates,
-          completedSlotIdsThisLap,
+          ...merged,
+          ...settleLap(merged),
           updatedAt: Date.now(),
         };
         await saveProgram(updatedProgram);
@@ -225,25 +222,17 @@ export const useProgramStore = create<ProgramState>((set, get) => {
       const { activeProgram } = get();
       if (!activeProgram) return;
 
-      // 驗證 slotId 是否屬於目前的 activeProgram.slots
-      const slotExists = activeProgram.slots.some((s) => s.id === slotId);
-      if (!slotExists) return;
+      // 驗證 slotId 是否屬於目前的 activeProgram.slots；「自行安排」的格子（腿日）不算進一輪
+      const slot = activeProgram.slots.find((s) => s.id === slotId);
+      if (!slot || slot.selfScheduled) return;
 
       try {
-        const already = activeProgram.completedSlotIdsThisLap.includes(slotId);
-        let completed = already
-          ? activeProgram.completedSlotIdsThisLap
-          : [...activeProgram.completedSlotIdsThisLap, slotId];
-        let cycleCount = activeProgram.cycleCount;
-        if (completed.length >= activeProgram.slots.length) {
-          cycleCount += 1;
-          completed = [];
-        }
-
         const updatedProgram: TrainingProgram = {
           ...activeProgram,
-          completedSlotIdsThisLap: completed,
-          cycleCount,
+          ...settleLap({
+            ...activeProgram,
+            completedSlotIdsThisLap: [...activeProgram.completedSlotIdsThisLap, slotId],
+          }),
           updatedAt: Date.now(),
         };
 

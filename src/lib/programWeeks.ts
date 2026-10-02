@@ -25,6 +25,17 @@ import {
 
 export const PROGRAM_WEEK_COUNT = 8;
 export const DEFAULT_WEEK_TARGET: WeekTarget = { sets: 3, reps: 10 };
+/** 第 9 輪起固定沿用的週次（W7：最後一個正常訓練週；W8 是測試週） */
+export const SUSTAIN_WEEK_IDX = 6;
+
+/**
+ * 第 cycleNumber 輪（1-indexed）用課表第幾週（0-indexed）的內容：
+ * 第 1~8 輪對 W1~W8，第 9 輪起不再循環、固定用 W7（使用者 2026-10-02 選定）。
+ */
+export function weekIdxForCycle(cycleNumber: number): number {
+  const lap = Math.max(1, Math.floor(cycleNumber));
+  return lap <= PROGRAM_WEEK_COUNT ? lap - 1 : SUSTAIN_WEEK_IDX;
+}
 
 function clampIndex(length: number, weekIdx: number): number {
   return Math.min(Math.max(weekIdx, 0), length - 1);
@@ -97,7 +108,7 @@ export function programAlternatives(
 ): Pick<WorkoutEntry, 'candidateExerciseIds' | 'candidateSets'> {
   const ids = entry.candidateExerciseIds;
   if (!ids || ids.length <= 1) return {};
-  const weekIdx = cycleNumber - 1;
+  const weekIdx = weekIdxForCycle(cycleNumber);
   const stash: CandidateSets[] = [];
   for (const id of ids) {
     if (id === entry.exerciseId) continue;

@@ -15,23 +15,10 @@ import {
   type DayOverride,
   type TrainingProgram,
   type Workout,
-  type Exercise,
   type ShiftPolicy
 } from '../../db/schema';
-import { buildExerciseMap } from '../workoutSummary';
 
 const now = new Date('2026-08-16T12:00:00+08:00').getTime(); // 1786852800000 approx
-
-function makeExercise(id: string, name: string, muscleGroup: Exercise['muscleGroup']): Exercise {
-  return { id, name, muscleGroup, equipment: '其他', isCustom: false, createdAt: now };
-}
-
-const exercises: Exercise[] = [
-  makeExercise('run', '跑步機', '有氧'),
-  makeExercise('bench', '槓鈴臥推', '胸'),
-  makeExercise('squat', '深蹲', '腿臀'),
-];
-const exMap = buildExerciseMap(exercises);
 
 describe('shiftPlan', () => {
   describe('getCalendarDaysDiff', () => {
@@ -96,10 +83,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: new Map(),
       });
 
       expect(result).toHaveLength(2);
@@ -107,11 +91,8 @@ describe('shiftPlan', () => {
       expect(result[1].suggestion).toBe('noProgram');
     });
 
-    test('連續 ABC 班且班別有勾「安排訓練」：未達門檻為 restOnly，分類達門檻會強制 train 且 cursor 不漏跳', () => {
-      // 假設 8/16（今天）是基準點。8/16 ~ 8/25 連續 10 天 ABC 班，班別政策勾了「安排訓練」+「休息」。
-      // 門檻是 7 天，週目標設 0 讓平常的配額邏輯永遠不想練，只單獨看太久沒練規則會不會強制介入。
-      // 課表只有 胸(推)/背(拉)/腿(腿) 三個分類；8/15 只練過推，拉、腿完全沒有歷史紀錄，
-      // 三者幾乎同時到期，會連續觸發 3 天強制訓練把三個分類都補齊。
+    test('連續 ABC 班且班別有勾「安排訓練」、週目標 0：「N 天沒練強制插隊」已拿掉，不會被硬排訓練', () => {
+      // 2026-10-02 改版：班表只照輪替順序排，不再因為某個部位太久沒練就強制插進來。
       const lastWorkout: Workout = {
         id: 'w-last',
         startedAt: new Date('2026-08-15T10:00:00').getTime(),
@@ -127,7 +108,6 @@ describe('shiftPlan', () => {
         overrides.set(dStr, { id: dStr, shiftLetters: ['A', 'B', 'C'], updatedAt: now });
       }
 
-      // 我們希望模擬 8/16 ~ 8/25 的結果
       const result = generateMonthPlan({
         dateStrings: dates,
         activeProgram: program,
@@ -135,31 +115,11 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: { 'ABC': ['train', 'rest'] },
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 0,
-        templatesById: new Map(),
       });
 
-      expect(result[1].dateStr).toBe('2026-08-17');
-      expect(result[1].suggestion).toBe('restOnly');
-
-      // 推最早到期（8/15 練過），8/22 應該是強制訓練胸 (index 6)
-      expect(result[6].dateStr).toBe('2026-08-22');
-      expect(result[6].suggestion).toBe('train');
-      expect(result[6].suggestedSlot?.label).toBe('胸');
-
-      // 拉、腿從未練過，緊接著也到期，8/23、8/24 會連續補訓練
-      expect(result[7].dateStr).toBe('2026-08-23');
-      expect(result[7].suggestion).toBe('train');
-
-      expect(result[8].dateStr).toBe('2026-08-24');
-      expect(result[8].suggestion).toBe('train');
-
-      // 三個分類都補齊後，8/25 回到休息
-      expect(result[9].dateStr).toBe('2026-08-25');
-      expect(result[9].suggestion).toBe('restOnly');
+      expect(result.every((d) => d.suggestion === 'restOnly')).toBe(true);
     });
 
     test('連續 ABC 班且班別完全沒勾「安排訓練」（只勾休息）：不管多久沒練都不會被太久沒練規則推翻', () => {
@@ -186,10 +146,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: { 'ABC': ['rest'] }, // 明確只勾休息（不含「安排訓練」）
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: new Map(),
       });
 
       expect(result.every((d) => d.suggestion === 'restOnly')).toBe(true);
@@ -207,10 +164,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: new Map(),
       });
 
       expect(result[0].dateStr).toBe('2026-08-17');
@@ -221,77 +175,6 @@ describe('shiftPlan', () => {
       expect(result[1].suggestedSlot?.label).toBe('胸'); // 依然拿到第 1 個 slot，沒有因為暫停被跳過
     });
 
-    test('純有氧訓練不重置 daysSinceWeights，重訓/混合會重置', () => {
-      const cardioWorkout: Workout = {
-        id: 'w-cardio',
-        startedAt: new Date('2026-08-15T10:00:00').getTime(),
-        endedAt: new Date('2026-08-15T11:00:00').getTime(),
-        status: 'completed',
-        entries: [{ id: 'e-c', exerciseId: 'run', order: 0, sets: [] }],
-      };
-
-      const weightWorkoutOn14: Workout = {
-        id: 'w-weight-14',
-        startedAt: new Date('2026-08-14T10:00:00').getTime(),
-        endedAt: new Date('2026-08-14T11:00:00').getTime(),
-        status: 'completed',
-        entries: [{ id: 'e-w-14', exerciseId: 'bench', order: 0, sets: [] }],
-      };
-
-      const overrides = new Map<string, DayOverride>();
-      overrides.set('2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now });
-      overrides.set('2026-08-17', { id: '2026-08-17', shiftLetters: ['A', 'B', 'C'], updatedAt: now });
-
-      // 情境一：最近一次重訓是 8/14，而 8/15 只有純有氧。
-      // 計算 daysSinceWeights 是看 8/14，到今天 8/16 為 2 天，到明 8/17 為 3 天。
-      // 設定門檻為 3，因此 8/17 的 AB 班應該被強制轉為 train。
-      // 班別政策勾了「安排訓練」（太久沒練規則才有效）+ 週目標設 0（平常配額邏輯不會自己想練），
-      // 讓這裡只單獨看太久沒練規則本身的天數計算對不對。
-      const resultWithCardio = generateMonthPlan({
-        dateStrings: ['2026-08-16', '2026-08-17'],
-        activeProgram: program,
-        completedWorkouts: [cardioWorkout, weightWorkoutOn14],
-        activeWorkoutToday: null,
-        overridesByDate: overrides,
-        policyOverrides: { 'ABC': ['train', 'rest'] },
-        restOverrideDays: 3,
-        exerciseMap: exMap,
-        today: new Date('2026-08-16').getTime(),
-        weeklyTargetSessions: 0,
-        templatesById: new Map(),
-      });
-
-      expect(resultWithCardio[1].dateStr).toBe('2026-08-17');
-      expect(resultWithCardio[1].suggestion).toBe('train'); // 達 3 天門檻被轉為訓練
-
-      // 情境二：如果 8/15 是重訓（不是有氧），那到 8/17 只有 2 天沒練。
-      // 門檻為 3，因此 8/17 的 AB 班應該保持為 restOrCardio。
-      const weightWorkoutOn15: Workout = {
-        id: 'w-weight-15',
-        startedAt: new Date('2026-08-15T10:00:00').getTime(),
-        endedAt: new Date('2026-08-15T11:00:00').getTime(),
-        status: 'completed',
-        entries: [{ id: 'e-w-15', exerciseId: 'bench', order: 0, sets: [] }],
-      };
-
-      const resultWithWeightOn15 = generateMonthPlan({
-        dateStrings: ['2026-08-16', '2026-08-17'],
-        activeProgram: program,
-        completedWorkouts: [weightWorkoutOn15, weightWorkoutOn14],
-        activeWorkoutToday: null,
-        overridesByDate: overrides,
-        policyOverrides: { 'ABC': ['train', 'rest'] },
-        restOverrideDays: 3,
-        exerciseMap: exMap,
-        today: new Date('2026-08-16').getTime(),
-        weeklyTargetSessions: 0,
-        templatesById: new Map(),
-      });
-
-      expect(resultWithWeightOn15[1].dateStr).toBe('2026-08-17');
-      expect(resultWithWeightOn15[1].suggestion).toBe('restOnly'); // 未達 3 天門檻，建議休息
-    });
-
     test('isPast 的日期 suggestion 為 past，且不影響未來模擬', () => {
       const result = generateMonthPlan({
         dateStrings: ['2026-08-15', '2026-08-16', '2026-08-17'],
@@ -300,10 +183,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: new Map(),
       });
 
       expect(result[0].dateStr).toBe('2026-08-15');
@@ -313,7 +193,7 @@ describe('shiftPlan', () => {
       expect(result[1].suggestion).toBe('train');
 
       expect(result[2].dateStr).toBe('2026-08-17'); // future
-      expect(result[2].suggestion).toBe('train');
+      expect(result[2].suggestion).toBe('restOrCardio'); // 昨天（今天）剛練、週目標還有餘裕 → 隔天練
     });
 
     test('completedSlotIdsThisLap 包含部分 slot 時能正確建議下一個', () => {
@@ -330,10 +210,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: new Map(),
       });
 
       expect(result[0].suggestedSlot?.label).toBe('背');
@@ -352,10 +229,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: new Map(),
       })).not.toThrow();
     });
   });
@@ -439,20 +313,16 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: new Map(),
       });
 
-      expect(result[0].suggestion).toBe('train');
-      expect(result[1].suggestion).toBe('train');
-      expect(result[2].suggestion).toBe('train');
-      expect(result[3].suggestion).toBe('restOrCardio'); // 4th consecutive day is blocked
-      expect(result[4].suggestion).toBe('train'); // deferred 4th session
-      expect(result[5].suggestion).toBe('restOrCardio');
-      expect(result[6].suggestion).toBe('restOrCardio');
+      // 有餘裕時隔天練：日、二、四；週五剩 1 次還有 2 天 → 休；週六剩 1 次只剩 1 天 → 非練不可
+      expect(result.map((r) => r.suggestion)).toEqual([
+        'train', 'restOrCardio', 'train', 'restOrCardio', 'train', 'restOrCardio', 'train',
+      ]);
+      // 內容照課表順序輪替：胸 → 背 → 腿 → 肩
+      expect(result.filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.label)).toEqual(['胸', '背', '腿', '肩']);
     });
 
     test('跨月月初墊底 cushion 邏輯：週日已練，新月週一起算應自動扣減', () => {
@@ -474,34 +344,18 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-09-01').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: new Map(),
       });
 
-      expect(result[0].dateStr).toBe('2026-09-01');
-      expect(result[0].suggestion).toBe('train');
-      expect(result[1].dateStr).toBe('2026-09-02');
-      expect(result[1].suggestion).toBe('train');
-      expect(result[2].dateStr).toBe('2026-09-03');
-      expect(result[2].suggestion).toBe('train');
-      expect(result[3].dateStr).toBe('2026-09-04');
-      expect(result[3].suggestion).toBe('restOrCardio');
-      expect(result[4].dateStr).toBe('2026-09-05');
-      expect(result[4].suggestion).toBe('restOrCardio');
+      // 週日（8/30）已練 1 次，目標 4 → 這週只剩 3 次：二、四、六（隔天練，週六非練不可）
+      expect(result.map((r) => r.dateStr)).toEqual(dates);
+      expect(result.map((r) => r.suggestion)).toEqual(['train', 'restOrCardio', 'train', 'restOrCardio', 'train']);
+      expect(result.filter((r) => r.suggestion === 'train')).toHaveLength(3);
     });
   });
 
   describe('generateMonthPlan Phase 25 new rules', () => {
-    const workoutTemplates = [
-      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now }, // chestBack
-      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now }, // chestBack
-      { id: 'temp-legs', name: '腿 (Legs)', entries: [{ id: 'e3', exerciseId: 'squat', order: 0, sets: [] }], createdAt: now, updatedAt: now }, // legs
-      { id: 'temp-arms', name: '手 (Arms)', entries: [{ id: 'e4', exerciseId: 'run', order: 0, sets: [] }], createdAt: now, updatedAt: now }, // other
-    ];
-    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
 
     const program: TrainingProgram = {
       id: 'prog-2',
@@ -537,11 +391,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       // 原本目標 4，扣掉 1 天 forcedRest，實際目標應降為 3
@@ -557,30 +408,24 @@ describe('shiftPlan', () => {
       expect(result[3].suggestion).toBe('paused');
     });
 
-    test('驗收 5：腿日前後盡量安排休息/有氧', () => {
-      const dates = [
-        '2026-08-16'
-      ];
+    test('腿日前後避開已拿掉：腿在自動輪替裡（沒設自行安排）就照順序排', () => {
       const programWithLegsCursor: TrainingProgram = {
         ...program,
-        completedSlotIdsThisLap: ['slot-pull', 'slot-push'], // Leg day slot is next
+        completedSlotIdsThisLap: ['slot-pull', 'slot-push'], // 下一個輪到腿
       };
       const result = generateMonthPlan({
-        dateStrings: dates,
+        dateStrings: ['2026-08-16'],
         activeProgram: programWithLegsCursor,
         completedWorkouts: [],
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 3,
-        templatesById: templatesMap,
       });
 
-      // 週日 (16): 腿 (legs). 今天是腿日. 還有餘裕 -> defer -> cardio (因為 upcomingCategory 是 legs)
-      expect(result[0].suggestion).toBe('cardio');
+      expect(result[0].suggestion).toBe('train');
+      expect(result[0].suggestedSlot?.id).toBe('slot-legs');
     });
 
     test('驗收 6：避免連續訓練 4 天以上', () => {
@@ -602,11 +447,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        weeklyTargetSessions: 5,
-        templatesById: templatesMap,
+        weeklyTargetSessions: 7, // 天天都非練不可，單獨看連續 3 天上限
       });
 
       expect(result[0].suggestion).toBe('train');
@@ -615,6 +457,7 @@ describe('shiftPlan', () => {
       expect(result[3].suggestion).not.toBe('train'); // blocked by rule b
       expect(result[4].suggestion).toBe('train');
       expect(result[5].suggestion).toBe('train');
+      expect(result[6].suggestion).toBe('train');
     });
 
     test('驗收 7：即使 urgent 每天都非練不可，第 4 天明確排班仍會被規則 b 推翻', () => {
@@ -636,11 +479,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-19').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       expect(result[0].suggestion).toBe('train');
@@ -664,11 +504,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-21').getTime(),
         weeklyTargetSessions: 3,
-        templatesById: templatesMap,
       });
 
       // Friday is urgent (target=3, trained=0, 2 days left: Fri/Sat)
@@ -679,13 +516,6 @@ describe('shiftPlan', () => {
   });
 
   describe('Phase 26 指定部位與組合班預設政策新測試', () => {
-    const workoutTemplates = [
-      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-legs', name: '腿 (Legs)', entries: [{ id: 'e3', exerciseId: 'squat', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-arms', name: '手 (Arms)', entries: [{ id: 'e4', exerciseId: 'run', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-    ];
-    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
 
     const program: TrainingProgram = {
       id: 'prog-26',
@@ -720,11 +550,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters, updatedAt: now }]]),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       })[0];
 
       expect(runSingleDay(['A', 'C']).suggestion).toBe('train'); // AC -> train
@@ -752,11 +579,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
         policyOverrides: { 'ABC': [policy] },
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       })[0];
 
       // 明天是腿日，若沒有明確政策舊邏輯會建議「有氧」；這裡兩個政策都要各自固定顯示，不能都變成有氧
@@ -772,11 +596,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
         policyOverrides: { 'ABC': ['cardio', 'rest'] },
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       })[0];
 
       expect(result.suggestion).toBe('cardio');
@@ -798,11 +619,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map([['2026-08-16', { id: '2026-08-16', shiftLetters: ['A', 'B', 'C'], updatedAt: now }]]),
         policyOverrides: { 'ABC': ['train', 'cardio'] },
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 0, // 週目標已達成（0 表示不用再練），逼進「今天不練」分支
-        templatesById: templatesMap,
       })[0];
 
       expect(result.suggestion).toBe('cardio');
@@ -822,11 +640,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(), // Sunday
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       // 週目標 4、平日餘裕充足，應該隔天訓練：train, rest, train, rest, train
@@ -849,11 +664,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 7,
-        templatesById: templatesMap,
       });
 
       expect(result[0].suggestion).toBe('train');
@@ -880,11 +692,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 7, // 餘裕拉滿，證明是 pinnedOutcome 硬性定案而不是自然被建議休息
-        templatesById: templatesMap,
       });
 
       expect(result[0].suggestion).toBe('restOrCardio');
@@ -910,11 +719,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
         weeklyTargetSessions: 7,
-        templatesById: templatesMap,
       });
 
       expect(result[0].suggestedSlot?.id).toBe('slot-pull');
@@ -943,11 +749,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        weeklyTargetSessions: 5,
-        templatesById: templatesMap,
+        weeklyTargetSessions: 7,
       });
 
       expect(result[0].suggestion).toBe('train');
@@ -958,14 +761,133 @@ describe('shiftPlan', () => {
     });
   });
 
+  describe('2026-10-02 推→拉→手 輪替＋腿自行安排', () => {
+    const program: TrainingProgram = {
+      id: 'prog-ppa',
+      name: '推拉手',
+      slots: [
+        { id: 'slot-push', label: '推 (Push)' },
+        { id: 'slot-pull', label: '拉 (Pull)' },
+        { id: 'slot-arms', label: '手 (Arms)' },
+        { id: 'slot-legs', label: '腿 (Leg)', selfScheduled: true },
+      ],
+      completedSlotIdsThisLap: [],
+      cycleCount: 0,
+      estimatedWeeks: { min: 8, max: 8 },
+      status: 'active',
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const twoWeeks = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(2026, 7, 16 + i); // 8/16（日）起兩週
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+
+    test('沒指定腿時，班表只排 推→拉→手→推… 照順序接下去，腿永遠不會自動排', () => {
+      const result = generateMonthPlan({
+        dateStrings: twoWeeks,
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      const trained = result.filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(trained).toEqual([
+        'slot-push', 'slot-pull', 'slot-arms', 'slot-push',
+        'slot-pull', 'slot-arms', 'slot-push', 'slot-pull',
+      ]);
+      expect(trained).not.toContain('slot-legs');
+    });
+
+    test('這輪已練過拉：接著排手，再從推開始下一輪', () => {
+      const result = generateMonthPlan({
+        dateStrings: twoWeeks.slice(0, 7),
+        activeProgram: { ...program, completedSlotIdsThisLap: ['slot-push', 'slot-pull'] },
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      const trained = result.filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(trained.slice(0, 3)).toEqual(['slot-arms', 'slot-push', 'slot-pull']);
+    });
+
+    test('指定那天練腿：那天排腿、輪替不被吃掉，而且算一次訓練（佔每週次數）', () => {
+      const overrides = new Map<string, DayOverride>([
+        ['2026-08-18', { id: '2026-08-18', pinnedSlotId: 'slot-legs', updatedAt: now }],
+      ]);
+      const result = generateMonthPlan({
+        dateStrings: twoWeeks.slice(0, 7),
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      const byDate = new Map(result.map((r) => [r.dateStr, r]));
+      expect(byDate.get('2026-08-18')?.suggestion).toBe('train');
+      expect(byDate.get('2026-08-18')?.suggestedSlot?.id).toBe('slot-legs');
+      expect(byDate.get('2026-08-18')?.pinConflict).toBe(false);
+
+      // 這週 4 次＝推、拉、手 自動排 3 次＋指定的腿 1 次；輪替照樣 推→拉→手
+      const trained = result.filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(trained).toHaveLength(4);
+      expect(trained.filter((id) => id !== 'slot-legs')).toEqual(['slot-push', 'slot-pull', 'slot-arms']);
+    });
+
+    test('腿不會因為「這輪已練過」而指定失敗（自行安排的格子不算進一輪）', () => {
+      const overrides = new Map<string, DayOverride>([
+        ['2026-08-16', { id: '2026-08-16', pinnedSlotId: 'slot-legs', updatedAt: now }],
+      ]);
+      const result = generateMonthPlan({
+        dateStrings: ['2026-08-16'],
+        // 就算舊資料把腿記成這輪練過，也照樣可以指定
+        activeProgram: { ...program, completedSlotIdsThisLap: ['slot-legs'] },
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: overrides,
+        policyOverrides: undefined,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      expect(result[0].suggestion).toBe('train');
+      expect(result[0].suggestedSlot?.id).toBe('slot-legs');
+      expect(result[0].pinConflict).toBe(false);
+    });
+
+    test('課表全部都設成自行安排：沒有可以輪替的，不指定就不排訓練', () => {
+      const allSelf: TrainingProgram = {
+        ...program,
+        slots: program.slots.map((s) => ({ ...s, selfScheduled: true })),
+      };
+      const result = generateMonthPlan({
+        dateStrings: twoWeeks.slice(0, 7),
+        activeProgram: allSelf,
+        completedWorkouts: [],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-08-16').getTime(),
+        weeklyTargetSessions: 7,
+      });
+
+      expect(result.every((r) => r.suggestion === 'restOrCardio' && r.suggestedSlot === null)).toBe(true);
+    });
+  });
+
   describe('Phase 27 原定計畫 vs 實際計畫', () => {
-    const workoutTemplates = [
-      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-legs', name: '腿 (Legs)', entries: [{ id: 'e3', exerciseId: 'squat', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-arms', name: '手 (Arms)', entries: [{ id: 'e4', exerciseId: 'run', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-    ];
-    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
 
     const program: TrainingProgram = {
       id: 'prog-27',
@@ -1026,11 +948,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-20').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       const baselineOverrides = buildBaselineOverridesByDate(overrides);
@@ -1041,11 +960,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: baselineOverrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-20').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       const merged = mergeBaselinePlan(actualPlan, baselinePlan);
@@ -1079,11 +995,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-20').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       const baselineOverrides = buildBaselineOverridesByDate(overrides);
@@ -1094,11 +1007,8 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: baselineOverrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-20').getTime(),
         weeklyTargetSessions: 4,
-        templatesById: templatesMap,
       });
 
       const merged = mergeBaselinePlan(actualPlan, baselinePlan);
@@ -1120,11 +1030,6 @@ describe('shiftPlan', () => {
   });
 
   describe('Phase 28 programPaused：整份計畫暫停', () => {
-    const workoutTemplates = [
-      { id: 'temp-pull', name: '拉 (Pull)', entries: [{ id: 'e1', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-      { id: 'temp-push', name: '推 (Push)', entries: [{ id: 'e2', exerciseId: 'bench', order: 0, sets: [] }], createdAt: now, updatedAt: now },
-    ];
-    const templatesMap = new Map(workoutTemplates.map(t => [t.id, t]));
 
     const program: TrainingProgram = {
       id: 'prog-28',
@@ -1151,10 +1056,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: templatesMap,
         programPaused: true,
       });
 
@@ -1176,10 +1078,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: templatesMap,
         programPaused: true,
       });
 
@@ -1200,10 +1099,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: overrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: templatesMap,
         programPaused: true,
       });
 
@@ -1215,10 +1111,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: baselineOverrides,
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: templatesMap,
         programPaused: true,
       });
 
@@ -1235,10 +1128,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: templatesMap,
         programPaused: false,
       });
       const withoutField = generateMonthPlan({
@@ -1248,10 +1138,7 @@ describe('shiftPlan', () => {
         activeWorkoutToday: null,
         overridesByDate: new Map(),
         policyOverrides: undefined,
-        restOverrideDays: 7,
-        exerciseMap: exMap,
         today: new Date('2026-08-16').getTime(),
-        templatesById: templatesMap,
       });
 
       expect(withFalse.map(d => d.suggestion)).toEqual(withoutField.map(d => d.suggestion));

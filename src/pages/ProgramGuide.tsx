@@ -13,8 +13,9 @@ import { listExercises } from '../db/exercises';
 import { type Exercise, type WorkoutTemplate } from '../db/schema';
 import { isCardioTemplate } from '../lib/cardioTemplates';
 import { getTemplateCategory, normalizeSplit } from '../lib/splitRotation';
-import { buildBlankTemplateFromProgramDay, isSkippedInWeek, weekTargetOf } from '../lib/programWeeks';
+import { buildBlankTemplateFromProgramDay, isSkippedInWeek, PROGRAM_WEEK_COUNT, weekIdxForCycle, weekTargetOf } from '../lib/programWeeks';
 import ProgramDayEditCard from '../components/ProgramDayEditCard';
+import LapHistorySection from '../components/LapHistorySection';
 import {
   ZONGYUAN_8WEEK_PLAN,
   ZONGYUAN_WEEK_LABELS,
@@ -62,6 +63,7 @@ export default function ProgramGuide() {
   const [isImporting, setIsImporting] = useState(false);
   // null = 尚未手動選過週次，跟著目前計畫進度自動顯示
   const [manualWeek, setManualWeek] = useState<number | null>(null);
+  const [view, setView] = useState<'plan' | 'laps'>('plan');
 
   // ── 已匯入且是目前計畫時，改讀真正在用的範本內容（可編輯）；否則維持唯讀預覽 ──
   const [exerciseMap, setExerciseMap] = useState<Map<string, Exercise>>(new Map());
@@ -82,7 +84,9 @@ export default function ProgramGuide() {
   }, [initProgram]);
 
   const isActiveHere = currentProgram?.name === ZONGYUAN_PROGRAM_NAME;
-  const autoWeek = isActiveHere ? Math.min(8, Math.max(1, currentProgram.cycleCount + 1)) : 1;
+  const currentLap = isActiveHere ? currentProgram.cycleCount + 1 : 1;
+  // 第 1~8 輪對 W1~W8，第 9 輪起固定 W7
+  const autoWeek = weekIdxForCycle(currentLap) + 1;
   const selectedWeek = manualWeek ?? autoWeek;
   const weekIdx = selectedWeek - 1;
 
@@ -256,7 +260,7 @@ export default function ProgramGuide() {
       <div className="space-y-1.5">
         <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{ZONGYUAN_PROGRAM_NAME}</h2>
         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-          共 8 週，每週 4 練（拉／推／腿／手），組數與次數依週漸進；W4 減量週、W8 測試/收尾週。
+          W1~W8 組數與次數依週漸進（W4 減量週、W8 測試/收尾週），第 9 輪起不限週數、固定用 W7 的組數一直練下去。班表輪替 推→拉→手，腿日自行安排。
         </p>
       </div>
 
@@ -271,7 +275,7 @@ export default function ProgramGuide() {
             </p>
             {isActiveHere && (
               <p className="text-[11px] text-slate-400 font-semibold">
-                目前第 {currentProgram.cycleCount + 1} 輪（約第 {Math.min(8, currentProgram.cycleCount + 1)} 週）
+                目前第 {currentLap} 輪（用 W{autoWeek} 的組數）
                 {currentProgram.status === 'paused' && '（已暫停）'}
               </p>
             )}
@@ -303,254 +307,288 @@ export default function ProgramGuide() {
         )}
       </div>
 
-      {/* 週次選擇 */}
-      <div className="space-y-2.5">
-        <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">選擇週次</h3>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-          {ZONGYUAN_WEEK_LABELS.map((label, idx) => {
-            const week = idx + 1;
-            const isSelected = week === selectedWeek;
-            return (
-              <button
-                key={week}
-                onClick={() => setManualWeek(week)}
-                disabled={!!editingSlotId && !isSelected}
-                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
+      {/* 課表內容／每輪紀錄 切換 */}
+      {showLive && (
+        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-slate-800/60 rounded-xl">
+          {([['plan', '課表內容'], ['laps', '每輪紀錄']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              disabled={!!editingSlotId}
+              className={`py-2 rounded-lg text-xs font-bold transition cursor-pointer disabled:cursor-not-allowed ${
+                view === key
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        {editingSlotId && (
-          <p className="text-[10px] text-slate-400 font-semibold">編輯中不能切換週次，先儲存或取消。</p>
-        )}
-      </div>
-
-      {/* 用這週的內容產生空白範本 */}
-      {showLive && liveDayPlans.length > 0 && (
-        <button
-          type="button"
-          onClick={handleOpenGenerate}
-          disabled={!!editingSlotId}
-          className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-40 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-800 transition cursor-pointer"
-        >
-          📋 用 {weekLabel} 的內容產生空白範本
-        </button>
       )}
 
-      {/* 4 天課表卡片 */}
-      <div className="space-y-4">
-        {showLive ? (
-          liveDays ? (
-            liveDays.map((day) => {
-              if (day.kind === 'missing') {
+      {showLive && view === 'laps' && currentProgram && (
+        <LapHistorySection program={currentProgram} exerciseMap={exerciseMap} showWeek />
+      )}
+
+      {(!showLive || view === 'plan') && (
+        <>
+        {/* 週次選擇 */}
+        <div className="space-y-2.5">
+          <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">選擇週次</h3>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+            {ZONGYUAN_WEEK_LABELS.map((label, idx) => {
+              const week = idx + 1;
+              const isSelected = week === selectedWeek;
+              return (
+                <button
+                  key={week}
+                  onClick={() => setManualWeek(week)}
+                  disabled={!!editingSlotId && !isSelected}
+                  className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {editingSlotId && (
+            <p className="text-[10px] text-slate-400 font-semibold">編輯中不能切換週次，先儲存或取消。</p>
+          )}
+          {isActiveHere && currentLap > PROGRAM_WEEK_COUNT && (
+            <p className="text-[10px] text-slate-400 font-semibold">
+              目前第 {currentLap} 輪：第 {PROGRAM_WEEK_COUNT + 1} 輪起固定用 W{autoWeek} 的組數，要調整就在 W{autoWeek} 按「編輯」。
+            </p>
+          )}
+        </div>
+
+        {/* 用這週的內容產生空白範本 */}
+        {showLive && liveDayPlans.length > 0 && (
+          <button
+            type="button"
+            onClick={handleOpenGenerate}
+            disabled={!!editingSlotId}
+            className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-40 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-800 transition cursor-pointer"
+          >
+            📋 用 {weekLabel} 的內容產生空白範本
+          </button>
+        )}
+
+        {/* 4 天課表卡片 */}
+        <div className="space-y-4">
+          {showLive ? (
+            liveDays ? (
+              liveDays.map((day) => {
+                if (day.kind === 'missing') {
+                  return (
+                    <div
+                      key={day.slotId}
+                      className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 shadow-sm space-y-3"
+                    >
+                      <div className="flex justify-between items-center gap-2">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{day.label}</h4>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                          ⚠ 找不到範本
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                        {day.deletedTemplate
+                          ? `這天用的範本「${day.deletedTemplate.name}」已經被刪除了，現在輪到這天開始訓練會是空白的。`
+                          : '這天還沒有接上範本，現在輪到這天開始訓練會是空白的。'}
+                      </p>
+                      <div className="grid grid-cols-1 gap-2">
+                        {day.deletedTemplate && (
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreSlotTemplate(day.deletedTemplate!.id)}
+                            className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                          >
+                            復原原本的範本（{day.deletedTemplate.entries.length} 個動作）
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSlotPicker(day.slotId, day.label)}
+                          className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          改用我的其他範本…
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateBlankForSlot(day.slotId, day.label)}
+                          className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold rounded-xl border border-dashed border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          建立空白範本，自己加動作
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                if (editingSlotId === day.slotId) {
+                  return (
+                    <ProgramDayEditCard
+                      key={day.slotId}
+                      label={day.label}
+                      template={day.template}
+                      weekIdx={weekIdx}
+                      weekLabel={weekLabel}
+                      exerciseMap={exerciseMap}
+                      onCancel={() => setEditingSlotId(null)}
+                      onSave={handleSaveDay}
+                    />
+                  );
+                }
+                const planned = plannedEntriesOf(day.template, weekIdx);
+                const skippedCount = day.template.entries.length - planned.length;
+                const dayTotal = planned.reduce((sum, entry) => sum + weekTargetOf(entry, weekIdx).sets, 0);
                 return (
                   <div
                     key={day.slotId}
-                    className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 shadow-sm space-y-3"
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3"
                   >
                     <div className="flex justify-between items-center gap-2">
                       <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{day.label}</h4>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
-                        ⚠ 找不到範本
-                      </span>
-                    </div>
-                    <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-                      {day.deletedTemplate
-                        ? `這天用的範本「${day.deletedTemplate.name}」已經被刪除了，現在輪到這天開始訓練會是空白的。`
-                        : '這天還沒有接上範本，現在輪到這天開始訓練會是空白的。'}
-                    </p>
-                    <div className="grid grid-cols-1 gap-2">
-                      {day.deletedTemplate && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                          當週總計 {dayTotal}組
+                        </span>
                         <button
                           type="button"
-                          onClick={() => handleRestoreSlotTemplate(day.deletedTemplate!.id)}
-                          className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                          onClick={() => startEditing(day.slotId)}
+                          disabled={!!editingSlotId}
+                          className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 transition cursor-pointer"
                         >
-                          復原原本的範本（{day.deletedTemplate.entries.length} 個動作）
+                          編輯
                         </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {planned.length === 0 && (
+                        <p className="text-xs text-slate-400 text-center py-2">這週還沒有動作，按「編輯」加動作。</p>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSlotPicker(day.slotId, day.label)}
-                        className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
-                      >
-                        改用我的其他範本…
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCreateBlankForSlot(day.slotId, day.label)}
-                        className="w-full py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold rounded-xl border border-dashed border-slate-300 dark:border-slate-700 transition cursor-pointer"
-                      >
-                        建立空白範本，自己加動作
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-              if (editingSlotId === day.slotId) {
-                return (
-                  <ProgramDayEditCard
-                    key={day.slotId}
-                    label={day.label}
-                    template={day.template}
-                    weekIdx={weekIdx}
-                    weekLabel={weekLabel}
-                    exerciseMap={exerciseMap}
-                    onCancel={() => setEditingSlotId(null)}
-                    onSave={handleSaveDay}
-                  />
-                );
-              }
-              const planned = plannedEntriesOf(day.template, weekIdx);
-              const skippedCount = day.template.entries.length - planned.length;
-              const dayTotal = planned.reduce((sum, entry) => sum + weekTargetOf(entry, weekIdx).sets, 0);
-              return (
-                <div
-                  key={day.slotId}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3"
-                >
-                  <div className="flex justify-between items-center gap-2">
-                    <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{day.label}</h4>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
-                        當週總計 {dayTotal}組
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => startEditing(day.slotId)}
-                        disabled={!!editingSlotId}
-                        className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 transition cursor-pointer"
-                      >
-                        編輯
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {planned.length === 0 && (
-                      <p className="text-xs text-slate-400 text-center py-2">這週還沒有動作，按「編輯」加動作。</p>
-                    )}
-                    {planned.map((entry) => {
-                      const target = weekTargetOf(entry, weekIdx);
-                      const alternatives = (entry.candidateExerciseIds ?? []).filter((id) => id !== entry.exerciseId);
-                      return (
-                        <div
-                          key={entry.id}
-                          className="py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0 space-y-1"
-                        >
-                          <div className="flex justify-between items-center gap-2">
-                            <p className="min-w-0 flex-1 text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
-                              {nameOf(entry.exerciseId)}
-                            </p>
-                            <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200 text-right">
-                              {target.note ?? `${target.sets}組 × ${target.reps}下`}
-                            </span>
+                      {planned.map((entry) => {
+                        const target = weekTargetOf(entry, weekIdx);
+                        const alternatives = (entry.candidateExerciseIds ?? []).filter((id) => id !== entry.exerciseId);
+                        return (
+                          <div
+                            key={entry.id}
+                            className="py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0 space-y-1"
+                          >
+                            <div className="flex justify-between items-center gap-2">
+                              <p className="min-w-0 flex-1 text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                                {nameOf(entry.exerciseId)}
+                              </p>
+                              <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200 text-right">
+                                {target.note ?? `${target.sets}組 × ${target.reps}下`}
+                              </span>
+                            </div>
+                            {alternatives.map((altId) => {
+                              const altTarget = weekTargetOf(entry, weekIdx, altId);
+                              return (
+                                <div key={altId} className="flex justify-between items-center gap-2 pl-3">
+                                  <p className="min-w-0 flex-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+                                    <span className="text-slate-400 dark:text-slate-500">或 </span>
+                                    {nameOf(altId)}
+                                  </p>
+                                  <span className="shrink-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400 text-right">
+                                    {altTarget.note ?? `${altTarget.sets}組 × ${altTarget.reps}下`}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
-                          {alternatives.map((altId) => {
-                            const altTarget = weekTargetOf(entry, weekIdx, altId);
-                            return (
-                              <div key={altId} className="flex justify-between items-center gap-2 pl-3">
-                                <p className="min-w-0 flex-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
-                                  <span className="text-slate-400 dark:text-slate-500">或 </span>
-                                  {nameOf(altId)}
-                                </p>
-                                <span className="shrink-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400 text-right">
-                                  {altTarget.note ?? `${altTarget.sets}組 × ${altTarget.reps}下`}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {skippedCount > 0 && (
-                    <p className="text-[10px] text-slate-400 font-semibold">
-                      {weekLabel} 跳過 {skippedCount} 個動作（按「編輯」可以加回來）
-                    </p>
-                  )}
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-xs text-slate-400 text-center py-4">載入課表中...</p>
-          )
-        ) : (
-          ZONGYUAN_8WEEK_PLAN.map((day) => (
-            <div
-              key={day.label}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3"
-            >
-              <div className="flex justify-between items-center">
-                <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{day.label}</h4>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
-                  當週總計 {day.weeklyTotalSets[selectedWeek - 1]}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {day.exercises.map((ex, idx) => (
-                  <div
-                    key={`${ex.planName}-${idx}`}
-                    className="flex justify-between items-center gap-3 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{ex.planName}</p>
-                      {ex.isNewCustom ? (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">將新增為自訂動作</p>
-                      ) : ex.exerciseName !== ex.planName ? (
-                        <p className="text-[10px] text-slate-400 font-medium">對應動作庫：{ex.exerciseName}</p>
-                      ) : null}
+                        );
+                      })}
                     </div>
-                    <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200 text-right">
-                      {ex.weekly[selectedWeek - 1]}
-                    </span>
+                    {skippedCount > 0 && (
+                      <p className="text-[10px] text-slate-400 font-semibold">
+                        {weekLabel} 跳過 {skippedCount} 個動作（按「編輯」可以加回來）
+                      </p>
+                    )}
                   </div>
-                ))}
+                );
+              })
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-4">載入課表中...</p>
+            )
+          ) : (
+            ZONGYUAN_8WEEK_PLAN.map((day) => (
+              <div
+                key={day.label}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3"
+              >
+                <div className="flex justify-between items-center">
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{day.label}</h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                    當週總計 {day.weeklyTotalSets[selectedWeek - 1]}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {day.exercises.map((ex, idx) => (
+                    <div
+                      key={`${ex.planName}-${idx}`}
+                      className="flex justify-between items-center gap-3 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{ex.planName}</p>
+                        {ex.isNewCustom ? (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">將新增為自訂動作</p>
+                        ) : ex.exerciseName !== ex.planName ? (
+                          <p className="text-[10px] text-slate-400 font-medium">對應動作庫：{ex.exerciseName}</p>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200 text-right">
+                        {ex.weekly[selectedWeek - 1]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
 
-      {/* 教練原始容量覆核對照（次要參考資訊） */}
-      <details className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-        <summary className="text-xs font-bold text-slate-500 dark:text-slate-400 cursor-pointer select-none">
-          {ZONGYUAN_COACH_CHECK_TABLE.title}
-        </summary>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-[10px] text-left border-collapse">
-            <thead>
-              <tr className="text-slate-400 dark:text-slate-500">
-                <th className="pr-2 pb-1.5 font-bold">部位</th>
-                {ZONGYUAN_WEEK_LABELS.map((w) => (
-                  <th key={w} className="px-1.5 pb-1.5 font-bold text-center whitespace-nowrap">
-                    {w.replace('（減量）', '').replace('（測試）', '')}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ZONGYUAN_COACH_CHECK_TABLE.rows.map((row) => (
-                <tr key={row.part} className="border-t border-slate-50 dark:border-slate-800/60">
-                  <td className="pr-2 py-1.5 font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    {row.part}
-                  </td>
-                  {row.values.map((v, i) => (
-                    <td key={i} className="px-1.5 py-1.5 text-center font-bold text-slate-700 dark:text-slate-300">
-                      {v}
-                    </td>
+        {/* 教練原始容量覆核對照（次要參考資訊） */}
+        <details className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+          <summary className="text-xs font-bold text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+            {ZONGYUAN_COACH_CHECK_TABLE.title}
+          </summary>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-[10px] text-left border-collapse">
+              <thead>
+                <tr className="text-slate-400 dark:text-slate-500">
+                  <th className="pr-2 pb-1.5 font-bold">部位</th>
+                  {ZONGYUAN_WEEK_LABELS.map((w) => (
+                    <th key={w} className="px-1.5 pb-1.5 font-bold text-center whitespace-nowrap">
+                      {w.replace('（減量）', '').replace('（測試）', '')}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+              </thead>
+              <tbody>
+                {ZONGYUAN_COACH_CHECK_TABLE.rows.map((row) => (
+                  <tr key={row.part} className="border-t border-slate-50 dark:border-slate-800/60">
+                    <td className="pr-2 py-1.5 font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {row.part}
+                    </td>
+                    {row.values.map((v, i) => (
+                      <td key={i} className="px-1.5 py-1.5 text-center font-bold text-slate-700 dark:text-slate-300">
+                        {v}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        </>
+      )}
 
       {/* 用這週的內容產生空白範本 */}
       {generateSheet && (

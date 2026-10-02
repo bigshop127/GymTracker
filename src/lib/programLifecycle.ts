@@ -1,4 +1,5 @@
 import { type TrainingProgram, type Workout } from '../db/schema';
+import { rotationSlotsOf } from './programRotation';
 
 const MS_PER_WEEK = 604800000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -6,6 +7,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /**
  * 刪掉一筆課表訓練紀錄後，把課表進度退回（那一格回到「這輪還沒練」）。
  * - 只處理屬於這份計畫、而且帶 slot 的紀錄；其他一律不動（回 null）。
+ * - 「自行安排」的格子（腿日）本來就不算進一輪，刪了也沒有進度可退（回 null）。
  * - 同一輪同一格還有別筆沒刪的完成紀錄（同一天練了兩次之類）→ 不退。
  * - 刪的剛好是「跑滿上一輪」的那一格、新的一輪還一格都沒練 → 退回上一輪，其他格維持已練。
  * - 其他情況（例如新一輪已經開始練了）不去硬拗，維持原狀。
@@ -19,7 +21,8 @@ export function revertSlotForDeletedWorkout(
 ): TrainingProgram | null {
   const slotId = deleted.programSlotId;
   if (deleted.programId !== program.id || !slotId) return null;
-  if (!program.slots.some((s) => s.id === slotId)) return null;
+  const slot = program.slots.find((s) => s.id === slotId);
+  if (!slot || slot.selfScheduled) return null;
 
   const lap = deleted.programCycleNumber ?? program.cycleCount + 1;
   const stillDone = otherWorkouts.some(
@@ -41,7 +44,7 @@ export function revertSlotForDeletedWorkout(
     return {
       ...program,
       cycleCount: program.cycleCount - 1,
-      completedSlotIdsThisLap: program.slots.filter((s) => s.id !== slotId).map((s) => s.id),
+      completedSlotIdsThisLap: rotationSlotsOf(program).filter((s) => s.id !== slotId).map((s) => s.id),
       updatedAt: now,
     };
   }
@@ -135,6 +138,11 @@ export function getElapsedWeeks(p: TrainingProgram, now: number): number {
   const end = p.status === 'paused' ? (p.pausedAt ?? now) : (p.completedAt ?? now);
   const ms = Math.max(0, end - p.startedAt - (p.accumulatedPausedMs ?? 0));
   return ms / MS_PER_WEEK;
+}
+
+/** 開始後第幾週（1 起算，扣掉暫停）：給「開始後第 N 週」文案用 */
+export function getProgramWeekNumber(p: TrainingProgram, now: number): number {
+  return Math.floor(getElapsedWeeks(p, now)) + 1;
 }
 
 /** 已暫停天數（只有 paused 才有意義，其餘回 0），給「已暫停 N 天」文案用 */

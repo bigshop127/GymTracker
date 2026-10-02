@@ -325,26 +325,11 @@ export default function SettingsPage() {
           <p className="text-[10px] text-slate-400">自訂不同班別的預設訓練建議，以及重訓頻率限制。</p>
         </div>
 
-        {/* 太久沒重訓門檻 */}
-        <div className="flex items-center justify-between gap-4 border-b border-slate-50 dark:border-slate-800/50 pb-4">
-          <div className="space-y-0.5">
-            <span className="text-sm font-bold text-slate-800 dark:text-slate-200">太久沒訓練門檻</span>
-            <p className="text-[10px] text-slate-400">拉/推/腿/手任一分類連續沒訓練達此天數時，將強制排入該分類（天）</p>
-          </div>
-          <div className="w-32">
-            <NumberStepper
-              value={settings.restOverrideDays ?? 7}
-              onChange={(val) => handleUpdate({ restOverrideDays: Math.max(1, val) })}
-              step={1}
-            />
-          </div>
-        </div>
-
         {/* 每週目標訓練次數 */}
         <div className="flex items-center justify-between gap-4 border-b border-slate-50 dark:border-slate-800/50 pb-4">
           <div className="space-y-0.5">
             <span className="text-sm font-bold text-slate-800 dark:text-slate-200">每週目標訓練次數</span>
-            <p className="text-[10px] text-slate-400">當無排班或休假時，每週（週日起）目標訓練天數（天）</p>
+            <p className="text-[10px] text-slate-400">每週（週日起）目標訓練天數；推→拉→手照順序排進這些天，自己指定的腿日也算一次（天）</p>
           </div>
           <div className="w-32">
             <NumberStepper

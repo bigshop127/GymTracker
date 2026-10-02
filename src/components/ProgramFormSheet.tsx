@@ -16,6 +16,19 @@ interface ProgramFormSheetProps {
 
 const DEFAULT_SLOT_LABELS = ['胸日', '背日', '腿臀日', '肩日', '手臂日'];
 
+type SlotDraft = { id: string; label: string; templateId?: string; selfScheduled?: boolean };
+
+function toDateInputValue(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** 日期欄位（本地 YYYY-MM-DD）→ 當天 00:00 的時間戳 */
+function fromDateInputValue(value: string): number {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
 export default function ProgramFormSheet({
   open,
   mode,
@@ -27,9 +40,10 @@ export default function ProgramFormSheet({
   const { currentProgram, createProgram, updateProgram } = useProgramStore();
 
   const [programName, setProgramName] = useState('');
-  const [programSlots, setProgramSlots] = useState<{ id: string; label: string; templateId?: string }[]>([]);
-  const [estWeeksMin, setEstWeeksMin] = useState(8);
-  const [estWeeksMax, setEstWeeksMax] = useState(12);
+  const [programSlots, setProgramSlots] = useState<SlotDraft[]>([]);
+  // 編輯時才有：開始日期（算「開始後第幾週」）、目前第幾輪（決定課表用第幾週的組數）
+  const [startDate, setStartDate] = useState('');
+  const [lapNumber, setLapNumber] = useState(1);
 
   // 每次 open 由 false→true 時用 initial 重置表單狀態（別讓上一次的殘留值帶進來）。
   // 在 render 階段直接處理（比照 NumberStepper 的寫法）以避免 useEffect 的 setState 級聯警告。
@@ -40,13 +54,13 @@ export default function ProgramFormSheet({
       if (mode === 'edit' && initial) {
         setProgramName(initial.name);
         setProgramSlots(initial.slots.map(s => ({ ...s })));
-        setEstWeeksMin(initial.estimatedWeeks.min);
-        setEstWeeksMax(initial.estimatedWeeks.max);
+        setStartDate(toDateInputValue(initial.startedAt));
+        setLapNumber(initial.cycleCount + 1);
       } else {
-        setProgramName('我的三個月訓練計畫');
+        setProgramName('我的訓練計畫');
         setProgramSlots(DEFAULT_SLOT_LABELS.map((label) => ({ id: crypto.randomUUID(), label })));
-        setEstWeeksMin(8);
-        setEstWeeksMax(12);
+        setStartDate('');
+        setLapNumber(1);
       }
     }
   }
@@ -71,6 +85,10 @@ export default function ProgramFormSheet({
     setProgramSlots(programSlots.map(s => s.id === id ? { ...s, templateId } : s));
   };
 
+  const handleToggleSelfScheduled = (id: string) => {
+    setProgramSlots(programSlots.map(s => s.id === id ? { ...s, selfScheduled: !s.selfScheduled } : s));
+  };
+
   const handleMoveSlot = (index: number, direction: 'up' | 'down') => {
     const newSlots = [...programSlots];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -90,13 +108,30 @@ export default function ProgramFormSheet({
       alert('計畫至少需要一個訓練日/循環項目');
       return;
     }
+    if (programSlots.every(s => s.selfScheduled)) {
+      alert('至少要有一個訓練日是「自動排」，班表才有東西可以輪替');
+      return;
+    }
+
+    if (mode === 'edit' && startDate && startDate > toDateInputValue(Date.now())) {
+      alert('開始日期不能是未來的日期');
+      return;
+    }
 
     try {
-      if (mode === 'edit') {
+      if (mode === 'edit' && initial) {
+        // 日期沒改就保留原本的時間戳（不要被改成當天 00:00）
+        const startedAt = startDate && startDate !== toDateInputValue(initial.startedAt)
+          ? fromDateInputValue(startDate)
+          : initial.startedAt;
         await updateProgram({
           name: programName.trim(),
-          slots: programSlots,
-          estimatedWeeks: { min: estWeeksMin, max: estWeeksMax },
+          slots: programSlots.map(s => {
+            const { selfScheduled, ...rest } = s;
+            return selfScheduled ? { ...rest, selfScheduled: true } : rest;
+          }),
+          startedAt,
+          cycleCount: Math.max(1, Math.floor(lapNumber)) - 1,
         });
       } else {
         if (currentProgram) {
@@ -108,8 +143,8 @@ export default function ProgramFormSheet({
         }
         await createProgram(
           programName.trim(),
-          programSlots.map(s => ({ label: s.label, templateId: s.templateId })),
-          { min: estWeeksMin, max: estWeeksMax }
+          programSlots.map(s => ({ label: s.label, templateId: s.templateId, selfScheduled: s.selfScheduled })),
+          { min: 8, max: 12 }
         );
       }
       onSaved?.();
@@ -145,36 +180,39 @@ export default function ProgramFormSheet({
             />
           </div>
 
-          {/* 預估週數 */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-              預估進行週數 (參考值)
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 block">最少週數</span>
-                <NumberStepper
-                  value={estWeeksMin}
-                  onChange={(val) => setEstWeeksMin(val)}
-                  step={1}
-                  min={1}
-                  max={52}
-                  decimals={0}
-                />
+          {/* 開始日期／目前第幾輪（編輯時才有；計畫不限週數，一直累加） */}
+          {mode === 'edit' && initial && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                進度
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 block">開始日期</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 focus:outline-none text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm transition"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 block">目前第幾輪</span>
+                  <NumberStepper
+                    value={lapNumber}
+                    onChange={(val) => setLapNumber(val)}
+                    step={1}
+                    min={1}
+                    max={999}
+                    decimals={0}
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 block">最多週數</span>
-                <NumberStepper
-                  value={estWeeksMax}
-                  onChange={(val) => setEstWeeksMax(val)}
-                  step={1}
-                  min={1}
-                  max={52}
-                  decimals={0}
-                />
-              </div>
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                「開始後第幾週」從開始日期算（暫停期間不算）。自動排的訓練日各練完一次＝一輪；課表第 1~8 輪用 W1~W8 的組數，第 9 輪起固定用 W7。
+              </p>
             </div>
-          </div>
+          )}
 
           {/* Slots 清單 */}
           <div className="space-y-3">
@@ -183,7 +221,7 @@ export default function ProgramFormSheet({
                 循環項目 / 訓練日 (依序進行)
               </label>
               <span className="text-[10px] font-bold text-slate-400">
-                共 {programSlots.length} 天
+                共 {programSlots.length} 天（自動輪替 {programSlots.filter(s => !s.selfScheduled).length} 天）
               </span>
             </div>
 
@@ -261,6 +299,18 @@ export default function ProgramFormSheet({
                       ))}
                     </select>
                   </div>
+
+                  {/* 自動排／自行安排 */}
+                  <label className="flex items-center gap-2 pl-6 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!slot.selfScheduled}
+                      onChange={() => handleToggleSelfScheduled(slot.id)}
+                      className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">自行安排</span>
+                    <span className="text-[10px] text-slate-400">班表不自動排、不算進一輪，要練時自己指定</span>
+                  </label>
                 </div>
               ))}
             </div>

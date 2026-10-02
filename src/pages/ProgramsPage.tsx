@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProgramStore } from '../store/program';
 import { listTemplates } from '../db/templates';
 import { type WorkoutTemplate, type TrainingProgram } from '../db/schema';
-import { getElapsedWeeks, getPausedDays } from '../lib/programLifecycle';
+import { getElapsedWeeks, getPausedDays, getProgramWeekNumber } from '../lib/programLifecycle';
 import ProgramFormSheet from '../components/ProgramFormSheet';
 
 export default function ProgramsPage() {
@@ -110,7 +110,7 @@ export default function ProgramsPage() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-bold tracking-wide">
-                第 {currentProgram.runNumber ?? 1} 次 • 第 {currentProgram.cycleCount + 1} 輪 • 已進行 {getElapsedWeeks(currentProgram, now).toFixed(1)} 週（預估 {currentProgram.estimatedWeeks.min}-{currentProgram.estimatedWeeks.max} 週）
+                第 {currentProgram.runNumber ?? 1} 次 • 第 {currentProgram.cycleCount + 1} 輪 • 開始後第 {getProgramWeekNumber(currentProgram, now)} 週（{new Date(currentProgram.startedAt).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' })} 起）
               </p>
               {currentProgram.status === 'paused' && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">

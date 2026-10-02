@@ -31,3 +31,4 @@ Vite + React 19 + TS(strict) + **Tailwind v4** + React Router 7 + Zustand 5 + **
 - **Dexie 改 schema** 要 `version(n).stores({...})` 只宣告新/改的表，舊 version 不動（防掉資料）。
 - **彈窗 z-index 要高過底部導覽列（z-50）**：全屏 Sheet／底部彈窗一律 `z-[60]`，不然最底下的按鈕會被導覽列蓋住按不到（ROADMAP §6-8）。
 - **課表週次 `sets = 0` ＝那週跳過這個動作**：依週次排內容的地方都要先濾 `isSkippedInWeek`，替代動作的週次用 `ownTargetsOf` 取（ROADMAP §6-10）。
+- **輪數→週次用 `weekIdxForCycle`、一輪練完沒用 `settleLap`**：第 9 輪起固定 W7；「自行安排」的腿日不算進一輪（ROADMAP §6-11、12）。

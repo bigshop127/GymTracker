@@ -10,15 +10,28 @@ import { calculateE1rm } from '../lib/e1rm';
 import { useSettingsStore } from '../store/settings';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
 import { buildExerciseMap, getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
-import { getMuscleIcon } from '../data/muscle-icons';
 import { getLocationColor } from '../lib/locationStyle';
 import { rpeToShortLabel } from '../lib/rpe';
 import { buildCalendarGrid } from '../lib/shiftPlan';
 import { useProgramStore } from '../store/program';
 import { getWorkoutSplitCategory, SPLIT_CATEGORIES, SPLIT_CATEGORY_HEX, SPLIT_CATEGORY_CELL_BG_CLASSES, type SplitCategory } from '../lib/splitRotation';
+import {
+  HISTORY_CATEGORIES,
+  countWorkingSets,
+  formatMonthDay,
+  getValidDurationMinutes,
+  groupByWeek,
+  type HistoryCategory,
+} from '../lib/historyStats';
+import HistoryOverviewCard from '../components/HistoryOverviewCard';
 
-type HistoryGroupCategory = SplitCategory | '其他';
-const HISTORY_GROUP_CATEGORIES: HistoryGroupCategory[] = [...SPLIT_CATEGORIES, '其他'];
+const HISTORY_CATEGORY_HEX: Record<HistoryCategory, string> = { ...SPLIT_CATEGORY_HEX, 其他: '#94a3b8' };
+const LIST_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function formatListDate(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getMonth() + 1}/${d.getDate()}（${LIST_WEEKDAYS[d.getDay()]}）`;
+}
 
 export default function History() {
   const navigate = useNavigate();
@@ -34,7 +47,8 @@ export default function History() {
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<HistoryGroupCategory>>(new Set());
+  const [categoryFilter, setCategoryFilter] = useState<HistoryCategory | 'all'>('all');
+  const [now] = useState(() => Date.now());
 
   // 7B: 視圖切換與日曆狀態
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -227,11 +241,8 @@ export default function History() {
   };
 
 
-  // 計算訓練時長 (分鐘)
-  const getDurationMinutes = (workout: Workout) => {
-    if (!workout.endedAt) return 0;
-    return Math.round((workout.endedAt - workout.startedAt) / 60000);
-  };
+  // 計算訓練時長 (分鐘)：忘了按結束的（超過 4 小時）不顯示
+  const getDurationMinutes = (workout: Workout) => getValidDurationMinutes(workout) ?? 0;
 
   // 建立 Exercise Map 供搜尋與日曆主要部位查詢使用
   const exMap = useMemo(() => {
@@ -241,23 +252,24 @@ export default function History() {
   // 在記憶體中進行列表聚合 (ROADMAP §5 注意項：避免每次 render 重複統計)
   const historyStatsList = useMemo(() => {
     return historyList.map((w) => {
-      // 總組數
-      const totalSetsCount = w.entries.reduce((sum, entry) => sum + entry.sets.length, 0);
       // 總容量 (已過濾 completed && !isWarmup)
-      const workoutVolume = calculateWorkoutVolume(w);
-      const displayVolume = formatWeight(workoutVolume, currentUnit, 1);
+      const volumeKg = calculateWorkoutVolume(w);
+      const displayVolume = formatWeight(volumeKg, currentUnit, 0);
 
       return {
         id: w.id,
         workout: w,
-        totalSetsCount,
+        category: (getWorkoutSplitCategory(w, activeProgram) ?? '其他') as HistoryCategory,
+        workingSets: countWorkingSets(w),
+        durationMinutes: getValidDurationMinutes(w),
+        volumeKg,
         displayVolume,
       };
     });
-  }, [historyList, currentUnit]);
+  }, [historyList, currentUnit, activeProgram]);
 
   // 關鍵字搜尋過濾後的歷史列表
-  const filteredStatsList = useMemo(() => {
+  const searchedStatsList = useMemo(() => {
     const trimmed = searchKeyword.trim().toLowerCase();
     if (!trimmed) return historyStatsList;
 
@@ -275,26 +287,26 @@ export default function History() {
     });
   }, [historyStatsList, searchKeyword, exMap]);
 
-  // 按推/拉/腿/手分類分組（判不出來歸到「其他」），組內維持原本時間新到舊的順序
-  const groupedHistoryList = useMemo(() => {
-    const groups: Record<HistoryGroupCategory, typeof filteredStatsList> = {
-      '拉': [], '推': [], '腿': [], '手': [], '其他': [],
-    };
-    for (const item of filteredStatsList) {
-      const category = getWorkoutSplitCategory(item.workout, activeProgram) ?? '其他';
-      groups[category].push(item);
-    }
-    return groups;
-  }, [filteredStatsList, activeProgram]);
+  // 分類篩選（篩選鈕上的數字＝搜尋後各分類幾筆）
+  const categoryCounts = useMemo(() => {
+    const counts: Record<HistoryCategory, number> = { 推: 0, 拉: 0, 手: 0, 腿: 0, 其他: 0 };
+    for (const item of searchedStatsList) counts[item.category] += 1;
+    return counts;
+  }, [searchedStatsList]);
 
-  const toggleGroupCollapsed = (category: HistoryGroupCategory) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
-  };
+  const filteredStatsList = useMemo(
+    () => (categoryFilter === 'all' ? searchedStatsList : searchedStatsList.filter((item) => item.category === categoryFilter)),
+    [searchedStatsList, categoryFilter]
+  );
+
+  // 清單依週分段（週日起算，跟班表每週目標同一套週界），新的週在前
+  const weekGroups = useMemo(() => groupByWeek(filteredStatsList), [filteredStatsList]);
+
+  // 總覽圖表：全部紀錄（不受搜尋/篩選影響）
+  const overviewItems = useMemo(
+    () => historyStatsList.map(({ workout, category }) => ({ workout, category })),
+    [historyStatsList]
+  );
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
@@ -331,6 +343,11 @@ export default function History() {
         <div className="text-center py-12 text-slate-400 font-semibold animate-pulse">
           正在載入歷史記錄...
         </div>
+      )}
+
+      {/* 訓練總覽（趨勢／比例） */}
+      {!isLoading && viewMode === 'list' && historyList.length > 0 && (
+        <HistoryOverviewCard items={overviewItems} now={now} onSelectWorkout={setSelectedWorkout} />
       )}
 
       {/* 搜尋框 */}
@@ -381,149 +398,91 @@ export default function History() {
       {/* 清單檢視 - 歷史記錄列表/搜尋結果 */}
       {!isLoading && viewMode === 'list' && historyList.length > 0 && (
         <>
+          {/* 分類篩選 */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+            {(['all', ...HISTORY_CATEGORIES] as const).map((cat) => {
+              const isSelected = categoryFilter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer border ${
+                    isSelected
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {cat !== 'all' && (
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: HISTORY_CATEGORY_HEX[cat] }} />
+                  )}
+                  {cat === 'all' ? '全部' : cat}
+                  <span className={`text-[10px] ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                    {cat === 'all' ? searchedStatsList.length : categoryCounts[cat]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {filteredStatsList.length === 0 ? (
             <div className="flex flex-col items-center justify-center min-h-[30vh] text-center space-y-3 py-12">
               <div className="text-3xl text-slate-400">🔍</div>
               <div className="space-y-1">
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                  找不到符合「{searchKeyword}」的訓練
+                  {searchKeyword.trim() ? `找不到符合「${searchKeyword}」的訓練` : '這個分類還沒有訓練紀錄'}
                 </p>
                 <p className="text-xs text-slate-400">
-                  請嘗試輸入其他動作名稱、部位或地點。
+                  {searchKeyword.trim() ? '請嘗試輸入其他動作名稱、部位或地點。' : '換一個分類，或點「全部」。'}
                 </p>
               </div>
             </div>
           ) : (
-            <div className="space-y-5">
-              {HISTORY_GROUP_CATEGORIES.map((category) => {
-                const items = groupedHistoryList[category];
-                if (items.length === 0) return null;
-                const isCollapsed = collapsedGroups.has(category);
-                return (
-                  <div key={category} className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleGroupCollapsed(category)}
-                      className="w-full flex items-center justify-between px-1 py-1 cursor-pointer"
-                    >
-                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        {category}
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full">
-                          {items.length}
-                        </span>
-                      </span>
-                      <svg
-                        fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                        className={`w-4 h-4 text-slate-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
+            <div className="space-y-4">
+              {weekGroups.map((group) => (
+                <div key={group.weekStart} className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                      {formatMonthDay(group.weekStart)} – {formatMonthDay(group.weekEnd)}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">{group.items.length} 次</span>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+                    {group.items.map(({ id, workout, category, workingSets, durationMinutes, displayVolume, volumeKg }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setSelectedWorkout(workout)}
+                        className="w-full flex items-stretch gap-3 pr-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer"
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                      </svg>
-                    </button>
-                    {!isCollapsed && (
-                      <div className="space-y-3">
-                        {items.map(({ id, workout, totalSetsCount, displayVolume }) => {
-                          const duration = getDurationMinutes(workout);
-                const summary = getDaySummary([workout], exMap);
-                const color = getLocationColor(summary.location);
-                const markup = summary.primaryMuscle ? getMuscleIcon(summary.primaryMuscle) : null;
-                return (
-                  <div
-                    key={id}
-                    onClick={() => setSelectedWorkout(workout)}
-                    className="bg-white border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:shadow hover:border-slate-200 dark:bg-slate-900 transition duration-200 cursor-pointer space-y-3"
-                  >
-                    {/* 卡片標題區 */}
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2.5">
-                        {markup && (
-                          <div
-                            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border"
-                            style={{
-                              backgroundColor: `${color}15`,
-                              color: color,
-                              borderColor: `${color}30`,
-                            }}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              className="w-4 h-4"
-                              dangerouslySetInnerHTML={{ __html: markup }}
-                            />
-                          </div>
-                        )}
-                        <div>
-                          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
-                            {workout.title || '健身訓練'}
-                          </h3>
-                          <span className="text-[10px] text-slate-400 font-semibold">
-                            {formatDateTime(workout.startedAt)}
+                        <span className="w-1 shrink-0" style={{ backgroundColor: HISTORY_CATEGORY_HEX[category] }} />
+                        <span className="flex-1 min-w-0 py-2.5 space-y-0.5">
+                          <span className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                              {workout.title || '健身訓練'}
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-400 shrink-0">
+                              {formatListDate(workout.startedAt)}
+                            </span>
                           </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex flex-col items-end">
-                          <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
-                            {displayVolume} {currentUnit}
+                          <span className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            {[
+                              `${workout.entries.length} 動作`,
+                              `${workingSets} 組`,
+                              durationMinutes !== null ? `${durationMinutes} 分` : null,
+                              volumeKg > 0 ? `${displayVolume.toLocaleString()} ${currentUnit}` : null,
+                              workout.location || null,
+                            ].filter(Boolean).join(' · ')}
                           </span>
-                          <span className="text-[9px] text-slate-400 font-bold uppercase">總容量</span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteWorkout(workout.id);
-                          }}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
-                          title="刪除訓練紀錄"
-                        >
-                          <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 數據概要 Bar */}
-                    <div className="flex flex-wrap gap-4 text-xs text-slate-500 font-semibold bg-slate-50/50 dark:bg-slate-950 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <div className="flex items-center gap-1">
-                        <span>📂</span>
-                        <span>{workout.entries.length} 動作</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span>🔢</span>
-                        <span>{totalSetsCount} 組</span>
-                      </div>
-                      {duration > 0 && (
-                        <div className="flex items-center gap-1">
-                          <span>⏱️</span>
-                          <span>{duration} 分鐘</span>
-                        </div>
-                      )}
-                      {workout.location && (
-                        <div className="flex items-center gap-1">
-                          <span>📍</span>
-                          <span>{workout.location}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 動作概要名稱預覽 (動作名稱 join + 刪除 fallback 處理) */}
-                    <div className="text-[10px] text-slate-400 font-medium truncate">
-                      {workout.entries
-                        .map((entry) => {
-                          const ex = exMap.get(entry.exerciseId);
-                          return ex ? ex.name : '（已刪除的動作）';
-                        })
-                        .join('、')}
-                    </div>
+                        </span>
+                        <svg fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 self-center shrink-0">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                        </svg>
+                      </button>
+                    ))}
                   </div>
-                        );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </>

@@ -17,10 +17,11 @@ import {
   clonePlannedSets,
 } from '../lib/workoutEntries';
 import { getExerciseSessions } from '../lib/exerciseSessions';
-import { buildWeekSets, isSkippedInWeek, programAlternatives, startingWeightOf } from '../lib/programWeeks';
+import { buildWeekSets, isSkippedInWeek, programAlternatives, startingWeightOf, weekIdxForCycle } from '../lib/programWeeks';
 
 /**
- * 依「第幾輪」(cycleNumber，1-indexed) 從 entry.weeklyTargets 挑當週該練的組數/次數；
+ * 依「第幾輪」(cycleNumber，1-indexed) 從 entry.weeklyTargets 挑當週該練的組數/次數
+ * （第 1~8 輪對 W1~W8，第 9 輪起固定 W7，見 weekIdxForCycle）；
  * 沒有 weeklyTargets（一般範本）就照搬 entry.sets 的固定值，行為與改動前完全一樣。
  * 重量沿用該動作目前記錄的第一組重量（範本本來就會保留上次練的重量當起始建議值）。
  */
@@ -41,7 +42,7 @@ export function buildEntrySets(entry: WorkoutEntry, cycleNumber: number): SetLog
     }));
   }
 
-  const weekIdx = Math.min(Math.max(cycleNumber - 1, 0), targets.length - 1);
+  const weekIdx = Math.min(weekIdxForCycle(cycleNumber), targets.length - 1);
   return buildWeekSets(targets[weekIdx], entry.sets[0]?.weight ?? 0);
 }
 
@@ -575,7 +576,7 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       // 課表「只改這週」刪掉的動作（這週 0 組）不排進來
       const plannedEntries = [...template.entries]
         .sort((a, b) => a.order - b.order)
-        .filter((entry) => !isSkippedInWeek(entry, cycleNumber - 1));
+        .filter((entry) => !isSkippedInWeek(entry, weekIdxForCycle(cycleNumber)));
 
       // 替代動作範本裡沒存重量（或存 0）時，用上次實際做它的重量
       let completedForAlternatives: Workout[] = [];

@@ -3,6 +3,7 @@ import { listExercises, addExercise } from '../db/exercises';
 import { saveTemplate } from '../db/templates';
 import { useProgramStore } from '../store/program';
 import { ZONGYUAN_8WEEK_PLAN, ZONGYUAN_PROGRAM_NAME, parseZongYuanWeeklyTargets } from '../data/zongyuan-8week-program';
+import { toPushPullArmsRotation } from './programRotation';
 
 export async function isZongYuanProgramImported(): Promise<boolean> {
   const programs = await db.programs.toArray();
@@ -33,7 +34,7 @@ export async function importZongYuanProgram(): Promise<void> {
   }
 
   const now = Date.now();
-  const slots: { label: string; templateId: string }[] = [];
+  const slots: { label: string; templateId: string; selfScheduled?: boolean }[] = [];
 
   for (const day of ZONGYUAN_8WEEK_PLAN) {
     const templateId = crypto.randomUUID();
@@ -66,5 +67,6 @@ export async function importZongYuanProgram(): Promise<void> {
     slots.push({ label: day.label, templateId });
   }
 
-  await useProgramStore.getState().createProgram(ZONGYUAN_PROGRAM_NAME, slots, { min: 8, max: 8 });
+  // 班表輪替 推→拉→手，腿日自行安排（2026-10-02 改版）
+  await useProgramStore.getState().createProgram(ZONGYUAN_PROGRAM_NAME, toPushPullArmsRotation(slots) ?? slots, { min: 8, max: 8 });
 }

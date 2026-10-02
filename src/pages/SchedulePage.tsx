@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useProgramStore } from '../store/program';
 import { listCompletedWorkouts, deleteWorkout } from '../db/workouts';
 import { listExercises } from '../db/exercises';
-import { listTemplates } from '../db/templates';
 import {
   listDayOverridesInRange,
   saveDayOverride,
@@ -26,7 +25,7 @@ import {
   describeSuggestionLabel,
   getLocalDateStr,
 } from '../lib/shiftPlan';
-import { type DayOverride, type ShiftLetter, type Workout, type Exercise, type WorkoutTemplate } from '../db/schema';
+import { type DayOverride, type ShiftLetter, type Workout, type Exercise } from '../db/schema';
 import { getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
 import { getLocationColor } from '../lib/locationStyle';
 import { getMonthlySplitCounts, SPLIT_CATEGORIES } from '../lib/splitRotation';
@@ -69,7 +68,6 @@ export default function SchedulePage() {
   const [dayOverrides, setDayOverrides] = useState<DayOverride[]>([]);
   const [completedWorkouts, setCompletedWorkouts] = useState<Workout[]>([]);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
-  const [allTemplates, setAllTemplates] = useState<WorkoutTemplate[]>([]);
   const { activeWorkout, cancelWorkout } = useActiveWorkoutStore();
   const { settings } = useSettingsStore();
   const [reloadTrigger, setReloadTrigger] = useState(0);
@@ -97,13 +95,11 @@ export default function SchedulePage() {
       listDayOverridesInRange(startDateStr, endDateStr),
       listCompletedWorkouts(),
       listExercises(),
-      listTemplates(),
-    ]).then(([overrides, workouts, exercises, templates]) => {
+    ]).then(([overrides, workouts, exercises]) => {
       if (active) {
         setDayOverrides(overrides);
         setCompletedWorkouts(workouts);
         setAllExercises(exercises);
-        setAllTemplates(templates);
       }
     }).catch((err) => {
       console.error('Failed to load overrides data:', err);
@@ -146,14 +142,6 @@ export default function SchedulePage() {
     return map;
   }, [allExercises]);
 
-  const templatesById = useMemo(() => {
-    const map = new Map<string, WorkoutTemplate>();
-    for (const t of allTemplates) {
-      map.set(t.id, t);
-    }
-    return map;
-  }, [allTemplates]);
-
   const plannedDays = useMemo(() => {
     if (dateStrings.length === 0) return [];
     return generateMonthPlan({
@@ -163,14 +151,11 @@ export default function SchedulePage() {
       activeWorkoutToday: activeWorkout,
       overridesByDate,
       policyOverrides: settings?.shiftPolicyOverrides,
-      restOverrideDays: settings?.restOverrideDays ?? 7,
-      exerciseMap,
       today: now,
       weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
-      templatesById,
       programPaused: currentProgram?.status === 'paused',
     });
-  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, exerciseMap, now, templatesById, currentProgram]);
+  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, overridesByDate, settings, now, currentProgram]);
 
   const baselineOverridesByDate = useMemo(
     () => buildBaselineOverridesByDate(overridesByDate),
@@ -186,14 +171,11 @@ export default function SchedulePage() {
       activeWorkoutToday: activeWorkout,
       overridesByDate: baselineOverridesByDate,
       policyOverrides: settings?.shiftPolicyOverrides,
-      restOverrideDays: settings?.restOverrideDays ?? 7,
-      exerciseMap,
       today: now,
       weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
-      templatesById,
       programPaused: currentProgram?.status === 'paused',
     });
-  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, baselineOverridesByDate, settings, exerciseMap, now, templatesById, currentProgram]);
+  }, [dateStrings, activeProgram, completedWorkouts, activeWorkout, baselineOverridesByDate, settings, now, currentProgram]);
 
   const plannedDaysWithBaseline = useMemo(
     () => mergeBaselinePlan(plannedDays, baselinePlannedDays),
@@ -846,7 +828,8 @@ export default function SchedulePage() {
                   {activeProgram.slots.length > 0 && (
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       {activeProgram.slots.map((slot) => {
-                        const alreadyDoneThisLap = activeProgram.completedSlotIdsThisLap.includes(slot.id);
+                        // 自行安排的格子（腿日）不算進一輪，永遠可以指定
+                        const alreadyDoneThisLap = !slot.selfScheduled && activeProgram.completedSlotIdsThisLap.includes(slot.id);
                         const isPinned = overridesByDate.get(selectedDateStr)?.pinnedSlotId === slot.id;
                         return (
                           <button
@@ -863,6 +846,9 @@ export default function SchedulePage() {
                             }`}
                           >
                             {slot.label}{alreadyDoneThisLap ? '（這輪已練過）' : ''}
+                            {slot.selfScheduled && (
+                              <span className="block text-[10px] font-semibold opacity-70 mt-0.5">自行安排</span>
+                            )}
                           </button>
                         );
                       })}

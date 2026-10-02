@@ -21,6 +21,7 @@ import { listCompletedWorkouts } from '../db/workouts';
 import {
   getSplitRotationStatus,
   getCalendarDaysAgo,
+  type SplitCategory,
   normalizeSplit,
   getTemplateCategory,
   groupTemplatesByCategory,
@@ -42,7 +43,9 @@ import TemplateEditorSheet from '../components/TemplateEditorSheet';
 import FinishCompareSheet from '../components/FinishCompareSheet';
 import { diffWorkoutAgainstTemplate, type TemplateChange } from '../lib/templateDiff';
 import { useProgramStore } from '../store/program';
-import { getElapsedWeeks, getPausedDays } from '../lib/programLifecycle';
+import { getPausedDays, getProgramWeekNumber } from '../lib/programLifecycle';
+import { rotationSlotsOf } from '../lib/programRotation';
+import { weekIdxForCycle } from '../lib/programWeeks';
 import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
 import { RPE_OPTIONS } from '../lib/rpe';
 import { formatWeight, toKgFromDisplay, weightStep } from '../lib/units';
@@ -145,13 +148,32 @@ export default function WorkoutLogger() {
     };
   }, [activeWorkout?.id, activeWorkout?.status]);
 
-  const { splitStatuses, doneCount } = useMemo(() => {
+  // 最近 7 天輪動：只算班表自動輪替的分類（推/拉/手）；自行安排的（腿）另外列出來參考、不算進分母。
+  // 課表格子判不出分類（自訂標籤）時退回原本四類全列。
+  const { splitStatuses, doneCount, rotationTotal } = useMemo(() => {
     if (!activeProgram) {
-      return { splitStatuses: [], doneCount: 0 };
+      return { splitStatuses: [], doneCount: 0, rotationTotal: 0 };
     }
     const statuses = getSplitRotationStatus(completedWorkouts, activeProgram, now);
-    const count = statuses.filter((s) => s.doneInWindow).length;
-    return { splitStatuses: statuses, doneCount: count };
+    const categoriesOf = (slots: typeof activeProgram.slots) => [
+      ...new Set(slots.map((s) => normalizeSplit(s.label)).filter((c): c is SplitCategory => !!c)),
+    ];
+    const rotationCats = categoriesOf(rotationSlotsOf(activeProgram));
+    if (rotationCats.length === 0) {
+      const all = statuses.map((st) => ({ ...st, selfScheduled: false }));
+      return { splitStatuses: all, doneCount: all.filter((st) => st.doneInWindow).length, rotationTotal: all.length };
+    }
+    const selfCats = categoriesOf(activeProgram.slots.filter((s) => s.selfScheduled)).filter((c) => !rotationCats.includes(c));
+    const byCategory = new Map(statuses.map((st) => [st.category, st]));
+    const ordered = [
+      ...rotationCats.map((c) => ({ ...byCategory.get(c)!, selfScheduled: false })),
+      ...selfCats.map((c) => ({ ...byCategory.get(c)!, selfScheduled: true })),
+    ];
+    return {
+      splitStatuses: ordered,
+      doneCount: ordered.filter((st) => !st.selfScheduled && st.doneInWindow).length,
+      rotationTotal: rotationCats.length,
+    };
   }, [completedWorkouts, activeProgram, now]);
 
   const exerciseMap = useMemo(() => buildExerciseMap(allExercises), [allExercises]);
@@ -189,6 +211,15 @@ export default function WorkoutLogger() {
     return map;
   }, [templates]);
 
+  // 課表有排週次組數（宗諺課表）才在計畫卡標「第 N 輪（Wk）」
+  const programHasWeeklyTargets = useMemo(
+    () =>
+      !!activeProgram?.slots.some((s) =>
+        s.templateId && templatesById.get(s.templateId)?.entries.some((e) => (e.weeklyTargets?.length ?? 0) > 0)
+      ),
+    [activeProgram, templatesById]
+  );
+
   const todayPlan = useMemo(() => {
     if (!activeProgram) return null;
     const overridesMap = new Map<string, DayOverride>();
@@ -202,14 +233,12 @@ export default function WorkoutLogger() {
       activeWorkoutToday: activeWorkout,
       overridesByDate: overridesMap,
       policyOverrides: settings?.shiftPolicyOverrides,
-      restOverrideDays: settings?.restOverrideDays ?? 7,
-      exerciseMap,
       today: now,
-      templatesById,
+      weeklyTargetSessions: settings?.weeklyTargetSessions ?? 4,
       programPaused: currentProgram?.status === 'paused',
     });
     return plans[0] || null;
-  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, exerciseMap, now, templatesById, currentProgram]);
+  }, [todayStr, activeProgram, completedWorkouts, activeWorkout, todayOverride, settings, now, currentProgram]);
 
   const handleCancelPause = async () => {
     if (!todayOverride) return;
@@ -814,7 +843,7 @@ export default function WorkoutLogger() {
                     {activeProgram.name}
                   </h4>
                   <p className="text-[11px] text-slate-400 font-bold tracking-wide">
-                    第 {activeProgram.cycleCount + 1} 輪 • 已進行 {getElapsedWeeks(activeProgram, now).toFixed(1)} 週 (預估 {activeProgram.estimatedWeeks.min}-{activeProgram.estimatedWeeks.max} 週)
+                    第 {activeProgram.cycleCount + 1} 輪{programHasWeeklyTargets ? `（W${weekIdxForCycle(activeProgram.cycleCount + 1) + 1}）` : ''} • 開始後第 {getProgramWeekNumber(activeProgram, now)} 週
                   </p>
                 </div>
                 <button
@@ -829,7 +858,8 @@ export default function WorkoutLogger() {
               <div className="flex flex-wrap gap-1.5 items-center pt-0.5">
                 {activeProgram.slots.map((s) => {
                   const isCurrent = s.id === currentSlot?.id;
-                  const isCompletedThisLap = activeProgram.completedSlotIdsThisLap.includes(s.id);
+                  // 自行安排的格子（腿日）不算進一輪，永遠可以點來指定今天練
+                  const isCompletedThisLap = !s.selfScheduled && activeProgram.completedSlotIdsThisLap.includes(s.id);
                   return (
                     <button
                       key={s.id}
@@ -841,11 +871,13 @@ export default function WorkoutLogger() {
                           ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600'
                           : isCurrent
                           ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                          : s.selfScheduled
+                          ? 'bg-transparent border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                           : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
-                      title={isCompletedThisLap ? '這輪已練過' : undefined}
+                      title={isCompletedThisLap ? '這輪已練過' : s.selfScheduled ? '自行安排：點一下指定今天練' : undefined}
                     >
-                      {s.label}{isCompletedThisLap ? ' (已練)' : ''}
+                      {s.label}{isCompletedThisLap ? ' (已練)' : ''}{s.selfScheduled ? ' · 自行安排' : ''}
                     </button>
                   );
                 })}
@@ -856,11 +888,18 @@ export default function WorkoutLogger() {
                 <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     <span>最近 7 天輪動</span>
-                    <span>{doneCount} / 4</span>
+                    <span>{doneCount} / {rotationTotal}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {splitStatuses.map((status) => {
                       const { chipClass, label } = (() => {
+                        // 自行安排的分類（腿）：只顯示多久沒練給你參考，不算進輪動、也不標紅
+                        if (status.selfScheduled) {
+                          return {
+                            chipClass: 'bg-transparent text-slate-400 dark:text-slate-500 border border-dashed border-slate-300 dark:border-slate-700',
+                            label: `${status.category} ${status.daysAgo === null ? '未練過' : `${status.daysAgo}天前`} · 自行安排`
+                          };
+                        }
                         if (status.doneInWindow) {
                           return {
                             chipClass: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40',
@@ -929,7 +968,7 @@ export default function WorkoutLogger() {
                           訓練建議
                         </span>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          {isCardioOnly ? '腿日前後，建議安排有氧訓練' : isRestOnly ? '今天班表較累，建議純休息' : '今天班表較累，建議休息或有氧'}
+                          {isCardioOnly ? '今天建議安排有氧訓練' : isRestOnly ? '今天班表較累，建議純休息' : '今天班表較累，建議休息或有氧'}
                         </p>
                         {todayPlan?.pinConflict && (
                           <span className="text-[10px] text-red-500 font-medium block mt-1">

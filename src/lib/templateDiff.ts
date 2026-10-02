@@ -1,6 +1,6 @@
 import { type SetLog, type Workout, type WorkoutEntry, type WorkoutTemplate } from '../db/schema';
 import { carryAlternatives, clonePlannedSets } from './workoutEntries';
-import { isSkippedInWeek, ownTargetsOf } from './programWeeks';
+import { isSkippedInWeek, ownTargetsOf, weekIdxForCycle } from './programWeeks';
 
 /**
  * 完成訓練時「這次跟範本／課表哪裡不一樣」的比對，以及「更新範本，之後照這樣」的合併。
@@ -79,7 +79,7 @@ function sortByOrder(entries: WorkoutEntry[]): WorkoutEntry[] {
 /** 這次（第 cycleNumber 輪）預定要做的動作：課表這週跳過的不算 */
 function plannedEntries(template: WorkoutTemplate, cycleNumber: number | undefined): WorkoutEntry[] {
   if (cycleNumber === undefined) return template.entries;
-  return template.entries.filter((e) => !isSkippedInWeek(e, cycleNumber - 1));
+  return template.entries.filter((e) => !isSkippedInWeek(e, weekIdxForCycle(cycleNumber)));
 }
 
 /** 範本對某動作的「預定」組數：有週次目標（替代動作有自己的就用自己的）就照第 cycleNumber 週，不然照範本存的組 */
@@ -90,7 +90,7 @@ function plannedSummary(entry: WorkoutEntry, exerciseId: string, cycleNumber: nu
   if (!stored) return undefined;
   const targets = ownTargetsOf(entry, exerciseId);
   if (!targets || cycleNumber === undefined) return summarizeSets(stored);
-  const target = targets[Math.min(Math.max(cycleNumber - 1, 0), targets.length - 1)];
+  const target = targets[Math.min(weekIdxForCycle(cycleNumber), targets.length - 1)];
   const base = summarizeSets(stored);
   return { ...base, sets: target.sets, minReps: target.reps, maxReps: target.reps };
 }

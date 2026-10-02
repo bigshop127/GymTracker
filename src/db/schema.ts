@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import { seedExerciseId, SEED_EXERCISES, SEED_RENAMES } from '../data/seed-exercises';
 import { remapEntryExerciseIds } from '../lib/exerciseIdMap';
+import { migrateProgramToPushPullArms } from '../lib/programRotation';
 
 // ---- 型別與介面定義 (依據 docs/ROADMAP.md §2) ----
 
@@ -130,7 +131,7 @@ export interface Settings {
   vibrateOnRestEnd: boolean;
   locations?: string[];     // 可選地點清單，例如 ['中壢建工', '楊梅WG']
   shiftPolicyOverrides?: Record<string, ShiftPolicy[]>;  // key 是正規化後的班別代碼，例如 'AB'、'ABC'、'DAYOFF'；值可複選，例如 ['train', 'cardio']
-  restOverrideDays?: number;    // 任一分類（拉/推/腿/手）連續沒訓練達此天數，強制排入該分類，預設 7
+  restOverrideDays?: number;    // 已停用（2026-10-02 班表改成照順序輪替，拿掉「N 天沒練強制插隊」）；保留欄位讓舊資料相容
   weeklyTargetSessions?: number; // 每週目標訓練次數，預設 4
 }
 
@@ -154,6 +155,8 @@ export interface ProgramSlot {
   id: string;
   label: string;           // 例：'胸日'、'背日'、'腿臀日'、'肩日'、'手臂日'（自由文字，不綁 MuscleGroup）
   templateId?: string;     // 對應 WorkoutTemplate.id；還沒補內容時是 undefined
+  /** 自行安排：班表不自動排、也不算進「一輪」（例：腿日由使用者自己指定哪天練）。缺省＝自動排 */
+  selfScheduled?: boolean;
 }
 
 // ---- 訓練計畫 (TrainingProgram) ----
@@ -427,6 +430,16 @@ class GymTrackerDatabase extends Dexie {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         p.completedSlotIdsThisLap = slots.slice(0, cursor).map((s: any) => s.id);
         delete p.cursor;
+      });
+    });
+
+    // version(13): 宗諺課表改成 推→拉→手 輪替、腿日改「自行安排」（2026-10-02 使用者需求）。
+    // 只調整目前計畫，任一格已經設過 selfScheduled 就不動；updatedAt 更新，雲端同步時以這份為準。
+    this.version(13).stores({}).upgrade(async (tx) => {
+      const now = Date.now();
+      await tx.table('programs').toCollection().modify((p: TrainingProgram) => {
+        const migrated = migrateProgramToPushPullArms(p, now);
+        if (migrated) Object.assign(p, migrated);
       });
     });
   }

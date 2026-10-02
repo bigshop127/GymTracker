@@ -11,13 +11,15 @@ import {
 export type SplitCategory = '拉' | '推' | '腿' | '手';
 export const SPLIT_CATEGORIES: SplitCategory[] = ['拉', '推', '腿', '手'];
 
-// 不同訓練類別要用不同顏色一眼區分（日曆格子文字用）。刻意避開 locationStyle.ts
-// 已經用掉的藍/紅（中壢建工/楊梅WG），不然同一格「地點小圓點」跟「類別文字」撞色會混淆。
+// 不同訓練類別要用不同顏色一眼區分（日曆圖例、歷史頁圖表的色塊）。刻意避開 locationStyle.ts
+// 已經用掉的藍/紅（中壢建工/楊梅WG），不然同一格「地點小圓點」跟「類別」撞色會混淆。
+// 2026-10-02 歷史頁加圖表時用 dataviz 色盤檢查器驗過（淺色白底、深色 slate-900 底，四色兩兩比）：
+// 原本的 cyan-500 跟 emerald-500 一般視覺就分不太出來，手改 sky-600、其他各取一階較深的，四色在兩種主題都過。
 export const SPLIT_CATEGORY_HEX: Record<SplitCategory, string> = {
-  拉: '#10b981', // emerald-500
-  推: '#f59e0b', // amber-500
+  拉: '#059669', // emerald-600
+  推: '#d97706', // amber-600
   腿: '#8b5cf6', // violet-500
-  手: '#06b6d4', // cyan-500
+  手: '#0284c7', // sky-600
 };
 
 // 日曆格子「整格底色」用（比純文字上色明顯很多，深色/淺色主題都要夠清楚，
@@ -28,7 +30,7 @@ export const SPLIT_CATEGORY_CELL_BG_CLASSES: Record<SplitCategory, string> = {
   拉: 'bg-emerald-100 dark:bg-emerald-800/50',
   推: 'bg-amber-100 dark:bg-amber-800/50',
   腿: 'bg-violet-100 dark:bg-violet-800/50',
-  手: 'bg-cyan-100 dark:bg-cyan-800/50',
+  手: 'bg-sky-100 dark:bg-sky-800/50',
 };
 
 /** 把 slot label 或訓練標題正規化成四類之一；判不出來回 null */
