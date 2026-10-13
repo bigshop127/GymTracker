@@ -9,7 +9,7 @@ import { formatWeight } from '../lib/units';
 import { calculateE1rm } from '../lib/e1rm';
 import { useSettingsStore } from '../store/settings';
 import { useActiveWorkoutStore } from '../store/activeWorkout';
-import { buildExerciseMap, getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
+import { buildExerciseMap, buildTemplateDefaultName, getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
 import { getLocationColor } from '../lib/locationStyle';
 import { rpeToShortLabel } from '../lib/rpe';
 import { buildCalendarGrid } from '../lib/shiftPlan';
@@ -202,7 +202,7 @@ export default function History() {
       }
     }
 
-    const defaultName = workout.title || '我的範本';
+    const defaultName = buildTemplateDefaultName(workout, buildExerciseMap(allExercises));
     const name = window.prompt('請輸入範本名稱：', defaultName);
     if (name === null) return; // user cancelled
 

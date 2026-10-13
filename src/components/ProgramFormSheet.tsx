@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { type TrainingProgram, type WorkoutTemplate } from '../db/schema';
 import { useProgramStore } from '../store/program';
 import { TEMPLATE_CATEGORIES, groupTemplatesByCategory } from '../lib/splitRotation';
+import { openDatePicker } from '../lib/datePicker';
 import NumberStepper from './NumberStepper';
 import SheetHeader from './SheetHeader';
 
@@ -193,7 +194,8 @@ export default function ProgramFormSheet({
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 focus:outline-none text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm transition"
+                    onClick={openDatePicker}
+                    className="cursor-pointer w-full h-10 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:border-indigo-500 focus:outline-none text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm transition"
                   />
                 </div>
                 <div className="space-y-1">

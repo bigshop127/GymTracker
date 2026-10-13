@@ -46,7 +46,8 @@ import { useProgramStore } from '../store/program';
 import { getPausedDays, getProgramWeekNumber } from '../lib/programLifecycle';
 import { rotationSlotsOf } from '../lib/programRotation';
 import { weekIdxForCycle } from '../lib/programWeeks';
-import { buildExerciseMap, getPrimaryMuscleGroups } from '../lib/workoutSummary';
+import { buildExerciseMap, buildTemplateDefaultName, getTemplateBodyLabel } from '../lib/workoutSummary';
+import { openDatePicker } from '../lib/datePicker';
 import { RPE_OPTIONS } from '../lib/rpe';
 import { formatWeight, toKgFromDisplay, weightStep } from '../lib/units';
 import { generateMonthPlan } from '../lib/shiftPlan';
@@ -647,14 +648,9 @@ export default function WorkoutLogger() {
    * 13C：課表那一格還沒有範本、或原本的範本已被刪掉時，順便把新範本接上去。
    */
   const saveWorkoutAsNewTemplate = async (workout: Workout): Promise<boolean> => {
-    const startDate = new Date(workout.startedAt);
-    const dateStr = `${startDate.getMonth() + 1}/${startDate.getDate()}`;
-    const rawTitle = (workout.title || '').trim();
-    const isGenericTitle = rawTitle === '' || rawTitle === '今日訓練' || /^\d{1,2}\/\d{1,2} 訓練$/.test(rawTitle);
-    const bodyPart = isGenericTitle
-      ? getPrimaryMuscleGroups(workout, buildExerciseMap(allExercises), 2).join('+') || '訓練'
-      : rawTitle;
-    const defaultName = `${dateStr} ${bodyPart}${workout.location ? ` @${workout.location}` : ''}`;
+    const exMap = buildExerciseMap(allExercises);
+    const bodyPart = getTemplateBodyLabel(workout, exMap);
+    const defaultName = buildTemplateDefaultName(workout, exMap);
     const name = window.prompt('請輸入範本名稱：', defaultName);
     if (name === null) return false;
 
@@ -1315,7 +1311,8 @@ export default function WorkoutLogger() {
                         updateWorkoutTitle(isToday ? '今日訓練' : `${m}/${d} 訓練`);
                       }
                     }}
-                    className="bg-slate-50 border border-slate-100 hover:border-slate-200 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 text-xs text-slate-700 font-semibold transition"
+                    onClick={openDatePicker}
+                    className="cursor-pointer bg-slate-50 border border-slate-100 hover:border-slate-200 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 text-xs text-slate-700 font-semibold transition"
                   />
                 </div>
                 <div className="flex gap-1.5 items-center">

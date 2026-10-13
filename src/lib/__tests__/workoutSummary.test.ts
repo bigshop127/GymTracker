@@ -5,6 +5,8 @@ import {
   getMuscleGroupCounts,
   getPrimaryMuscleGroups,
   buildAutoWorkoutTitle,
+  buildTemplateDefaultName,
+  getTemplateBodyLabel,
   getDaySummary
 } from '../workoutSummary';
 
@@ -192,5 +194,44 @@ describe('Workout Summary Library', () => {
     const summary = getDaySummary([w1, w2], exMap);
     expect(summary.location).toBe('楊梅WG');
     expect(summary.primaryMuscle).toBe('背');
+  });
+
+  describe('buildTemplateDefaultName', () => {
+    const startedAt = new Date(2026, 9, 12, 19, 0).getTime();
+    const chestSet = { id: 's1', weight: 60, reps: 10, isWarmup: false, completed: true, createdAt: 0 };
+    const make = (title: string | undefined, location?: string): Workout => ({
+      id: 'w',
+      title,
+      location,
+      startedAt,
+      status: 'active',
+      entries: [{ id: 'e1', exerciseId: 'ex1', order: 1, sets: [chestSet] }],
+    });
+
+    test('從舊範本開始的標題：拿掉舊日期，換成這筆訓練的日期', () => {
+      expect(buildTemplateDefaultName(make('8/3 有氧', '楊梅WG'), exMap)).toBe('10/12 有氧 @楊梅WG');
+    });
+
+    test('舊範本名已帶舊日期＋舊地點：不重複疊加', () => {
+      expect(buildTemplateDefaultName(make('9/28 10/1 推 @中壢建工', '楊梅WG'), exMap)).toBe('10/12 推 @楊梅WG');
+      expect(buildTemplateDefaultName(make('10/1 推 @楊梅WG', '楊梅WG'), exMap)).toBe('10/12 推 @楊梅WG');
+      expect(buildTemplateDefaultName(make('10/1 推 @楊梅WG'), exMap)).toBe('10/12 推');
+    });
+
+    test('拿掉「(範本)」結尾', () => {
+      expect(buildTemplateDefaultName(make('8/3 拉 (範本)'), exMap)).toBe('10/12 拉');
+    });
+
+    test('沒標題或只有日期／預設字樣：改用主要部位', () => {
+      expect(buildTemplateDefaultName(make(undefined), exMap)).toBe('10/12 胸');
+      expect(buildTemplateDefaultName(make('今日訓練'), exMap)).toBe('10/12 胸');
+      expect(buildTemplateDefaultName(make('8/3 訓練'), exMap)).toBe('10/12 胸');
+      expect(buildTemplateDefaultName(make('8/3'), exMap)).toBe('10/12 胸');
+      expect(getTemplateBodyLabel({ ...make('8/3'), entries: [] }, exMap)).toBe('訓練');
+    });
+
+    test('使用者自己取的名字照留', () => {
+      expect(getTemplateBodyLabel(make('腿日 A'), exMap)).toBe('腿日 A');
+    });
   });
 });

@@ -65,6 +65,32 @@ export function buildAutoWorkoutTitle(workout: Workout, exMap: Map<string, Exerc
 }
 
 /**
+ * 另存範本用的「部位」字樣：從訓練標題拿掉舊日期、舊地點、「(範本)」後剩下的部分。
+ * 從範本開始的訓練，標題就是舊範本名（例「8/3 有氧 @楊梅WG」），不清掉會疊成「10/12 8/3 有氧 …」。
+ * 清完是空的或只是「訓練／今日訓練」→ 改用組數最多的前 2 個部位（再沒有就「訓練」）。
+ */
+export function getTemplateBodyLabel(workout: Workout, exMap: Map<string, Exercise>): string {
+  const cleaned = (workout.title || '')
+    .trim()
+    .replace(/\s*\(範本\)$/, '')
+    .replace(/(\s+@[^@]*)+$/, '')
+    .replace(/^(\d{1,2}\/\d{1,2}\s*)+/, '')
+    .trim();
+  if (cleaned === '' || cleaned === '訓練' || cleaned === '今日訓練') {
+    return getPrimaryMuscleGroups(workout, exMap, 2).join('+') || '訓練';
+  }
+  return cleaned;
+}
+
+/** 另存範本的預設名稱：`M/D 部位 @地點`，日期一律用這筆訓練自己的日期（startedAt）。 */
+export function buildTemplateDefaultName(workout: Workout, exMap: Map<string, Exercise>): string {
+  const date = new Date(workout.startedAt);
+  const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+  const location = workout.location ? ` @${workout.location}` : '';
+  return `${dateStr} ${getTemplateBodyLabel(workout, exMap)}${location}`;
+}
+
+/**
  * 這天的代表：主場 = 總組數最多的那筆（同分取較晚 startedAt）。
  * 回傳其 location、主要部位（top1）與代表訓練本身（呼叫端可再拿去判斷推/拉/腿/手類別，
  * 例如 getWorkoutSplitCategory，日曆格子才能顯示「當天練的是什麼」而不是只有小圖示）。
