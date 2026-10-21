@@ -30,7 +30,7 @@ export default function BottomNav() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // 9 個項目在窄版版面會塞不下、被裁掉一部分（例如「設定」滑到畫面外）；
+  // 10 個項目在窄版版面會塞不下、被裁掉一部分（例如「設定」滑到畫面外）；
   // 桌機滑鼠沒有觸控滑動可用，這裡用箭頭按鈕給一個一定按得到的捲動方式。
   const updateScrollState = () => {
     const el = scrollRef.current;
@@ -126,6 +126,16 @@ export default function BottomNav() {
             icon={
               <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-full h-full">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+            }
+          />
+          <NavItem
+            to="/weight"
+            label="體重"
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-full h-full">
+                <rect x="3.75" y="3.75" width="16.5" height="16.5" rx="3.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 10.5a3.75 3.75 0 0 1 7.5 0M12 10.5l1.5-1.75" />
               </svg>
             }
           />

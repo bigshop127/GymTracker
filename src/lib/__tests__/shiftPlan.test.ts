@@ -820,6 +820,107 @@ describe('shiftPlan', () => {
       expect(trained.slice(0, 3)).toEqual(['slot-arms', 'slot-push', 'slot-pull']);
     });
 
+    // 2026-10-21 使用者回報：這輪的拉是好幾週前練的，昨天練推、今天排手，之後又從推開始（推→手→推）
+    const doneWorkout = (id: string, dateTime: string, slotId?: string, title?: string): Workout => ({
+      id,
+      startedAt: new Date(dateTime).getTime(),
+      status: 'completed',
+      entries: [],
+      ...(slotId ? { programId: 'prog-ppa', programSlotId: slotId } : {}),
+      ...(title ? { title } : {}),
+    });
+    const daysFrom = (start: string, count: number) =>
+      Array.from({ length: count }, (_, i) => {
+        const [y, m, d] = start.split('-').map(Number);
+        const date = new Date(y, m - 1, d + i);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      });
+
+    test('這輪的拉是好幾週前練的：手排完接著排拉，不會推→手→推', () => {
+      const result = generateMonthPlan({
+        dateStrings: daysFrom('2026-10-21', 11),
+        activeProgram: { ...program, completedSlotIdsThisLap: ['slot-pull', 'slot-push'], cycleCount: 2 },
+        completedWorkouts: [
+          doneWorkout('w-pull', '2026-09-20T10:00:00', 'slot-pull'),
+          doneWorkout('w-push', '2026-10-20T10:00:00', 'slot-push'),
+        ],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-10-21T21:00:00').getTime(),
+        weeklyTargetSessions: 4,
+      });
+
+      const trained = result.filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(trained.slice(0, 4)).toEqual(['slot-arms', 'slot-pull', 'slot-push', 'slot-arms']);
+    });
+
+    test('沒掛課表的訓練（從範本開的）也算練過：用分類對到格子，最久沒練的先排', () => {
+      const result = generateMonthPlan({
+        dateStrings: daysFrom('2026-10-21', 7),
+        activeProgram: program,
+        completedWorkouts: [
+          doneWorkout('w-pull', '2026-10-18T10:00:00', 'slot-pull'),
+          doneWorkout('w-push', '2026-10-20T10:00:00', undefined, '10/20 推 @中壢建工'),
+        ],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-10-21T09:00:00').getTime(),
+        weeklyTargetSessions: 7,
+      });
+
+      const trained = result.filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(trained.slice(0, 3)).toEqual(['slot-arms', 'slot-pull', 'slot-push']);
+    });
+
+    test('今天已經練完：不會再多吃掉一格，下一個就是最久沒練的', () => {
+      // 今天練完手 → 這輪剛好跑滿，真正的課表已經進下一輪（completedSlotIdsThisLap 清空）
+      const result = generateMonthPlan({
+        dateStrings: daysFrom('2026-10-21', 7),
+        activeProgram: { ...program, completedSlotIdsThisLap: [], cycleCount: 3 },
+        completedWorkouts: [
+          doneWorkout('w-push', '2026-10-19T10:00:00', 'slot-push'),
+          doneWorkout('w-pull', '2026-10-20T10:00:00', 'slot-pull'),
+          doneWorkout('w-arms', '2026-10-21T08:00:00', 'slot-arms'),
+        ],
+        activeWorkoutToday: null,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-10-21T12:00:00').getTime(),
+        weeklyTargetSessions: 7,
+      });
+
+      expect(result[0].actualWorkout?.id).toBe('w-arms');
+      expect(result[0].suggestedSlot?.id).toBe('slot-push'); // 「接下來輪到」推
+      const futureTrained = result.slice(1).filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(futureTrained.slice(0, 3)).toEqual(['slot-push', 'slot-pull', 'slot-arms']);
+    });
+
+    test('今天進行中的課表訓練：那格先從這輪扣掉，後面不會再排一次', () => {
+      const inProgress: Workout = {
+        id: 'w-active',
+        startedAt: new Date('2026-10-21T08:00:00').getTime(),
+        status: 'active',
+        entries: [],
+        programId: 'prog-ppa',
+        programSlotId: 'slot-push',
+      };
+      const result = generateMonthPlan({
+        dateStrings: daysFrom('2026-10-21', 5),
+        activeProgram: program,
+        completedWorkouts: [],
+        activeWorkoutToday: inProgress,
+        overridesByDate: new Map(),
+        policyOverrides: undefined,
+        today: new Date('2026-10-21T12:00:00').getTime(),
+        weeklyTargetSessions: 7,
+      });
+
+      const futureTrained = result.slice(1).filter((r) => r.suggestion === 'train').map((r) => r.suggestedSlot?.id);
+      expect(futureTrained.slice(0, 2)).toEqual(['slot-pull', 'slot-arms']);
+    });
+
     test('指定那天練腿：那天排腿、輪替不被吃掉，而且算一次訓練（佔每週次數）', () => {
       const overrides = new Map<string, DayOverride>([
         ['2026-08-18', { id: '2026-08-18', pinnedSlotId: 'slot-legs', updatedAt: now }],

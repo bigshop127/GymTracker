@@ -6,6 +6,7 @@ import {
   type Workout,
 } from '../db/schema';
 import { rotationSlotsOf } from './programRotation';
+import { getWorkoutSplitCategory, normalizeSplit } from './splitRotation';
 
 export type DayPlanSuggestion =
   | 'train' | 'restOrCardio' | 'cardio' | 'restOnly' | 'paused'
@@ -199,6 +200,24 @@ export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
   unable: 'bg-slate-100 dark:bg-slate-700/60',
 };
 
+/**
+ * 一筆訓練算是輪替裡的哪一格：掛著這份課表的格子就直接用；
+ * 沒掛（從範本、「開始新訓練」開的）就用拉/推/腿/手分類去對課表格子。對不到回 null。
+ */
+function matchRotationSlot(
+  workout: Workout,
+  program: TrainingProgram,
+  rotation: ProgramSlot[],
+): ProgramSlot | null {
+  if (workout.programSlotId) {
+    const bySlot = rotation.find((s) => s.id === workout.programSlotId);
+    if (bySlot) return bySlot;
+  }
+  const category = getWorkoutSplitCategory(workout, program);
+  if (!category) return null;
+  return rotation.find((s) => normalizeSplit(s.label) === category) ?? null;
+}
+
 export interface GenerateMonthPlanInput {
   dateStrings: string[];              // 要顯示的整個月曆範圍（含當月已過去的日期），由小到大排序
   activeProgram: TrainingProgram | null;
@@ -214,8 +233,10 @@ export interface GenerateMonthPlanInput {
 /**
  * 排出整個月曆每一天的建議（2026-10-02 改版）：
  * - 「哪幾天練」：班別政策、每週目標次數、連續最多 3 天、有餘裕時隔天練（不變）。
- * - 「練什麼」：嚴格照課表輪替格子的順序接下去（推→拉→手→推…），這一輪練過的跳過。
+ * - 「練什麼」：這一輪還沒練的格子裡，挑「最久沒實際練到」的先排（一樣久才照課表順序 推→拉→手）。
+ *   2026-10-21 改：原本每輪都固定從推開始，上一輪的拉若是好幾週前練的，會變成 推→手→推 連著排。
  *   舊版「手/腿先讓路」「腿日前後避開」「N 天沒練強制插隊」三條會打亂順序的規則已拿掉。
+ * - 今天已經有訓練：照實際練的那格算，不另外從池子挑一格（不然後面幾天會被多吃掉一格）。
  * - 「自行安排」的格子（腿日）不自動排；使用者指定那天才排，算一次訓練（佔每週次數、算連續天數），
  *   不影響輪替接下來排什麼。
  */
@@ -256,11 +277,39 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
     rotation.filter((s) => !completedSlotIdsThisLap.includes(s.id)).map((s) => s.id)
   );
 
-  function pickDefaultFromPool(): ProgramSlot | null {
-    for (const s of rotation) {
-      if (pool.has(s.id)) return s;
+  // 每一格最近一次實際練到的日期（不管是不是從課表開的）；模擬排進去的日子也會更新
+  const lastTrainedBySlot = new Map<string, string>();
+  const noteTrained = (slotId: string, ds: string) => {
+    const prev = lastTrainedBySlot.get(slotId);
+    if (!prev || ds > prev) lastTrainedBySlot.set(slotId, ds);
+  };
+  if (activeProgram) {
+    for (const w of [...completedWorkouts, ...(activeToday ? [activeToday] : [])]) {
+      if (w.deletedAt) continue;
+      const slot = matchRotationSlot(w, activeProgram, rotation);
+      if (slot) noteTrained(slot.id, getLocalDateStr(w.startedAt));
     }
-    return null;
+  }
+
+  // 池子裡最久沒練的那格；從沒練過的最優先，一樣久就照課表順序
+  function pickDefaultFromPool(): ProgramSlot | null {
+    let best: ProgramSlot | null = null;
+    for (const s of rotation) {
+      if (!pool.has(s.id)) continue;
+      if (!best || (lastTrainedBySlot.get(s.id) ?? '') < (lastTrainedBySlot.get(best.id) ?? '')) {
+        best = s;
+      }
+    }
+    return best;
+  }
+
+  function takeFromPool(slotId: string) {
+    if (!pool.has(slotId)) return;
+    pool.delete(slotId);
+    if (pool.size === 0) {
+      // 模擬「這一輪跑滿了」：補滿下一輪的池子。純模擬用，不影響真正的 activeProgram.cycleCount
+      for (const s of rotation) pool.add(s.id);
+    }
   }
 
   const plannedDays: PlannedDay[] = [];
@@ -313,6 +362,20 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       suggestion = 'paused';
       consecutiveTrainDays = 0;
       effectiveWeeklyTarget = Math.max(0, effectiveWeeklyTarget - 1);
+    } else if (actualWorkout) {
+      // 今天已經練了（完成或進行中）：不再從池子另外挑一格。完成的課表訓練早就從這輪扣掉了；
+      // 進行中的課表訓練等等才會扣，這裡先扣掉。suggestedSlot 給「接下來輪到哪格」。
+      if (
+        actualWorkout.status === 'active' &&
+        activeProgram &&
+        actualWorkout.programId === activeProgram.id &&
+        actualWorkout.programSlotId
+      ) {
+        takeFromPool(actualWorkout.programSlotId);
+      }
+      suggestion = 'train';
+      suggestedSlot = pickDefaultFromPool();
+      consecutiveTrainDays += 1;
     } else {
       const hasExplicitShift = !!override && !override.isDayOff && !!override.shiftLetters && override.shiftLetters.length > 0;
       let wantsTrain: boolean;
@@ -394,15 +457,10 @@ export function generateMonthPlan(input: GenerateMonthPlanInput): PlannedDay[] {
       if (slotToTrain) {
         suggestion = 'train';
         suggestedSlot = slotToTrain;
-        if (pool.has(slotToTrain.id)) {
-          pool.delete(slotToTrain.id);
-          if (pool.size === 0) {
-            // 模擬「這一輪跑滿了」：補滿下一輪的池子。純模擬用，不影響真正的 activeProgram.cycleCount
-            for (const s of rotation) pool.add(s.id);
-          }
-        }
+        takeFromPool(slotToTrain.id);
+        noteTrained(slotToTrain.id, dateStr);
         consecutiveTrainDays += 1;
-        if (!actualWorkout) trainedThisWeek += 1;
+        trainedThisWeek += 1;
       } else {
         consecutiveTrainDays = 0;
         if (override?.pinnedOutcome === 'cardio') {
