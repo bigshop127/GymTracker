@@ -225,7 +225,7 @@ export async function isTwoSplitProgramActive(): Promise<boolean> {
  * 套用二分化循環課表。舊的目前計畫由 saveProgram 的唯一性守衛標成 abandoned（進封存，之後可以「重新啟用」），
  * 所有訓練紀錄、範本、舊計畫的進度一律不刪。
  */
-export async function applyTwoSplitProgram(now: number = Date.now()): Promise<{ markedSlots: string[] }> {
+export async function createTwoSplitTemplates(now: number = Date.now()): Promise<void> {
   const exercises = await listExercises();
   const nameToId = new Map(exercises.map((x) => [x.name, x.id]));
   for (const day of TWO_SPLIT_DAYS) {
@@ -239,6 +239,16 @@ export async function applyTwoSplitProgram(now: number = Date.now()): Promise<{ 
   }
 
   for (const template of buildTwoSplitTemplates(nameToId, now)) await saveTemplate(template);
+}
+
+/** 四份範本是不是已經建好了（沒被刪掉） */
+export async function areTwoSplitTemplatesCreated(): Promise<boolean> {
+  const found = await Promise.all(TWO_SPLIT_DAYS.map((d) => db.templates.get(templateIdOf(d.key))));
+  return found.every((t) => !!t && !t.deletedAt);
+}
+
+export async function applyTwoSplitProgram(now: number = Date.now()): Promise<{ markedSlots: string[] }> {
+  await createTwoSplitTemplates(now);
 
   const exerciseMap = new Map((await listExercises()).map((x) => [x.id, x]));
   const startOfToday = new Date(now);

@@ -5,7 +5,13 @@ import { listTemplates } from '../db/templates';
 import { type WorkoutTemplate, type TrainingProgram } from '../db/schema';
 import { getElapsedWeeks, getPausedDays, getProgramWeekNumber } from '../lib/programLifecycle';
 import ProgramFormSheet from '../components/ProgramFormSheet';
-import { applyTwoSplitProgram, isTwoSplitProgramActive, TWO_SPLIT_PROGRAM_NAME } from '../lib/twoSplitProgram';
+import {
+  applyTwoSplitProgram,
+  areTwoSplitTemplatesCreated,
+  createTwoSplitTemplates,
+  isTwoSplitProgramActive,
+  TWO_SPLIT_PROGRAM_NAME,
+} from '../lib/twoSplitProgram';
 
 export default function ProgramsPage() {
   const navigate = useNavigate();
@@ -28,9 +34,11 @@ export default function ProgramsPage() {
   const [finishTarget, setFinishTarget] = useState<TrainingProgram | null>(null);
   const [isApplyingTwoSplit, setIsApplyingTwoSplit] = useState(false);
   const [twoSplitActive, setTwoSplitActive] = useState<boolean | null>(null);
+  const [twoSplitTemplatesReady, setTwoSplitTemplatesReady] = useState<boolean | null>(null);
 
   useEffect(() => {
     initProgram().then(() => isTwoSplitProgramActive().then(setTwoSplitActive));
+    areTwoSplitTemplatesCreated().then(setTwoSplitTemplatesReady);
     listTemplates().then(setTemplates).catch((err) => console.error('Failed to load templates:', err));
   }, [initProgram]);
 
@@ -62,6 +70,21 @@ ${ending}所有訓練紀錄與範本都會保留。
     } catch (err) {
       console.error('Failed to apply two-split program:', err);
       alert('套用失敗，請稍後再試。');
+    } finally {
+      setIsApplyingTwoSplit(false);
+    }
+  };
+
+  const handleCreateTwoSplitTemplates = async () => {
+    setIsApplyingTwoSplit(true);
+    try {
+      await createTwoSplitTemplates();
+      listTemplates().then(setTemplates).catch((err) => console.error(err));
+      setTwoSplitTemplatesReady(true);
+      alert('已建立 4 份範本：胸背 A（重）、胸背 B（輕）、腿手 A（重）、腿手 B（輕）。到「訓練」頁的「我的範本」就能看到。');
+    } catch (err) {
+      console.error('Failed to create two-split templates:', err);
+      alert('建立失敗，請稍後再試。');
     } finally {
       setIsApplyingTwoSplit(false);
     }
@@ -212,8 +235,18 @@ ${ending}所有訓練紀錄與範本都會保留。
             onClick={handleApplyTwoSplit}
             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
           >
-            {isApplyingTwoSplit ? '套用中…' : '套用這份課表'}
+            {isApplyingTwoSplit ? '處理中…' : '套用這份課表'}
           </button>
+          {twoSplitTemplatesReady === false && (
+            <button
+              type="button"
+              disabled={isApplyingTwoSplit}
+              onClick={handleCreateTwoSplitTemplates}
+              className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+            >
+              只建立範本（不換課表）
+            </button>
+          )}
         </div>
       )}
 
