@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -23,15 +23,18 @@ import {
   getCalendarDaysAgo,
   normalizeSplit,
   getPartsOf,
+  getWorkoutSplitCategory,
   toTemplateCategory,
   getTemplateCategory,
   groupTemplatesByCategory,
   TEMPLATE_CATEGORIES,
+  type ComboCategory,
 } from '../lib/splitRotation';
 import { filterCardioTemplates, getTemplateTotalMinutes, isCardioTemplate } from '../lib/cardioTemplates';
 import {
   getRecentWorkoutsForSlot,
   getRecentWorkoutsForMuscleGroup,
+  getRecentWorkoutsForCombo,
   getLastTrainedByMuscleGroup,
 } from '../lib/recentSessions';
 import { MUSCLE_ORDER } from '../lib/exerciseOrder';
@@ -54,6 +57,13 @@ import { formatWeight, toKgFromDisplay, weightStep } from '../lib/units';
 import { generateMonthPlan } from '../lib/shiftPlan';
 import { getDayOverride, saveDayOverride } from '../db/dayOverrides';
 import { type DayOverride } from '../db/schema';
+
+/** 「開始新訓練」第一步可選的複合日入口（有氧核心另有有氧入口，不放這裡） */
+const PICKABLE_COMBOS: ComboCategory[] = ['胸背', '腿手'];
+type PickGroup = MuscleGroup | ComboCategory;
+function isComboGroup(group: PickGroup): group is ComboCategory {
+  return (PICKABLE_COMBOS as string[]).includes(group);
+}
 
 export default function WorkoutLogger() {
   const {
@@ -119,7 +129,8 @@ export default function WorkoutLogger() {
   const [isRecentSheetOpen, setIsRecentSheetOpen] = useState(false);
   // 「開始新訓練」的兩步流程：先選部位，再選要沿用哪一次
   const [isNewWorkoutSheetOpen, setIsNewWorkoutSheetOpen] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<MuscleGroup | null>(null);
+  // 「開始新訓練」選的是肌群，或是複合日（胸背／腿手）
+  const [selectedGroup, setSelectedGroup] = useState<PickGroup | null>(null);
   // 「我的範本」五分類：首頁只放分類藥丸，點進去才看清單
   const [selectedTemplateCategory, setSelectedTemplateCategory] = useState<TemplateCategory | null>(null);
   // 點範本先看細項（動作/組數/重量），不要一點就直接開訓
@@ -303,10 +314,27 @@ export default function WorkoutLogger() {
   }, [completedWorkouts, activeProgram, currentSlot]);
 
   // 「開始新訓練」選了部位之後，那個部位最近三次的紀錄
+  const categoryOfWorkout = useCallback(
+    (w: Workout) => getWorkoutSplitCategory(w, activeProgram, exerciseMap),
+    [activeProgram, exerciseMap],
+  );
   const recentGroupWorkouts = useMemo(() => {
     if (!selectedGroup) return [];
+    if (isComboGroup(selectedGroup)) {
+      return getRecentWorkoutsForCombo(completedWorkouts, selectedGroup, categoryOfWorkout);
+    }
     return getRecentWorkoutsForMuscleGroup(completedWorkouts, selectedGroup, exerciseMap);
-  }, [completedWorkouts, selectedGroup, exerciseMap]);
+  }, [completedWorkouts, selectedGroup, exerciseMap, categoryOfWorkout]);
+
+  // 複合日入口：各自最近一次是什麼時候
+  const lastTrainedByCombo = useMemo(() => {
+    const result = new Map<ComboCategory, number>();
+    for (const combo of PICKABLE_COMBOS) {
+      const latest = getRecentWorkoutsForCombo(completedWorkouts, combo, categoryOfWorkout, 1)[0];
+      if (latest) result.set(combo, latest.startedAt);
+    }
+    return result;
+  }, [completedWorkouts, categoryOfWorkout]);
 
   const lastTrainedByGroup = useMemo(
     () => getLastTrainedByMuscleGroup(completedWorkouts, exerciseMap),
@@ -400,7 +428,7 @@ export default function WorkoutLogger() {
   };
 
   /** 空白訓練：標題直接帶部位，讓自動命名、週輪動分類都有依據 */
-  const handleStartBlankWorkout = async (group: MuscleGroup) => {
+  const handleStartBlankWorkout = async (group: PickGroup) => {
     try {
       await startNewWorkout(group);
     } catch (err) {
@@ -412,9 +440,13 @@ export default function WorkoutLogger() {
   };
 
   /** 選了部位：有過往紀錄就進第二步讓他挑，沒有就直接開一場空白訓練 */
-  const handlePickMuscleGroup = (group: MuscleGroup) => {
-    const recent = getRecentWorkoutsForMuscleGroup(completedWorkouts, group, exerciseMap);
-    if (recent.length === 0) {
+  const handlePickMuscleGroup = (group: PickGroup) => {
+    const recent = isComboGroup(group)
+      ? getRecentWorkoutsForCombo(completedWorkouts, group, categoryOfWorkout)
+      : getRecentWorkoutsForMuscleGroup(completedWorkouts, group, exerciseMap);
+    // 複合日有範本時也進第二步，讓他直接挑範本開始
+    const hasTemplates = isComboGroup(group) && groupedTemplates[group].length > 0;
+    if (recent.length === 0 && !hasTemplates) {
       void handleStartBlankWorkout(group);
       return;
     }
@@ -1763,6 +1795,31 @@ export default function WorkoutLogger() {
             <div className="max-w-md mx-auto w-full px-4 py-4 space-y-2.5">
               {!selectedGroup ? (
                 <div className="grid grid-cols-2 gap-2.5">
+                  {PICKABLE_COMBOS.map((combo) => {
+                    const lastTrainedAt = lastTrainedByCombo.get(combo);
+                    const daysAgo = lastTrainedAt === undefined ? null : getCalendarDaysAgo(lastTrainedAt, now);
+                    return (
+                      <button
+                        key={combo}
+                        type="button"
+                        onClick={() => handlePickMuscleGroup(combo)}
+                        className="bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 hover:border-indigo-400 dark:hover:border-indigo-700 rounded-2xl py-4 px-3 shadow-sm transition cursor-pointer space-y-1"
+                      >
+                        <span className="block font-extrabold text-indigo-700 dark:text-indigo-300 text-base">
+                          {combo}
+                        </span>
+                        <span className="block text-[10px] font-bold text-slate-400">
+                          {daysAgo === null
+                            ? '未練過'
+                            : daysAgo === 0
+                              ? '今天練過'
+                              : daysAgo === 1
+                                ? '昨天練過'
+                                : `${daysAgo} 天前練過`}
+                        </span>
+                      </button>
+                    );
+                  })}
                   {MUSCLE_ORDER.map((group) => {
                     const lastTrainedAt = lastTrainedByGroup.get(group);
                     const daysAgo = lastTrainedAt === undefined ? null : getCalendarDaysAgo(lastTrainedAt, now);
@@ -1791,6 +1848,23 @@ export default function WorkoutLogger() {
                 </div>
               ) : (
                 <>
+                  {isComboGroup(selectedGroup) &&
+                    groupedTemplates[selectedGroup].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          closeNewWorkoutSheet();
+                          void handleStartFromTemplate(t);
+                        }}
+                        className="w-full text-left bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 rounded-xl p-3 shadow-sm hover:shadow transition cursor-pointer"
+                      >
+                        <span className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">範本：{t.name}</span>
+                        <span className="block text-[10px] text-slate-400 font-medium mt-0.5">
+                          {t.entries.length} 個動作 • 從範本開始
+                        </span>
+                      </button>
+                    ))}
                   {recentGroupWorkouts.map((w) =>
                     renderRecentWorkoutCard(w, () => handleStartFromPastGroupWorkout(w))
                   )}

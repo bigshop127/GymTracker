@@ -1,5 +1,5 @@
 import { type Workout, type Exercise, type MuscleGroup } from '../db/schema';
-import { normalizeSplit } from './splitRotation';
+import { normalizeSplit, type ComboCategory, type SplitCategory } from './splitRotation';
 import { getPrimaryMuscleGroups } from './workoutSummary';
 
 /** 只留下可以拿來沿用的訓練：已完成、未軟刪除，並照 startedAt 由新到舊 */
@@ -101,4 +101,19 @@ export function getLastTrainedByMuscleGroup(
     }
   }
   return result;
+}
+
+/**
+ * 複合日（胸背／腿手）最近幾次的完成訓練（新→舊），給「開始新訓練」的胸背／腿手入口用。
+ * 分類由呼叫端傳入（getWorkoutSplitCategory，標題、課表格子、動作都會參與判斷），這裡只負責篩選與排序。
+ */
+export function getRecentWorkoutsForCombo(
+  workouts: Workout[],
+  combo: ComboCategory,
+  categoryOf: (workout: Workout) => SplitCategory | null,
+  limit = 3,
+): Workout[] {
+  return usableWorkouts(workouts)
+    .filter((w) => categoryOf(w) === combo)
+    .slice(0, limit);
 }

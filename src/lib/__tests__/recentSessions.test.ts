@@ -3,6 +3,7 @@ import {
   getRecentWorkoutsForSlot,
   getRecentWorkoutsForMuscleGroup,
   getLastTrainedByMuscleGroup,
+  getRecentWorkoutsForCombo,
 } from '../recentSessions';
 import { buildExerciseMap } from '../workoutSummary';
 import { type Workout, type Exercise, type WorkoutEntry, type SetLog } from '../../db/schema';
@@ -217,5 +218,22 @@ describe('getLastTrainedByMuscleGroup', () => {
       makeWorkout('deleted', 0, { deletedAt: now, entries: entriesOf([['squat', 4]]) }),
     ];
     expect(getLastTrainedByMuscleGroup(workouts, exMap).has('腿臀')).toBe(false);
+  });
+});
+
+describe('getRecentWorkoutsForCombo', () => {
+  test('只收該複合日、已完成、未刪除，新→舊，最多 3 筆', () => {
+    const cat = (w: Workout) => (w.title?.includes('胸背') ? ('胸背' as const) : w.title?.includes('腿手') ? ('腿手' as const) : null);
+    const workouts = [
+      makeWorkout('a', 9, { title: '胸背 A' }),
+      makeWorkout('b', 2, { title: '胸背 B' }),
+      makeWorkout('c', 1, { title: '腿手 A' }),
+      makeWorkout('d', 0, { title: '胸背 已刪', deletedAt: now }),
+      makeWorkout('e', 5, { title: '胸背', status: 'active' }),
+      makeWorkout('f', 20, { title: '胸背' }),
+      makeWorkout('g', 30, { title: '胸背' }),
+    ];
+    expect(getRecentWorkoutsForCombo(workouts, '胸背', cat).map((w) => w.id)).toEqual(['b', 'a', 'f']);
+    expect(getRecentWorkoutsForCombo(workouts, '腿手', cat).map((w) => w.id)).toEqual(['c']);
   });
 });
