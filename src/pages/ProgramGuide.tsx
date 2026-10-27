@@ -12,7 +12,7 @@ import {
 import { listExercises } from '../db/exercises';
 import { type Exercise, type WorkoutTemplate } from '../db/schema';
 import { isCardioTemplate } from '../lib/cardioTemplates';
-import { getTemplateCategory, normalizeSplit } from '../lib/splitRotation';
+import { getTemplateCategory, normalizeSplit, toTemplateCategory } from '../lib/splitRotation';
 import { buildBlankTemplateFromProgramDay, isSkippedInWeek, PROGRAM_WEEK_COUNT, weekIdxForCycle, weekTargetOf } from '../lib/programWeeks';
 import ProgramDayEditCard from '../components/ProgramDayEditCard';
 import LapHistorySection from '../components/LapHistorySection';
@@ -173,7 +173,7 @@ export default function ProgramGuide() {
   };
 
   const handleCreateBlankForSlot = async (slotId: string, label: string) => {
-    const template = createBlankTemplate(label, normalizeSplit(label) ?? undefined);
+    const template = createBlankTemplate(label, toTemplateCategory(normalizeSplit(label)) ?? undefined);
     await saveTemplate(template);
     await linkSlotToTemplate(slotId, template.id);
     // 直接打開這天的編輯模式，好接著加動作

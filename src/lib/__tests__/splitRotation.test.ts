@@ -1,6 +1,13 @@
 import { describe, test, expect } from 'vitest';
-import { normalizeSplit, getSplitRotationStatus, getTemplateCategory, groupTemplatesByCategory } from '../splitRotation';
-import { type Workout, type TrainingProgram, type WorkoutTemplate } from '../../db/schema';
+import {
+  normalizeSplit,
+  getSplitRotationStatus,
+  getTemplateCategory,
+  groupTemplatesByCategory,
+  getWorkoutSplitCategory,
+  getMonthlySplitCounts,
+} from '../splitRotation';
+import { type Workout, type TrainingProgram, type WorkoutTemplate, type Exercise } from '../../db/schema';
 
 describe('Split Rotation Library', () => {
   describe('normalizeSplit', () => {
@@ -24,8 +31,28 @@ describe('Split Rotation Library', () => {
       expect(normalizeSplit('臀推')).toBe('腿');
     });
 
+    test('複合日要先於單一部位判斷（胸背不是拉、腿手不是腿）', () => {
+      expect(normalizeSplit('胸背日')).toBe('胸背');
+      expect(normalizeSplit('胸 + 背')).toBe('胸背');
+      expect(normalizeSplit('腿手日')).toBe('腿手');
+      expect(normalizeSplit('腿 + 二頭')).toBe('腿手');
+      expect(normalizeSplit('有氧核心')).toBe('有氧核心');
+      expect(normalizeSplit('有氧 + 核心')).toBe('有氧核心');
+    });
+
+    test('單一部位的舊標題不受複合日影響', () => {
+      expect(normalizeSplit('胸 + 三頭')).toBe('推');
+      expect(normalizeSplit('背 + 二頭')).toBe('拉');
+      expect(normalizeSplit('腿臀日')).toBe('腿');
+    });
+
+    test('有氧字樣歸純有氧', () => {
+      expect(normalizeSplit('有氧')).toBe('純有氧');
+      expect(normalizeSplit('8/3 有氧 @楊梅WG')).toBe('純有氧');
+    });
+
     test('returns null for unrecognizable names', () => {
-      expect(normalizeSplit('有氧')).toBe(null);
+      expect(normalizeSplit('自由訓練')).toBe(null);
       expect(normalizeSplit('')).toBe(null);
       expect(normalizeSplit(undefined)).toBe(null);
     });
@@ -200,10 +227,10 @@ describe('Split Rotation Library', () => {
       };
     }
 
-    test('5 個 key 一律存在，沒有範本的分類回傳空陣列（不是 undefined）', () => {
+    test('8 個 key 一律存在，沒有範本的分類回傳空陣列（不是 undefined）', () => {
       const grouped = groupTemplatesByCategory([]);
-      expect(Object.keys(grouped).sort()).toEqual(['手', '推', '拉', '腿', '自訂'].sort());
-      for (const cat of ['拉', '推', '腿', '手', '自訂'] as const) {
+      expect(Object.keys(grouped).sort()).toEqual(['手', '推', '拉', '腿', '胸背', '腿手', '有氧核心', '自訂'].sort());
+      for (const cat of ['拉', '推', '腿', '手', '胸背', '腿手', '有氧核心', '自訂'] as const) {
         expect(grouped[cat]).toEqual([]);
       }
     });
@@ -217,6 +244,58 @@ describe('Split Rotation Library', () => {
       const grouped = groupTemplatesByCategory(templates);
       expect(grouped['拉'].map(t => t.id)).toEqual(['a', 'c']);
       expect(grouped['推'].map(t => t.id)).toEqual(['b']);
+    });
+  });
+
+  describe('依動作判斷有氧類別與月統計', () => {
+    const ex = (id: string, muscleGroup: Exercise['muscleGroup']): Exercise => ({
+      id, name: id, muscleGroup, equipment: '徒手', isCustom: false, createdAt: 0,
+    });
+    const exMap = new Map<string, Exercise>([
+      ['run', ex('run', '有氧')],
+      ['plank', ex('plank', '核心')],
+      ['bench', ex('bench', '胸')],
+    ]);
+    const mk = (id: string, ids: string[], title?: string, day = 5): Workout => ({
+      id,
+      title,
+      startedAt: new Date(2026, 9, day, 12).getTime(),
+      status: 'completed',
+      entries: ids.map((exerciseId, order) => ({ id: `${id}-${order}`, exerciseId, order, sets: [] })),
+    });
+
+    test('全是有氧動作 → 純有氧；有氧＋核心 → 有氧核心；混到力量動作則交給文字', () => {
+      expect(getWorkoutSplitCategory(mk('a', ['run']), null, exMap)).toBe('純有氧');
+      expect(getWorkoutSplitCategory(mk('b', ['run', 'plank']), null, exMap)).toBe('有氧核心');
+      expect(getWorkoutSplitCategory(mk('c', ['run', 'bench'], '推'), null, exMap)).toBe('推');
+      // 純核心沒有有氧，不能算有氧類
+      expect(getWorkoutSplitCategory(mk('d', ['plank']), null, exMap)).toBe(null);
+    });
+
+    test('沒給動作表時只看文字（舊行為）', () => {
+      expect(getWorkoutSplitCategory(mk('a', ['run']), null)).toBe(null);
+      expect(getWorkoutSplitCategory(mk('a', ['run'], '有氧'), null)).toBe('純有氧');
+    });
+
+    test('月統計：複合日與有氧各算獨立一格，不重複計進推拉腿手', () => {
+      const counts = getMonthlySplitCounts(
+        [
+          mk('1', ['bench'], '胸背日', 1),
+          mk('2', ['bench'], '腿手日', 2),
+          mk('3', ['run'], undefined, 3),
+          mk('4', ['run', 'plank'], undefined, 4),
+          mk('5', ['bench'], '推', 6),
+        ],
+        null, 2026, 10, exMap,
+      );
+      expect(counts).toEqual({ 拉: 0, 推: 1, 腿: 0, 手: 0, 胸背: 1, 腿手: 1, 有氧核心: 1, 純有氧: 1 });
+    });
+
+    test('輪替提醒：胸背日同時算推與拉有練過', () => {
+      const now = new Date(2026, 9, 7, 12).getTime();
+      const statuses = getSplitRotationStatus([mk('1', ['bench'], '胸背日', 6)], null, now);
+      const done = Object.fromEntries(statuses.map((s) => [s.category, s.doneInWindow]));
+      expect(done).toEqual({ 拉: true, 推: true, 腿: false, 手: false });
     });
   });
 });

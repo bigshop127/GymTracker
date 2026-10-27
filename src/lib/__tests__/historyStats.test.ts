@@ -69,7 +69,7 @@ describe('countByCategory / inMonth / summarizePeriod', () => {
   test('某個月各分類次數', () => {
     const sep = inMonth(items, 2026, 9);
     expect(sep).toHaveLength(3);
-    expect(countByCategory(sep)).toEqual({ 推: 2, 拉: 1, 手: 0, 腿: 0, 其他: 0 });
+    expect(countByCategory(sep)).toEqual({ 推: 2, 拉: 1, 手: 0, 腿: 0, 胸背: 0, 腿手: 0, 有氧核心: 0, 純有氧: 0, 其他: 0 });
   });
 
   test('摘要：次數、正式組數，平均時長不算忘了結束的那筆', () => {

@@ -21,8 +21,9 @@ import { listCompletedWorkouts } from '../db/workouts';
 import {
   getSplitRotationStatus,
   getCalendarDaysAgo,
-  type SplitCategory,
   normalizeSplit,
+  getPartsOf,
+  toTemplateCategory,
   getTemplateCategory,
   groupTemplatesByCategory,
   TEMPLATE_CATEGORIES,
@@ -157,7 +158,10 @@ export default function WorkoutLogger() {
     }
     const statuses = getSplitRotationStatus(completedWorkouts, activeProgram, now);
     const categoriesOf = (slots: typeof activeProgram.slots) => [
-      ...new Set(slots.map((s) => normalizeSplit(s.label)).filter((c): c is SplitCategory => !!c)),
+      ...new Set(slots.flatMap((s) => {
+        const c = normalizeSplit(s.label);
+        return c ? getPartsOf(c) : [];
+      })),
     ];
     const rotationCats = categoriesOf(rotationSlotsOf(activeProgram));
     if (rotationCats.length === 0) {
@@ -656,7 +660,8 @@ export default function WorkoutLogger() {
 
     const templateName = name.trim() || defaultName;
     try {
-      const guessedCategory = normalizeSplit(bodyPart) ?? normalizeSplit(templateName) ?? '自訂';
+      const guessedCategory: TemplateCategory =
+        toTemplateCategory(normalizeSplit(bodyPart)) ?? toTemplateCategory(normalizeSplit(templateName)) ?? '自訂';
       const categoryInput = window.prompt(
         `分類（${TEMPLATE_CATEGORIES.join('/')}，直接 Enter 使用預設）：`,
         guessedCategory

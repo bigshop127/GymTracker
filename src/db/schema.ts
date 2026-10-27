@@ -136,7 +136,7 @@ export interface Settings {
 }
 
 // ---- 訓練範本分類（拉/推/腿/手 沿用 splitRotation.ts 的 SplitCategory，另加「自訂」接住判不出來的） ----
-export type TemplateCategory = '拉' | '推' | '腿' | '手' | '自訂';
+export type TemplateCategory = '拉' | '推' | '腿' | '手' | '胸背' | '腿手' | '有氧核心' | '自訂';
 
 // ---- 訓練範本 (WorkoutTemplate) ----
 export interface WorkoutTemplate {

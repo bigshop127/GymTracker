@@ -133,8 +133,11 @@ export function getDaySummary(dayWorkouts: Workout[], exMap: Map<string, Exercis
  */
 export function getDayTrainedLabel(
   summary: { primaryMuscle?: MuscleGroup; workout?: Workout },
-  program: TrainingProgram | null
+  program: TrainingProgram | null,
+  exMap?: Map<string, Exercise>,
 ): { text: string; category: SplitCategory | null } {
-  const category = summary.workout ? getWorkoutSplitCategory(summary.workout, program) : null;
-  return { text: category ?? summary.primaryMuscle ?? '', category };
+  const category = summary.workout ? getWorkoutSplitCategory(summary.workout, program, exMap) : null;
+  // 純有氧在日曆上維持原本的「有氧」字樣（統計欄才叫純有氧）
+  const text = category === '純有氧' ? '有氧' : category ?? summary.primaryMuscle ?? '';
+  return { text, category };
 }

@@ -12,10 +12,12 @@ import {
 } from '../lib/historyStats';
 import { SPLIT_CATEGORY_HEX } from '../lib/splitRotation';
 
-/** 圖表色：推/拉/腿/手 跟班表、日曆同一套（色盤已驗過），其他用中性灰 */
+/** 圖表色：各類別跟班表、日曆同一套，其他用中性灰 */
 const CATEGORY_HEX: Record<HistoryCategory, string> = { ...SPLIT_CATEGORY_HEX, 其他: '#94a3b8' };
 /** 色塊裡的字：深色底用白字，灰底用深字 */
-const CELL_TEXT: Record<HistoryCategory, string> = { 推: '#ffffff', 拉: '#ffffff', 手: '#ffffff', 腿: '#ffffff', 其他: '#0f172a' };
+const CELL_TEXT = Object.fromEntries(
+  HISTORY_CATEGORIES.map((c) => [c, c === '其他' ? '#0f172a' : '#ffffff']),
+) as Record<HistoryCategory, string>;
 
 const WEEKS = 8;
 const CELL = 22; // px，一格＝一次訓練（≤ 24px 寬）

@@ -224,10 +224,10 @@ export default function SchedulePage() {
     }
   };
 
-  // 本月（依目前檢視的月份）推/拉/腿/手實際訓練次數統計
+  // 本月（依目前檢視的月份）各類別實際訓練次數統計（推拉腿手＋胸背/腿手/有氧核心/純有氧）
   const monthlySplitCounts = useMemo(
-    () => getMonthlySplitCounts(completedWorkouts, activeProgram, currentMonth.getFullYear(), currentMonth.getMonth() + 1),
-    [completedWorkouts, activeProgram, currentMonth]
+    () => getMonthlySplitCounts(completedWorkouts, activeProgram, currentMonth.getFullYear(), currentMonth.getMonth() + 1, exerciseMap),
+    [completedWorkouts, activeProgram, currentMonth, exerciseMap]
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, dateStr: string) => {
@@ -510,7 +510,7 @@ export default function SchedulePage() {
               // 而不是只有一顆看不出內容的小圖示——旁邊再點一顆地點色小圓點當輔助線索。
               const summary = getDaySummary([actualWorkout], exerciseMap);
               locationDotColor = getLocationColor(summary.location);
-              labelText = getDayTrainedLabel(summary, activeProgram).text;
+              labelText = getDayTrainedLabel(summary, activeProgram, exerciseMap).text;
               labelColorClass = 'text-[9px] font-extrabold text-white';
             } else if (isPast) {
               // past without workout: blank
@@ -662,6 +662,7 @@ export default function SchedulePage() {
           {currentMonth.getMonth() + 1} 月實際訓練次數
         </h3>
         <div className="grid grid-cols-4 gap-2">
+          {/* 上排單一部位、下排複合日與有氧：4 欄自然折成兩排 */}
           {SPLIT_CATEGORIES.map((cat) => (
             <div
               key={cat}

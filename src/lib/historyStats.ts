@@ -9,8 +9,8 @@ import { type SplitCategory } from './splitRotation';
 
 export type HistoryCategory = SplitCategory | '其他';
 
-/** 堆疊／圖例的固定順序：班表輪替 推→拉→手，再來自行安排的腿，最後其他 */
-export const HISTORY_CATEGORIES: HistoryCategory[] = ['推', '拉', '手', '腿', '其他'];
+/** 堆疊／圖例的固定順序：班表輪替 推→拉→手，再來自行安排的腿，接著複合日與有氧，最後其他 */
+export const HISTORY_CATEGORIES: HistoryCategory[] = ['推', '拉', '手', '腿', '胸背', '腿手', '有氧核心', '純有氧', '其他'];
 
 /** 超過這個分鐘數多半是忘了按結束（例如 3557 分鐘），不顯示、不算平均 */
 export const MAX_PLAUSIBLE_MINUTES = 240;
@@ -72,7 +72,7 @@ export function buildWeeklyColumns(
 }
 
 export function countByCategory(items: CategorizedWorkout[]): Record<HistoryCategory, number> {
-  const counts: Record<HistoryCategory, number> = { 推: 0, 拉: 0, 手: 0, 腿: 0, 其他: 0 };
+  const counts = Object.fromEntries(HISTORY_CATEGORIES.map((c) => [c, 0])) as Record<HistoryCategory, number>;
   for (const item of items) counts[item.category] += 1;
   return counts;
 }

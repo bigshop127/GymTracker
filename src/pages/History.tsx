@@ -17,6 +17,7 @@ import { useProgramStore } from '../store/program';
 import { getWorkoutSplitCategory, SPLIT_CATEGORIES, SPLIT_CATEGORY_HEX, SPLIT_CATEGORY_CELL_BG_CLASSES, type SplitCategory } from '../lib/splitRotation';
 import {
   HISTORY_CATEGORIES,
+  countByCategory,
   countWorkingSets,
   formatMonthDay,
   getValidDurationMinutes,
@@ -259,7 +260,7 @@ export default function History() {
       return {
         id: w.id,
         workout: w,
-        category: (getWorkoutSplitCategory(w, activeProgram) ?? '其他') as HistoryCategory,
+        category: (getWorkoutSplitCategory(w, activeProgram, exMap) ?? '其他') as HistoryCategory,
         workingSets: countWorkingSets(w),
         durationMinutes: getValidDurationMinutes(w),
         volumeKg,
@@ -289,9 +290,7 @@ export default function History() {
 
   // 分類篩選（篩選鈕上的數字＝搜尋後各分類幾筆）
   const categoryCounts = useMemo(() => {
-    const counts: Record<HistoryCategory, number> = { 推: 0, 拉: 0, 手: 0, 腿: 0, 其他: 0 };
-    for (const item of searchedStatsList) counts[item.category] += 1;
-    return counts;
+    return countByCategory(searchedStatsList);
   }, [searchedStatsList]);
 
   const filteredStatsList = useMemo(
@@ -549,7 +548,7 @@ export default function History() {
                 if (dayWorkouts) {
                   const summary = getDaySummary(dayWorkouts, exMap);
                   locationColor = getLocationColor(summary.location);
-                  const trained = getDayTrainedLabel(summary, activeProgram);
+                  const trained = getDayTrainedLabel(summary, activeProgram, exMap);
                   label = trained.text;
                   category = trained.category;
                 }
