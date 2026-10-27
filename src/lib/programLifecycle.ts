@@ -1,5 +1,6 @@
-import { type TrainingProgram, type Workout } from '../db/schema';
+import { type TrainingProgram, type Workout, type Exercise } from '../db/schema';
 import { rotationSlotsOf } from './programRotation';
+import { COMBO_CATEGORIES, getPartsOf, getWorkoutSplitCategory, normalizeSplit, type SplitCategory } from './splitRotation';
 
 const MS_PER_WEEK = 604800000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -49,6 +50,57 @@ export function revertSlotForDeletedWorkout(
     };
   }
   return null;
+}
+
+/**
+ * 複合日（胸背＝推＋拉、腿手＝腿＋手）完成時要一起消耗的輪替格子 id。
+ * 單一部位與有氧類回空陣列（維持原本「只消耗自己掛的那一格」）；自行安排的格子（腿）不在輪替裡，自然不會出現。
+ */
+export function getComboSlotIds(program: TrainingProgram, category: SplitCategory | null): string[] {
+  if (!category || !(COMBO_CATEGORIES as SplitCategory[]).includes(category)) return [];
+  const parts = getPartsOf(category);
+  return rotationSlotsOf(program)
+    .filter((s) => {
+      const c = normalizeSplit(s.label);
+      return c !== null && getPartsOf(c).some((p) => parts.includes(p));
+    })
+    .map((s) => s.id);
+}
+
+/**
+ * 刪掉一筆複合日訓練後，退回它一起消耗的格子（跟 getComboSlotIds 對稱）。
+ * 只處理本輪；同一輪還有別筆訓練（掛這格，或是另一筆複合日）涵蓋這格的就不退。
+ */
+export function revertComboSlotsForDeletedWorkout(
+  program: TrainingProgram,
+  deleted: Workout,
+  otherWorkouts: Workout[],
+  exerciseMap: Map<string, Exercise>,
+  now: number,
+): TrainingProgram | null {
+  if (deleted.programId !== program.id) return null;
+  const lap = deleted.programCycleNumber ?? program.cycleCount + 1;
+  if (lap !== program.cycleCount + 1) return null;
+  const slotIds = getComboSlotIds(program, getWorkoutSplitCategory(deleted, program, exerciseMap));
+  if (slotIds.length === 0) return null;
+
+  const covers = (w: Workout, slotId: string) =>
+    w.programSlotId === slotId ||
+    getComboSlotIds(program, getWorkoutSplitCategory(w, program, exerciseMap)).includes(slotId);
+  const stillCovered = (slotId: string) =>
+    otherWorkouts.some(
+      (w) =>
+        w.id !== deleted.id &&
+        !w.deletedAt &&
+        w.status === 'completed' &&
+        w.programId === program.id &&
+        (w.programCycleNumber ?? lap) === lap &&
+        covers(w, slotId),
+    );
+  const done = program.completedSlotIdsThisLap;
+  const undo = slotIds.filter((id) => done.includes(id) && !stillCovered(id));
+  if (undo.length === 0) return null;
+  return { ...program, completedSlotIdsThisLap: done.filter((id) => !undo.includes(id)), updatedAt: now };
 }
 
 /** 這份計畫是不是「目前計畫」（進行中或暫停中） */

@@ -7,8 +7,10 @@ import {
   restartProgram,
   getElapsedWeeks,
   getPausedDays,
+  getComboSlotIds,
+  revertComboSlotsForDeletedWorkout,
 } from '../programLifecycle';
-import { type TrainingProgram, type ProgramStatus } from '../../db/schema';
+import { type TrainingProgram, type ProgramStatus, type Workout, type Exercise } from '../../db/schema';
 
 const DAY = 24 * 60 * 60 * 1000;
 const WEEK = 7 * DAY;
@@ -192,6 +194,50 @@ describe('programLifecycle', () => {
       const noRunNumber = makeProgram({ runNumber: undefined });
       const result = restartProgram(noRunNumber, now);
       expect(result.fresh.runNumber).toBe(2);
+    });
+  });
+
+  describe('複合日消耗輪替格子', () => {
+    const program = makeProgram({
+      slots: [
+        { id: 'push', label: '推 (Push)' },
+        { id: 'pull', label: '拉 (Pull)' },
+        { id: 'arms', label: '手 (Arms)' },
+        { id: 'leg', label: '腿 (Leg)', selfScheduled: true },
+      ],
+    });
+    const exMap = new Map<string, Exercise>();
+    const combo = (id: string, title: string, extra: Partial<Workout> = {}): Workout => ({
+      id, title, startedAt: 1, status: 'completed', entries: [], programId: 'p1', programCycleNumber: 1, ...extra,
+    });
+
+    test('胸背 → 推＋拉；腿手 → 手（腿是自行安排，不算輪替）；單一部位與有氧不處理', () => {
+      expect(getComboSlotIds(program, '胸背').sort()).toEqual(['pull', 'push']);
+      expect(getComboSlotIds(program, '腿手')).toEqual(['arms']);
+      expect(getComboSlotIds(program, '推')).toEqual([]);
+      expect(getComboSlotIds(program, '有氧核心')).toEqual([]);
+      expect(getComboSlotIds(program, null)).toEqual([]);
+    });
+
+    test('刪掉胸背日 → 推、拉都退回這輪未練', () => {
+      const p = { ...program, completedSlotIdsThisLap: ['push', 'pull', 'arms'] };
+      const del = combo('w1', '10/28 胸背');
+      const result = revertComboSlotsForDeletedWorkout(p, del, [del], exMap, 5);
+      expect(result?.completedSlotIdsThisLap).toEqual(['arms']);
+    });
+
+    test('同一輪還有別筆涵蓋這格就不退（推那格另外有一筆掛 slot 的訓練）', () => {
+      const p = { ...program, completedSlotIdsThisLap: ['push', 'pull'] };
+      const del = combo('w1', '10/28 胸背');
+      const other = combo('w2', '推', { programSlotId: 'push' });
+      const result = revertComboSlotsForDeletedWorkout(p, del, [del, other], exMap, 5);
+      expect(result?.completedSlotIdsThisLap).toEqual(['push']);
+    });
+
+    test('不是複合日、或是別輪的紀錄 → null', () => {
+      const p = { ...program, completedSlotIdsThisLap: ['push'] };
+      expect(revertComboSlotsForDeletedWorkout(p, combo('w1', '推'), [], exMap, 5)).toBeNull();
+      expect(revertComboSlotsForDeletedWorkout(p, combo('w1', '胸背', { programCycleNumber: 0 }), [], exMap, 5)).toBeNull();
     });
   });
 });

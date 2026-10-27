@@ -7,8 +7,11 @@ import {
   resumeProgram as resumeProgramPure,
   endProgram as endProgramPure,
   revertSlotForDeletedWorkout,
+  revertComboSlotsForDeletedWorkout,
 } from '../lib/programLifecycle';
 import { settleLap } from '../lib/programRotation';
+import { listExercises } from '../db/exercises';
+import { buildExerciseMap } from '../lib/workoutSummary';
 
 interface ProgramState {
   currentProgram: TrainingProgram | null;   // status ∈ {active, paused}，UI 顯示用
@@ -249,7 +252,11 @@ export const useProgramStore = create<ProgramState>((set, get) => {
       if (!current || current.id !== workout.programId) return;
       try {
         const remaining = await listCompletedWorkouts();
-        const reverted = revertSlotForDeletedWorkout(current, workout, remaining, Date.now());
+        const now = Date.now();
+        const afterSlot = revertSlotForDeletedWorkout(current, workout, remaining, now);
+        const exerciseMap = buildExerciseMap(await listExercises());
+        const reverted =
+          revertComboSlotsForDeletedWorkout(afterSlot ?? current, workout, remaining, exerciseMap, now) ?? afterSlot;
         if (!reverted) return;
         await saveProgram(reverted);
         applyCurrent(reverted);

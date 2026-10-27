@@ -7,6 +7,8 @@ import { getTemplate } from '../db/templates';
 import { useRestTimerStore } from './restTimer';
 import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
+import { getComboSlotIds } from '../lib/programLifecycle';
+import { getWorkoutSplitCategory } from '../lib/splitRotation';
 import {
   selectEntryExercise,
   addAlternativeToEntry,
@@ -207,19 +209,32 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
         title = buildAutoWorkoutTitle(activeWorkout, buildExerciseMap(exercises));
       }
       // 直接儲存記憶體中的最新快照，並標記 status 為 completed (防丟資料)
-      const finished: Workout = {
+      let finished: Workout = {
         ...activeWorkout,
         title,
         status: 'completed',
         endedAt: Date.now(),
       };
+
+      // 複合日（胸背＝推＋拉、腿手＝腿＋手）要一起消耗兩邊的輪替格子。
+      // 從範本開的訓練沒有掛計畫，補上計畫與輪數，之後刪掉這筆才知道要退哪幾格。
+      const { activeProgram, completeSlot } = useProgramStore.getState();
+      const exerciseMap = buildExerciseMap(await listExercises());
+      const comboSlotIds = activeProgram
+        ? getComboSlotIds(activeProgram, getWorkoutSplitCategory(finished, activeProgram, exerciseMap))
+        : [];
+      if (activeProgram && comboSlotIds.length > 0 && !finished.programId) {
+        finished = { ...finished, programId: activeProgram.id, programCycleNumber: activeProgram.cycleCount + 1 };
+      }
       await saveActiveWorkout(finished);
 
-      // 如果有計畫，標記這個 slot 完成
-      if (activeWorkout.programId && activeWorkout.programSlotId) {
-        const { activeProgram, completeSlot } = useProgramStore.getState();
-        if (activeProgram && activeProgram.id === activeWorkout.programId) {
-          await completeSlot(activeWorkout.programSlotId);
+      // 如果有計畫，標記這個 slot（以及複合日的另一半）完成；已經練過的格子不重複消耗
+      if (activeProgram && finished.programId === activeProgram.id) {
+        const slotIds = [...new Set([...(finished.programSlotId ? [finished.programSlotId] : []), ...comboSlotIds])];
+        for (const slotId of slotIds) {
+          const latest = useProgramStore.getState().activeProgram;
+          if (latest?.completedSlotIdsThisLap.includes(slotId) && slotId !== finished.programSlotId) continue;
+          await completeSlot(slotId);
         }
       }
 
