@@ -52,19 +52,35 @@ export function revertSlotForDeletedWorkout(
   return null;
 }
 
+function isComboCategory(category: SplitCategory | null): category is SplitCategory {
+  return !!category && (COMBO_CATEGORIES as SplitCategory[]).includes(category);
+}
+
 /**
- * 複合日（胸背＝推＋拉、腿手＝腿＋手）完成時要一起消耗的輪替格子 id。
+ * 複合日（胸背＝推＋拉、腿手＝腿＋手）完成時，要「一起」消耗的、類別不同的輪替格子 id。
+ * 同類別的格子不算（課表若有「胸背 A／胸背 B」兩格，練 A 不能順便把 B 吃掉）。
  * 單一部位與有氧類回空陣列（維持原本「只消耗自己掛的那一格」）；自行安排的格子（腿）不在輪替裡，自然不會出現。
  */
 export function getComboSlotIds(program: TrainingProgram, category: SplitCategory | null): string[] {
-  if (!category || !(COMBO_CATEGORIES as SplitCategory[]).includes(category)) return [];
+  if (!isComboCategory(category)) return [];
   const parts = getPartsOf(category);
   return rotationSlotsOf(program)
     .filter((s) => {
       const c = normalizeSplit(s.label);
-      return c !== null && getPartsOf(c).some((p) => parts.includes(p));
+      return c !== null && c !== category && getPartsOf(c).some((p) => parts.includes(p));
     })
     .map((s) => s.id);
+}
+
+/**
+ * 複合日訓練沒掛格子（從範本開的）時，它自己算哪一格：這輪還沒練的、同類別的第一格。
+ * 沒有這種格子（例如課表是推／拉／手／腿四格）回 null，改走 getComboSlotIds 消耗兩邊。
+ */
+export function pickOwnComboSlotId(program: TrainingProgram, category: SplitCategory | null): string | null {
+  if (!isComboCategory(category)) return null;
+  const done = program.completedSlotIdsThisLap;
+  const slot = rotationSlotsOf(program).find((s) => !done.includes(s.id) && normalizeSplit(s.label) === category);
+  return slot?.id ?? null;
 }
 
 /**

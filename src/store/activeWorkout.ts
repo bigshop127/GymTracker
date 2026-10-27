@@ -7,7 +7,7 @@ import { getTemplate } from '../db/templates';
 import { useRestTimerStore } from './restTimer';
 import { useProgramStore } from './program';
 import { buildExerciseMap, buildAutoWorkoutTitle } from '../lib/workoutSummary';
-import { getComboSlotIds } from '../lib/programLifecycle';
+import { getComboSlotIds, pickOwnComboSlotId } from '../lib/programLifecycle';
 import { getWorkoutSplitCategory } from '../lib/splitRotation';
 import {
   selectEntryExercise,
@@ -220,11 +220,18 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       // 從範本開的訓練沒有掛計畫，補上計畫與輪數，之後刪掉這筆才知道要退哪幾格。
       const { activeProgram, completeSlot } = useProgramStore.getState();
       const exerciseMap = buildExerciseMap(await listExercises());
-      const comboSlotIds = activeProgram
-        ? getComboSlotIds(activeProgram, getWorkoutSplitCategory(finished, activeProgram, exerciseMap))
-        : [];
-      if (activeProgram && comboSlotIds.length > 0 && !finished.programId) {
-        finished = { ...finished, programId: activeProgram.id, programCycleNumber: activeProgram.cycleCount + 1 };
+      const category = activeProgram ? getWorkoutSplitCategory(finished, activeProgram, exerciseMap) : null;
+      const comboSlotIds = activeProgram ? getComboSlotIds(activeProgram, category) : [];
+      if (activeProgram && !finished.programId) {
+        const ownSlotId = pickOwnComboSlotId(activeProgram, category);
+        if (ownSlotId || comboSlotIds.length > 0) {
+          finished = {
+            ...finished,
+            programId: activeProgram.id,
+            programCycleNumber: activeProgram.cycleCount + 1,
+            ...(ownSlotId ? { programSlotId: ownSlotId } : {}),
+          };
+        }
       }
       await saveActiveWorkout(finished);
 
