@@ -6,12 +6,15 @@ import { type WorkoutTemplate, type TrainingProgram } from '../db/schema';
 import { getElapsedWeeks, getPausedDays, getProgramWeekNumber } from '../lib/programLifecycle';
 import ProgramFormSheet from '../components/ProgramFormSheet';
 import {
-  applyTwoSplitProgram,
   areTwoSplitTemplatesCreated,
   createTwoSplitTemplates,
-  isTwoSplitProgramActive,
+  findLatestZongYuanProgram,
+  switchProgram,
+  TWO_SPLIT_PROGRAM_ID,
   TWO_SPLIT_PROGRAM_NAME,
+  type SwitchTarget,
 } from '../lib/twoSplitProgram';
+import { ZONGYUAN_PROGRAM_NAME } from '../data/zongyuan-8week-program';
 
 export default function ProgramsPage() {
   const navigate = useNavigate();
@@ -33,12 +36,13 @@ export default function ProgramsPage() {
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [finishTarget, setFinishTarget] = useState<TrainingProgram | null>(null);
   const [isApplyingTwoSplit, setIsApplyingTwoSplit] = useState(false);
-  const [twoSplitActive, setTwoSplitActive] = useState<boolean | null>(null);
   const [twoSplitTemplatesReady, setTwoSplitTemplatesReady] = useState<boolean | null>(null);
+  const [hasZongYuan, setHasZongYuan] = useState<boolean | null>(null);
 
   useEffect(() => {
-    initProgram().then(() => isTwoSplitProgramActive().then(setTwoSplitActive));
+    initProgram();
     areTwoSplitTemplatesCreated().then(setTwoSplitTemplatesReady);
+    findLatestZongYuanProgram().then((p) => setHasZongYuan(!!p));
     listTemplates().then(setTemplates).catch((err) => console.error('Failed to load templates:', err));
   }, [initProgram]);
 
@@ -52,24 +56,25 @@ export default function ProgramsPage() {
     };
   }, []);
 
-  const handleApplyTwoSplit = async () => {
-    const ending = currentProgram ? `目前的「${currentProgram.name}」會進封存（之後可以重新啟用），` : '';
-    const confirmed = window.confirm(
-      `套用「${TWO_SPLIT_PROGRAM_NAME}」？
-${ending}所有訓練紀錄與範本都會保留。
-今天已經練過的胸背／腿手會一併算進這一輪。`
-    );
+  const handleSwitch = async (target: SwitchTarget) => {
+    const name = target === 'twosplit' ? TWO_SPLIT_PROGRAM_NAME : ZONGYUAN_PROGRAM_NAME;
+    const ending = currentProgram ? `目前的「${currentProgram.name}」會進封存（輪數與進度保留，可隨時切回來）。` : '';
+    const confirmed = window.confirm(`切換到「${name}」？\n${ending}所有訓練紀錄與範本都不會動。`);
     if (!confirmed) return;
     setIsApplyingTwoSplit(true);
     try {
-      const { markedSlots } = await applyTwoSplitProgram();
+      const { markedSlots } = await switchProgram(target);
       await initProgram();
       listTemplates().then(setTemplates).catch((err) => console.error(err));
-      setTwoSplitActive(true);
-      alert(markedSlots.length > 0 ? `已套用，今天練過的 ${markedSlots.length} 格已算進這一輪。` : '已套用，到「訓練」頁開始今天該練的項目。');
+      setTwoSplitTemplatesReady(await areTwoSplitTemplatesCreated());
+      alert(
+        markedSlots > 0
+          ? `已切換，最近練過的 ${markedSlots} 格已算進這一輪。`
+          : '已切換，到「訓練」頁開始今天該練的項目。'
+      );
     } catch (err) {
-      console.error('Failed to apply two-split program:', err);
-      alert('套用失敗，請稍後再試。');
+      console.error('Failed to switch program:', err);
+      alert('切換失敗，請稍後再試。');
     } finally {
       setIsApplyingTwoSplit(false);
     }
@@ -222,33 +227,47 @@ ${ending}所有訓練紀錄與範本都會保留。
         </div>
       )}
 
-      {twoSplitActive === false && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-2">
-          <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">胸背／腿手 二分化循環</h3>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            四格輪替：胸背 A（重）→ 腿手 A（重）→ 胸背 B（輕）→ 腿手 B（輕），並建立對應的四份範本。
-            「今天該練」會直接出現胸背／腿手。舊計畫進封存、所有紀錄保留。
-          </p>
+      {/* 課表切換：宗諺 8 週 ⇄ 胸背／腿手二分化。紀錄、輪數、進度都保留，隨時可切回 */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3">
+        <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">切換課表</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { key: 'zongyuan', title: '宗諺 8 週', sub: '推→拉→手＋腿自行安排', active: currentProgram?.name === ZONGYUAN_PROGRAM_NAME, disabled: hasZongYuan === false },
+            { key: 'twosplit', title: '胸背／腿手', sub: '二分化 A重→A重→B輕→B輕', active: currentProgram?.id === TWO_SPLIT_PROGRAM_ID, disabled: false },
+          ] as const).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              disabled={isApplyingTwoSplit || opt.active || opt.disabled}
+              onClick={() => handleSwitch(opt.key)}
+              className={`text-left rounded-xl p-3 border transition cursor-pointer disabled:cursor-default ${
+                opt.active
+                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-300 disabled:opacity-40'
+              }`}
+            >
+              <span className="block text-sm font-extrabold">{opt.title}</span>
+              <span className={`block text-[10px] font-bold mt-0.5 ${opt.active ? 'text-indigo-100' : 'text-slate-400'}`}>
+                {opt.active ? '目前使用中' : opt.sub}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          切換不會動任何訓練紀錄，原本的計畫進封存、輪數與這一輪進度保留，可以隨時切回來。
+          二分化第一次切換時會順便建立四份範本。
+        </p>
+        {twoSplitTemplatesReady === false && (
           <button
             type="button"
             disabled={isApplyingTwoSplit}
-            onClick={handleApplyTwoSplit}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
+            onClick={handleCreateTwoSplitTemplates}
+            className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
           >
-            {isApplyingTwoSplit ? '處理中…' : '套用這份課表'}
+            只建立範本（不換課表）
           </button>
-          {twoSplitTemplatesReady === false && (
-            <button
-              type="button"
-              disabled={isApplyingTwoSplit}
-              onClick={handleCreateTwoSplitTemplates}
-              className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
-            >
-              只建立範本（不換課表）
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 終止：兩段確認小面板 */}
       {finishTarget && (

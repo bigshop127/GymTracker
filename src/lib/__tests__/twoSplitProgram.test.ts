@@ -7,6 +7,7 @@ import { ZONGYUAN_PROGRAM_NAME } from '../../data/zongyuan-8week-program';
 import {
   applyTwoSplitProgram,
   isTwoSplitProgramActive,
+  switchProgram,
   TWO_SPLIT_DAYS,
   TWO_SPLIT_PROGRAM_NAME,
 } from '../twoSplitProgram';
@@ -126,5 +127,34 @@ describe('套用胸背／腿手二分化課表', () => {
     await applyTwoSplitProgram(NOW + 1000);
     const twoSplitTemplates = (await db.templates.toArray()).filter((t) => t.id.startsWith('tpl-twosplit-'));
     expect(twoSplitTemplates).toHaveLength(4);
+  });
+});
+
+describe('切換課表（宗諺 ⇄ 二分化）', () => {
+  test('切回宗諺：二分化期間練的腿手算進宗諺的手，紀錄與舊進度都不動', async () => {
+    const during = await workout('during-la', '10/27 腿手', Date.now() + 5_000, ['槓鈴深蹲', '啞鈴彎舉']);
+    const histBefore = JSON.stringify(await db.workouts.get('hist-1'));
+    const { markedSlots } = await switchProgram('zongyuan');
+    const current = (await getCurrentProgram())!;
+    expect(current.id).toBe('old-zongyuan');
+    expect(current.cycleCount).toBe(3);
+    // 原本就有的 o-push 保留，腿手 → 手（腿是自行安排，不算輪替）
+    expect(current.completedSlotIdsThisLap.sort()).toEqual(['o-arms', 'o-push']);
+    expect(markedSlots).toBe(1);
+    expect(JSON.stringify(await db.workouts.get('hist-1'))).toBe(histBefore);
+    expect((await db.workouts.get(during.id))?.deletedAt).toBeUndefined();
+    const twoSplit = await db.programs.get('program-twosplit-v1');
+    expect(twoSplit?.status).toBe('abandoned');
+    expect(twoSplit?.completedSlotIdsThisLap).toEqual(['slot-twosplit-cb-a']);
+  });
+
+  test('再切回二分化：用原本那份（進度保留），不會重複建立、也不覆蓋範本', async () => {
+    const before = await db.templates.get('tpl-twosplit-cb-a');
+    await switchProgram('twosplit');
+    const current = (await getCurrentProgram())!;
+    expect(current.id).toBe('program-twosplit-v1');
+    expect(current.completedSlotIdsThisLap).toContain('slot-twosplit-cb-a');
+    expect((await db.templates.get('tpl-twosplit-cb-a'))?.entries[0].id).toBe(before?.entries[0].id);
+    expect((await db.programs.toArray()).filter((p) => p.id === 'program-twosplit-v1')).toHaveLength(1);
   });
 });

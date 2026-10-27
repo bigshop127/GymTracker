@@ -13,9 +13,11 @@ import {
 import { addExercise, listExercises } from '../db/exercises';
 import { saveTemplate } from '../db/templates';
 import { listCompletedWorkouts } from '../db/workouts';
-import { saveProgram } from '../db/programs';
+import { saveProgram, listPrograms } from '../db/programs';
 import { getWorkoutSplitCategory, type SplitCategory } from './splitRotation';
-import { pickOwnComboSlotId } from './programLifecycle';
+import { getComboSlotIds, pickOwnComboSlotId } from './programLifecycle';
+import { settleLap } from './programRotation';
+import { ZONGYUAN_PROGRAM_NAME } from '../data/zongyuan-8week-program';
 
 /**
  * 「胸背／腿手」二分化循環課表（2026-10-27）。
@@ -24,7 +26,8 @@ import { pickOwnComboSlotId } from './programLifecycle';
  * 休息日仍由班表／每週目標次數決定。菜單內容依 NSCA《Essentials》第 17 章與使用者逐項確認的版本。
  */
 export const TWO_SPLIT_PROGRAM_NAME = '胸背／腿手 二分化循環';
-const PROGRAM_ID = 'program-twosplit-v1';
+export const TWO_SPLIT_PROGRAM_ID = 'program-twosplit-v1';
+const PROGRAM_ID = TWO_SPLIT_PROGRAM_ID;
 
 interface EntrySpec {
   name: string;
@@ -206,11 +209,22 @@ export function backfillTodayWorkouts(
 
   for (const w of todays) {
     const category = getWorkoutSplitCategory(w, current, exerciseMap) ?? guessComboByExercises(w, exerciseMap);
-    const slotId = pickOwnComboSlotId(current, category);
-    if (!slotId) continue;
-    current = { ...current, completedSlotIdsThisLap: [...current.completedSlotIdsThisLap, slotId] };
+    const ownSlotId = pickOwnComboSlotId(current, category);
+    const done = current.completedSlotIdsThisLap;
+    // 同類別的格子（胸背 A／B）只吃一格；類別不同但部位重疊的（胸背 → 推＋拉）一起吃
+    const slotIds = [...(ownSlotId ? [ownSlotId] : []), ...getComboSlotIds(current, category)].filter(
+      (id) => !done.includes(id),
+    );
+    if (slotIds.length === 0) continue;
+    current = { ...current, completedSlotIdsThisLap: [...done, ...slotIds] };
+    current = { ...current, ...settleLap(current) };
     if (!w.programId) {
-      updatedWorkouts.push({ ...w, programId: current.id, programSlotId: slotId, programCycleNumber: current.cycleCount + 1 });
+      updatedWorkouts.push({
+        ...w,
+        programId: current.id,
+        programCycleNumber: current.cycleCount + 1,
+        ...(ownSlotId ? { programSlotId: ownSlotId } : {}),
+      });
     }
   }
   return { program: current, updatedWorkouts };
@@ -248,7 +262,8 @@ export async function areTwoSplitTemplatesCreated(): Promise<boolean> {
 }
 
 export async function applyTwoSplitProgram(now: number = Date.now()): Promise<{ markedSlots: string[] }> {
-  await createTwoSplitTemplates(now);
+  // 範本已經建好（可能已填過重量）就不重建，免得把使用者填的重量蓋掉
+  if (!(await areTwoSplitTemplatesCreated())) await createTwoSplitTemplates(now);
 
   const exerciseMap = new Map((await listExercises()).map((x) => [x.id, x]));
   const startOfToday = new Date(now);
@@ -264,4 +279,50 @@ export async function applyTwoSplitProgram(now: number = Date.now()): Promise<{ 
   await saveProgram(program);
   for (const w of updatedWorkouts) await db.workouts.put({ ...w, updatedAt: now });
   return { markedSlots: program.completedSlotIdsThisLap };
+}
+
+export type SwitchTarget = 'zongyuan' | 'twosplit';
+
+/** 封存裡（或目前）最近一份宗諺計畫；沒有就 undefined */
+export async function findLatestZongYuanProgram(): Promise<TrainingProgram | undefined> {
+  return (await listPrograms())
+    .filter((p) => p.name === ZONGYUAN_PROGRAM_NAME)
+    .sort((a, b) => (b.completedAt ?? b.updatedAt) - (a.completedAt ?? a.updatedAt))[0];
+}
+
+/**
+ * 在「宗諺 8 週」與「胸背／腿手二分化」之間切換。
+ * - 目標計畫重新啟用（二分化從沒套用過就第一次建立）；目前的計畫由 saveProgram 的唯一性守衛標成 abandoned 進封存，
+ *   之後隨時可以切回來，輪數、這一輪進度都保留。
+ * - 任何訓練紀錄、範本都不刪不改；只有「還沒掛任何計畫」的複合日訓練會補上計畫欄位（為了刪除時能退回進度）。
+ * - 切回去時，離開這段期間練的複合日（胸背／腿手）會補算進目標計畫這一輪，不會又被建議一次。
+ */
+export async function switchProgram(target: SwitchTarget, now: number = Date.now()): Promise<{ markedSlots: number }> {
+  if (target === 'twosplit') {
+    const existing = await db.programs.get(TWO_SPLIT_PROGRAM_ID);
+    if (!existing || existing.deletedAt) {
+      const { markedSlots } = await applyTwoSplitProgram(now);
+      return { markedSlots: markedSlots.length };
+    }
+    if (!(await areTwoSplitTemplatesCreated())) await createTwoSplitTemplates(now);
+  }
+
+  const source = target === 'twosplit' ? await db.programs.get(TWO_SPLIT_PROGRAM_ID) : await findLatestZongYuanProgram();
+  if (!source) throw new Error('NO_TARGET_PROGRAM');
+
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const since = source.completedAt ?? startOfToday.getTime();
+  const reactivated: TrainingProgram = { ...source, status: 'active', completedAt: undefined, pausedAt: undefined };
+  const exerciseMap = new Map((await listExercises()).map((x) => [x.id, x]));
+  const { program, updatedWorkouts } = backfillTodayWorkouts(
+    reactivated,
+    await listCompletedWorkouts(),
+    exerciseMap,
+    since,
+  );
+
+  await saveProgram(program);
+  for (const w of updatedWorkouts) await db.workouts.put({ ...w, updatedAt: now });
+  return { markedSlots: program.completedSlotIdsThisLap.length - reactivated.completedSlotIdsThisLap.length };
 }
