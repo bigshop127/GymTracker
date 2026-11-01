@@ -74,13 +74,23 @@ export async function verifyIdToken(token, {
 }
 
 // 只開放給名單裡的 Google 帳號用（名單放在 Worker secret，不寫進程式碼）
-export function assertAllowedUser(payload, allowedEmails) {
-  const allowed = String(allowedEmails || '')
-    .split(',')
-    .map(s => s.trim().toLowerCase())
+// 名單容忍逗號／分號／空白／換行分隔，以及不小心貼進去的引號與 BOM
+export function parseAllowedEmails(allowedEmails) {
+  return String(allowedEmails || '')
+    .split(/[,;\s]+/)
+    .map(s => s.replace(/^[\s"'﻿]+|[\s"'﻿]+$/g, '').toLowerCase())
     .filter(Boolean);
-  const email = String(payload.email || '').toLowerCase();
-  if (!email || payload.email_verified !== true || !allowed.includes(email)) {
-    throw new HttpError(403, `這個帳號（${payload.email || '未知'}）沒有使用 AI 的權限`);
+}
+
+export function assertAllowedUser(payload, allowedEmails) {
+  const allowed = parseAllowedEmails(allowedEmails);
+  const email = String(payload.email || '').trim().toLowerCase();
+  if (allowed.length === 0) throw new HttpError(500, 'Worker 的帳號名單是空的，請重新設定 ALLOWED_EMAILS');
+  if (!email) throw new HttpError(403, '登入憑證裡沒有信箱，請重新登入');
+  if (payload.email_verified !== true) {
+    throw new HttpError(403, `這個帳號（${email}）的信箱 Google 尚未驗證，無法使用 AI`);
+  }
+  if (!allowed.includes(email)) {
+    throw new HttpError(403, `這個帳號（${email}）不在允許名單內（名單共 ${allowed.length} 組）`);
   }
 }
