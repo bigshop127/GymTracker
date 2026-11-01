@@ -1,0 +1,9 @@
+name = "gymtracker-ai"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# 金鑰類（GROQ_API_KEYS、ALLOWED_EMAILS）用 `wrangler secret put` 設定，不寫在這裡
+[vars]
+FIREBASE_PROJECT_ID = "gymtracker-sync-cb0d4"
+ALLOWED_ORIGINS = "https://bigshop127.github.io"

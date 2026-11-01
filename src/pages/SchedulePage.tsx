@@ -29,6 +29,7 @@ import { type DayOverride, type ShiftLetter, type Workout, type Exercise } from 
 import { getDaySummary, getDayTrainedLabel } from '../lib/workoutSummary';
 import { getLocationColor } from '../lib/locationStyle';
 import { getMonthlySplitCounts, SPLIT_CATEGORIES } from '../lib/splitRotation';
+import ShiftImportSheet from '../components/ShiftImportSheet';
 
 const BUTTON_CONFIGS = [
   { label: 'A', value: { shiftLetters: ['A'] as ShiftLetter[], isDayOff: undefined, paused: undefined, forcedRest: undefined, rawLabel: 'A' }, category: 'A' as const, display: '🌅 A 班' },
@@ -48,6 +49,7 @@ export default function SchedulePage() {
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
   const [now, setNow] = useState(() => Date.now());
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
+  const [showShiftImport, setShowShiftImport] = useState(false);
 
   useEffect(() => {
     initProgram();
@@ -463,6 +465,14 @@ export default function SchedulePage() {
             </svg>
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowShiftImport(true)}
+          className="w-full py-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl hover:opacity-80 transition cursor-pointer"
+        >
+          📷 班表截圖匯入
+        </button>
 
         {/* 星期 */}
         <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -895,6 +905,19 @@ export default function SchedulePage() {
             )}
           </div>
         </div>
+      )}
+
+      {showShiftImport && (
+        <ShiftImportSheet
+          todayDateStr={todayDateStr}
+          onClose={() => setShowShiftImport(false)}
+          onApplied={(year, month) => {
+            // 切到截圖那個月，才看得到剛套用的結果
+            setCurrentMonth(new Date(year, month - 1, 1));
+            setReloadTrigger((t) => t + 1);
+            setShowShiftImport(false);
+          }}
+        />
       )}
 
       {/* 批次編輯日期 Sheet */}

@@ -95,8 +95,8 @@ describe('套用胸背／腿手二分化課表', () => {
     const [cbA, laA, cbB, laB] = templates;
     expect(cbA?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 4, 3, 3]);
     expect(cbB?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 4, 3, 3]);
-    expect(laA?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 4, 3, 3, 2, 2, 2]);
-    expect(laB?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 4, 2, 2, 2]);
+    expect(laA?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 3, 3, 3, 3, 3]);
+    expect(laB?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 3, 3, 3]);
     // 腿彎舉、提踵只在 A 重日
     const exercises = await listExercises();
     const nameOf = (id: string) => exercises.find((x) => x.id === id)?.name;
@@ -104,6 +104,13 @@ describe('套用胸背／腿手二分化課表', () => {
       expect.arrayContaining(['腿後勾', '站姿提踵']),
     );
     expect(laB?.entries.map((x) => nameOf(x.exerciseId))).not.toContain('腿後勾');
+    // 臀部髖伸只擇一：A 日 RDL、B 日臀推，不在同一天重複
+    expect(laA?.entries.map((x) => nameOf(x.exerciseId))).toContain('羅馬尼亞硬舉');
+    expect(laA?.entries.map((x) => nameOf(x.exerciseId))).not.toContain('槓鈴臀推');
+    expect(laB?.entries.map((x) => nameOf(x.exerciseId))).toContain('槓鈴臀推');
+    expect(laB?.entries.map((x) => nameOf(x.exerciseId))).not.toContain('羅馬尼亞硬舉');
+    // 胸背 B 的臥推與引體休息 120 秒
+    expect(cbB?.entries.slice(0, 2).map((x) => x.defaultRestSeconds)).toEqual([120, 120]);
     expect(cbA?.category).toBe('胸背');
     expect(laA?.category).toBe('腿手');
     // 引體向上有滑輪下拉當替代
