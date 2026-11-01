@@ -196,7 +196,7 @@ export const SHIFT_CODE_CELL_BG_CLASSES: Record<ShiftCodeCategory, string> = {
   AC: 'bg-green-100 dark:bg-green-700/50',
   BC: 'bg-yellow-100 dark:bg-yellow-950/40',
   ABC: 'bg-red-100 dark:bg-red-950/40',
-  dayoff: 'bg-emerald-50 dark:bg-emerald-800/45',
+  dayoff: 'bg-gray-100 dark:bg-gray-600/40',
   unable: 'bg-slate-100 dark:bg-slate-700/60',
 };
 
