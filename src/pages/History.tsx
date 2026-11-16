@@ -398,7 +398,7 @@ export default function History() {
       {!isLoading && viewMode === 'list' && historyList.length > 0 && (
         <>
           {/* 分類篩選 */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1 -mx-1 px-1">
             {(['all', ...HISTORY_CATEGORIES] as const).map((cat) => {
               const isSelected = categoryFilter === cat;
               return (

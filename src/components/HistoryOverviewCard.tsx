@@ -20,8 +20,6 @@ const CELL_TEXT = Object.fromEntries(
 ) as Record<HistoryCategory, string>;
 
 const WEEKS = 8;
-const CELL = 22; // px，一格＝一次訓練（≤ 24px 寬）
-const GAP = 2;
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 // 甜甜圈幾何（viewBox 140×140，用描邊畫環，段與段之間留 2px 空隙）
@@ -62,8 +60,8 @@ export default function HistoryOverviewCard({ items, now, onSelectWorkout }: His
   const columns = useMemo(() => buildWeeklyColumns(items, now, WEEKS), [items, now]);
   const trendItems = useMemo(() => columns.flatMap((c) => c.items), [columns]);
   const trendSummary = useMemo(() => summarizePeriod(trendItems.map((i) => i.workout)), [trendItems]);
-  const maxStack = Math.max(4, ...columns.map((c) => c.items.length));
-  const trendCategories = HISTORY_CATEGORIES.filter((cat) => trendItems.some((i) => i.category === cat));
+  // 每週色塊的欄數：至少 4 欄，讓不同週的色塊寬度一致、上下對齊
+  const slots = Math.max(4, ...columns.map((c) => c.items.length));
 
   // ── 比例 ──
   const monthItems = useMemo(() => inMonth(items, month.year, month.month), [items, month]);
@@ -112,67 +110,72 @@ export default function HistoryOverviewCard({ items, now, onSelectWorkout }: His
       </div>
 
       {tab === 'trend' ? (
-        <div className="space-y-3">
-          <p className="text-[10px] font-semibold text-slate-400">近 {WEEKS} 週 · 每一格是一次訓練，點格子看那次紀錄</p>
-          <div className="flex justify-between items-end gap-1" style={{ minHeight: maxStack * (CELL + GAP) + 18 }}>
-            {columns.map((column, idx) => {
-              const isThisWeek = idx === columns.length - 1;
+        <div className="space-y-4">
+          {/* 三個大數字：一眼看出近 8 週練得多不多 */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { value: String(trendSummary.count), unit: '次', label: `近 ${WEEKS} 週訓練` },
+              { value: (trendSummary.count / WEEKS).toFixed(1), unit: '次', label: '平均每週' },
+              {
+                value: trendSummary.avgMinutes !== null ? String(trendSummary.avgMinutes) : '—',
+                unit: trendSummary.avgMinutes !== null ? '分' : '',
+                label: '平均時長',
+              },
+            ].map((tile) => (
+              <div key={tile.label} className="rounded-xl bg-slate-50 dark:bg-slate-950/60 px-2 py-2.5 text-center">
+                <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100 tabular-nums leading-none">
+                  {tile.value}
+                  <span className="text-[11px] font-bold text-slate-400 ml-0.5">{tile.unit}</span>
+                </p>
+                <p className="text-[10px] font-semibold text-slate-400 mt-1.5">{tile.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* 每週一列：左邊是哪一週，右邊每次訓練一個色塊（寫著部位＋日期），點色塊看那次紀錄 */}
+          <div className="space-y-1.5">
+            {[...columns].reverse().map((column, idx) => {
+              const isThisWeek = idx === 0;
+              const sessions = [...column.items].sort((a, b) => a.workout.startedAt - b.workout.startedAt);
               return (
-                <div key={column.weekStart} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
-                    {column.items.length > 0 ? column.items.length : ''}
+                <div key={column.weekStart} className="flex items-center gap-2">
+                  <span
+                    className={`w-11 shrink-0 text-[11px] font-bold tabular-nums ${
+                      isThisWeek ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+                    }`}
+                  >
+                    {isThisWeek ? '本週' : formatMonthDay(column.weekStart)}
                   </span>
-                  <div className="flex flex-col-reverse" style={{ gap: GAP }}>
-                    {column.items.map(({ workout, category }) => (
+                  <div className="flex-1 grid gap-1" style={{ gridTemplateColumns: `repeat(${slots}, minmax(0, 1fr))` }}>
+                    {sessions.map(({ workout, category }) => (
                       <button
                         key={workout.id}
                         type="button"
                         onClick={() => onSelectWorkout(workout)}
                         title={`${workout.title || category} · ${shortDate(workout.startedAt)}`}
                         aria-label={`${category}，${shortDate(workout.startedAt)}`}
-                        className="rounded-[4px] flex items-center justify-center text-[10px] font-bold cursor-pointer transition hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                        style={{
-                          width: CELL,
-                          height: CELL,
-                          backgroundColor: CATEGORY_HEX[category],
-                          color: CELL_TEXT[category],
-                        }}
+                        className="h-9 rounded-lg flex flex-col items-center justify-center leading-none cursor-pointer transition hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                        style={{ backgroundColor: CATEGORY_HEX[category], color: CELL_TEXT[category] }}
                       >
-                        {category === '其他' ? '·' : category}
+                        <span className="text-[11px] font-extrabold whitespace-nowrap">{category}</span>
+                        <span className="text-[9px] font-semibold opacity-80 mt-0.5 tabular-nums">
+                          {new Date(workout.startedAt).getMonth() + 1}/{new Date(workout.startedAt).getDate()}
+                        </span>
                       </button>
                     ))}
-                    {column.items.length === 0 && (
-                      <div className="rounded-[4px] bg-slate-100 dark:bg-slate-800" style={{ width: CELL, height: 3 }} />
+                    {sessions.length === 0 && (
+                      <div
+                        className="h-9 rounded-lg border border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[10px] font-semibold text-slate-300 dark:text-slate-600"
+                        style={{ gridColumn: `1 / -1` }}
+                      >
+                        休息週
+                      </div>
                     )}
                   </div>
-                  <span
-                    className={`text-[9px] font-bold tabular-nums whitespace-nowrap ${
-                      isThisWeek ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
-                    }`}
-                  >
-                    {isThisWeek ? '本週' : formatMonthDay(column.weekStart)}
-                  </span>
                 </div>
               );
             })}
           </div>
-          {trendCategories.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
-              {trendCategories.map((cat) => (
-                <span key={cat} className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                  <span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: CATEGORY_HEX[cat] }} />
-                  {cat}
-                </span>
-              ))}
-            </div>
-          )}
-          <SummaryLine
-            parts={[
-              `近 ${WEEKS} 週 ${trendSummary.count} 次`,
-              `平均每週 ${(trendSummary.count / WEEKS).toFixed(1)} 次`,
-              trendSummary.avgMinutes !== null ? `平均 ${trendSummary.avgMinutes} 分鐘` : '時長未記錄',
-            ]}
-          />
         </div>
       ) : (
         <div className="space-y-3">
