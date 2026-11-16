@@ -40,7 +40,7 @@ interface EntrySpec {
   restSeconds: number;
 }
 
-interface DaySpec {
+export interface DaySpec {
   key: string;
   label: string;
   category: TemplateCategory;
@@ -77,11 +77,10 @@ export const TWO_SPLIT_DAYS: DaySpec[] = [
     category: '腿手',
     entries: [
       e('槓鈴深蹲', '腿臀', '槓鈴', 4, 8, 180, '腿推'),
-      e('羅馬尼亞硬舉', '腿臀', '槓鈴', 4, 8, 120),
-      e('啞鈴肩推', '肩', '啞鈴', 4, 10, 90),
-      e('腿後勾', '腿臀', '機械', 3, 12, 90),
-      e('站姿提踵', '腿臀', '機械', 3, 15, 60),
+      e('羅馬尼亞硬舉', '腿臀', '槓鈴', 3, 8, 120),
+      e('啞鈴肩推', '肩', '啞鈴', 3, 10, 90),
       e('啞鈴側平舉', '肩', '啞鈴', 3, 15, 60),
+      // 彎舉與下壓排在一起、中間不休息（手動接著做），做完兩個才休息
       e('啞鈴彎舉', '手臂', '啞鈴', 3, 10, 60),
       e('纜繩下壓（繩索）', '手臂', '纜繩', 3, 10, 60),
     ],
@@ -104,12 +103,12 @@ export const TWO_SPLIT_DAYS: DaySpec[] = [
     label: '腿手 B（輕）',
     category: '腿手',
     entries: [
-      e('槓鈴深蹲', '腿臀', '槓鈴', 4, 10, 120, '腿推'),
-      e('槓鈴臀推', '腿臀', '槓鈴', 4, 12, 90),
-      e('啞鈴肩推', '肩', '啞鈴', 4, 12, 90),
+      e('槓鈴深蹲', '腿臀', '槓鈴', 3, 10, 120, '腿推'),
+      e('槓鈴臀推', '腿臀', '槓鈴', 3, 12, 90),
+      e('啞鈴肩推', '肩', '啞鈴', 3, 12, 90),
       e('啞鈴側平舉', '肩', '啞鈴', 3, 15, 60),
-      e('啞鈴彎舉', '手臂', '啞鈴', 3, 12, 60),
-      e('纜繩下壓（繩索）', '手臂', '纜繩', 3, 12, 60),
+      e('啞鈴彎舉', '手臂', '啞鈴', 2, 12, 60),
+      e('纜繩下壓（繩索）', '手臂', '纜繩', 2, 12, 60),
     ],
   },
 ];
@@ -149,6 +148,84 @@ export function buildTwoSplitTemplates(nameToId: Map<string, string>, now: numbe
     createdAt: now,
     updatedAt: now,
   }));
+}
+
+/**
+ * 把一個「已存在的範本」改成指定菜單的組數與動作，但保留使用者已經填的重量／次數／休息秒數：
+ * 菜單裡有的動作留下並調整組數（多的組數丟掉最輕的、不足的複製最後一組補上）；菜單沒有的動作移除；
+ * 範本裡原本沒有但菜單有的動作用預設組數補上。動作順序照菜單。
+ * 純函式，不碰資料庫。
+ */
+export function conformTemplateToDay(
+  template: WorkoutTemplate,
+  day: DaySpec,
+  nameToId: Map<string, string>,
+  now: number,
+): WorkoutTemplate {
+  const used = new Set<string>();
+  const entries: WorkoutEntry[] = [];
+  for (const spec of day.entries) {
+    const exerciseId = nameToId.get(spec.name);
+    if (!exerciseId) continue;
+    const existing = template.entries.find(
+      (x) => !used.has(x.id) && (x.exerciseId === exerciseId || x.candidateExerciseIds?.includes(exerciseId)),
+    );
+    if (!existing) {
+      const altId = spec.alt ? nameToId.get(spec.alt) : undefined;
+      entries.push({
+        id: crypto.randomUUID(),
+        exerciseId,
+        ...(altId ? { candidateExerciseIds: [exerciseId, altId] } : {}),
+        order: entries.length,
+        sets: plannedSets(spec.sets, spec.reps, now),
+        defaultRestSeconds: spec.restSeconds,
+      });
+      continue;
+    }
+    used.add(existing.id);
+    const sets = [...existing.sets];
+    while (sets.length > spec.sets) {
+      // 丟掉最輕的一組（同重量丟最後一組）：通常是暖身感的第一組或做不完的尾組
+      let drop = 0;
+      sets.forEach((st, idx) => {
+        if (st.weight <= sets[drop].weight) drop = idx;
+      });
+      sets.splice(drop, 1);
+    }
+    while (sets.length < spec.sets && sets.length > 0) {
+      sets.push({ ...sets[sets.length - 1], id: crypto.randomUUID(), completed: false, createdAt: now });
+    }
+    entries.push({ ...existing, order: entries.length, sets });
+  }
+  return { ...template, entries, updatedAt: now };
+}
+
+const SLIM_LEG_ARM_FLAG = 'gymtracker-twosplit-slim-leg-arm-v1';
+
+/**
+ * 2026-11-16 腿手精簡版：A 拿掉腿後勾／提踵、B 拿掉 RDL，組數收斂。
+ * 只對「已經存在」的腿手 A／B 範本做一次（localStorage 旗標），之後使用者自己再加的組數不會被蓋掉。
+ */
+export async function slimLegArmTemplatesOnce(now: number = Date.now()): Promise<boolean> {
+  try {
+    if (localStorage.getItem(SLIM_LEG_ARM_FLAG)) return false;
+  } catch {
+    return false;
+  }
+  const nameToId = new Map((await listExercises()).map((x) => [x.name, x.id]));
+  let changed = false;
+  for (const day of TWO_SPLIT_DAYS.filter((d) => d.category === '腿手')) {
+    const template = await db.templates.get(templateIdOf(day.key));
+    if (!template || template.deletedAt) continue;
+    await saveTemplate(conformTemplateToDay(template, day, nameToId, now));
+    changed = true;
+  }
+  try {
+    localStorage.setItem(SLIM_LEG_ARM_FLAG, String(now));
+  } catch {
+    /* 旗標寫不進去也沒關係：下次再做一次是冪等的（組數已符合） */
+  }
+  return changed;
 }
 
 export function buildTwoSplitProgram(now: number): TrainingProgram {

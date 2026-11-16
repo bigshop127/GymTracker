@@ -1,11 +1,13 @@
 import 'fake-indexeddb/auto';
-import { describe, test, expect, beforeAll } from 'vitest';
+import { describe, test, expect, beforeAll, vi } from 'vitest';
 import { db, type Workout, type TrainingProgram } from '../../db/schema';
 import { seedExercisesIfEmpty, listExercises } from '../../db/exercises';
 import { saveProgram, getCurrentProgram } from '../../db/programs';
 import { ZONGYUAN_PROGRAM_NAME } from '../../data/zongyuan-8week-program';
 import {
   applyTwoSplitProgram,
+  conformTemplateToDay,
+  slimLegArmTemplatesOnce,
   isTwoSplitProgramActive,
   switchProgram,
   TWO_SPLIT_DAYS,
@@ -95,14 +97,13 @@ describe('套用胸背／腿手二分化課表', () => {
     const [cbA, laA, cbB, laB] = templates;
     expect(cbA?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 4, 3, 3]);
     expect(cbB?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 4, 3, 3]);
-    expect(laA?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 3, 3, 3, 3, 3]);
-    expect(laB?.entries.map((x) => x.sets.length)).toEqual([4, 4, 4, 3, 3, 3]);
-    // 腿彎舉、提踵只在 A 重日
+    expect(laA?.entries.map((x) => x.sets.length)).toEqual([4, 3, 3, 3, 3, 3]);
+    expect(laB?.entries.map((x) => x.sets.length)).toEqual([3, 3, 3, 3, 2, 2]);
+    // 2026-11-16 精簡版：腿後勾、提踵都拿掉
     const exercises = await listExercises();
     const nameOf = (id: string) => exercises.find((x) => x.id === id)?.name;
-    expect(laA?.entries.map((x) => nameOf(x.exerciseId))).toEqual(
-      expect.arrayContaining(['腿後勾', '站姿提踵']),
-    );
+    expect(laA?.entries.map((x) => nameOf(x.exerciseId))).not.toContain('腿後勾');
+    expect(laA?.entries.map((x) => nameOf(x.exerciseId))).not.toContain('站姿提踵');
     expect(laB?.entries.map((x) => nameOf(x.exerciseId))).not.toContain('腿後勾');
     // 臀部髖伸只擇一：A 日 RDL、B 日臀推，不在同一天重複
     expect(laA?.entries.map((x) => nameOf(x.exerciseId))).toContain('羅馬尼亞硬舉');
@@ -163,5 +164,59 @@ describe('切換課表（宗諺 ⇄ 二分化）', () => {
     expect(current.completedSlotIdsThisLap).toContain('slot-twosplit-cb-a');
     expect((await db.templates.get('tpl-twosplit-cb-a'))?.entries[0].id).toBe(before?.entries[0].id);
     expect((await db.programs.toArray()).filter((p) => p.id === 'program-twosplit-v1')).toHaveLength(1);
+  });
+});
+
+describe('腿手範本精簡版（保留已填重量）', () => {
+  test('conformTemplateToDay：多的組數丟最輕的、少的補、沒在菜單的動作移除、順序照菜單', async () => {
+    const exercises = await listExercises();
+    const nameToId = new Map(exercises.map((x) => [x.name, x.id]));
+    const set = (weight: number, reps: number) => ({
+      id: crypto.randomUUID(), weight, reps, isWarmup: false, completed: false, createdAt: 1,
+    });
+    const entry = (name: string, order: number, sets: ReturnType<typeof set>[]) => ({
+      id: `e-${name}`, exerciseId: nameToId.get(name)!, order, sets, defaultRestSeconds: 77,
+    });
+    const day = TWO_SPLIT_DAYS.find((d) => d.key === 'la-a')!;
+    const template = {
+      id: 'tpl-twosplit-la-a', name: '腿手 A（重）', category: '腿手' as const, createdAt: 1, updatedAt: 1,
+      entries: [
+        entry('槓鈴深蹲', 0, [set(30, 10), set(40, 10), set(45, 8), set(45, 8), set(45, 8)]),
+        entry('羅馬尼亞硬舉', 1, [set(40, 8), set(30, 8), set(35, 8), set(35, 8)]),
+        entry('腿後勾', 2, [set(0, 12), set(0, 12), set(0, 12)]),
+        entry('啞鈴側平舉', 3, [set(6, 15), set(6, 15)]),
+      ],
+    };
+    const out = conformTemplateToDay(template, day, nameToId, 999);
+    const names = out.entries.map((x) => exercises.find((ex) => ex.id === x.exerciseId)?.name);
+    expect(names).toEqual(['槓鈴深蹲', '羅馬尼亞硬舉', '啞鈴肩推', '啞鈴側平舉', '啞鈴彎舉', '纜繩下壓（繩索）']);
+    expect(out.entries.map((x) => x.order)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(out.entries[0].sets.map((x) => x.weight)).toEqual([40, 45, 45, 45]); // 丟掉最輕的 30
+    expect(out.entries[1].sets.map((x) => x.weight)).toEqual([40, 35, 35]); // 丟掉最輕的 30
+    expect(out.entries[3].sets.map((x) => x.weight)).toEqual([6, 6, 6]); // 補一組
+    expect(out.entries[0].defaultRestSeconds).toBe(77); // 沿用使用者的休息秒數
+    expect(out.entries[2].sets).toHaveLength(3); // 範本沒有的動作用預設組數補上
+    expect(out.updatedAt).toBe(999);
+  });
+
+  test('slimLegArmTemplatesOnce：只做一次，之後使用者自己加的組數不會被蓋掉', async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    const before = await db.templates.get('tpl-twosplit-la-b');
+    expect(before).toBeTruthy();
+    expect(await slimLegArmTemplatesOnce(5000)).toBe(true);
+    const after = await db.templates.get('tpl-twosplit-la-b');
+    expect(after?.entries.map((x) => x.sets.length)).toEqual([3, 3, 3, 3, 2, 2]);
+    // 使用者之後手動加一組
+    await db.templates.put({
+      ...after!,
+      entries: after!.entries.map((x, i) => (i === 0 ? { ...x, sets: [...x.sets, { ...x.sets[0], id: 'extra' }] } : x)),
+    });
+    expect(await slimLegArmTemplatesOnce(6000)).toBe(false);
+    expect((await db.templates.get('tpl-twosplit-la-b'))?.entries[0].sets).toHaveLength(4);
+    vi.unstubAllGlobals();
   });
 });

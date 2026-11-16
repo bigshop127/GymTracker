@@ -7,6 +7,7 @@ import ExerciseLibrary from './pages/ExerciseLibrary';
 import SettingsPage from './pages/SettingsPage';
 import { seedExercisesIfEmpty } from './db/exercises';
 import { repairExerciseIds } from './db/repairExerciseIds';
+import { slimLegArmTemplatesOnce } from './lib/twoSplitProgram';
 import { useActiveWorkoutStore, flushPendingSave } from './store/activeWorkout';
 import { useSettingsStore } from './store/settings';
 
@@ -29,6 +30,8 @@ function App() {
         await seedExercisesIfEmpty();
         // 2. 修好指向舊動作 id 的訓練／範本（跨裝置同步留下的）
         await repairExerciseIds();
+        // 2b. 腿手 A／B 範本精簡版（一次性，保留已填的重量）
+        await slimLegArmTemplatesOnce();
         // 3. 初始化全域設定
         await initSettings();
         // 4. 恢復進行中訓練 (草稿)
